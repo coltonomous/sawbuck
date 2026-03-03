@@ -28,8 +28,8 @@ Find underpriced furniture on Craigslist, OfferUp, Mercari, and eBay. Analyze co
 ## Setup
 
 ```bash
-git clone https://github.com/coltonomous/furniture_flipper.git
-cd furniture_flipper # repo name stays as-is
+git clone https://github.com/coltonomous/sawbuck.git
+cd sawbuck
 npm install
 npx playwright install chromium
 ```
