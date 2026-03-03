@@ -8,6 +8,7 @@ import MaterialsList from '../components/MaterialsList';
 import ROICalculator from '../components/ROICalculator';
 import PhotoGallery from '../components/PhotoGallery';
 import ExportListingText from '../components/ExportListingText';
+import { Spinner, EmptyState, BackButton, NotFoundIcon, Card, CardHeader } from '../components/ui';
 
 type Tab = 'overview' | 'plan' | 'materials' | 'photos' | 'financials';
 
@@ -73,18 +74,16 @@ export default function ProjectDetail() {
 
   if (loading) return <SkeletonDetail />;
   if (!project) return (
-    <div className="text-center py-24">
-      <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-        <svg className="w-7 h-7 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-        </svg>
-      </div>
-      <p className="text-gray-900 font-medium text-lg">Project not found</p>
-      <p className="text-sm text-gray-500 mt-1">It may have been removed or the link is incorrect.</p>
-      <button onClick={() => navigate('/projects')} className="mt-4 px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
-        Back to Projects
-      </button>
-    </div>
+    <EmptyState
+      icon={<NotFoundIcon />}
+      title="Project not found"
+      subtitle="It may have been removed or the link is incorrect."
+      action={
+        <button onClick={() => navigate('/projects')} className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors">
+          Back to Projects
+        </button>
+      }
+    />
   );
 
   const purchasedMats = (project.materials ?? []).filter((m: any) => m.purchased);
@@ -98,14 +97,20 @@ export default function ProjectDetail() {
     { key: 'financials', label: 'Financials' },
   ];
 
+  const GeneratePlanButton = () => (
+    <button
+      onClick={handleGeneratePlan}
+      disabled={generatingPlan}
+      className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+    >
+      {generatingPlan && <Spinner />}
+      {generatingPlan ? 'Generating plan...' : 'Generate Refinishing Plan'}
+    </button>
+  );
+
   return (
     <div className="max-w-4xl">
-      <button onClick={() => navigate(-1)} className="text-sm text-gray-400 hover:text-gray-600 mb-4 inline-flex items-center gap-1 transition-colors">
-        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
-        </svg>
-        Back
-      </button>
+      <BackButton onClick={() => navigate(-1)} />
 
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
@@ -178,8 +183,8 @@ export default function ProjectDetail() {
       {/* Tab content */}
       {tab === 'overview' && (
         <div className="grid grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-3">Details</h3>
+          <Card>
+            <CardHeader>Details</CardHeader>
             <dl className="space-y-2 text-sm">
               {project.listing?.furnitureType && (
                 <div className="flex justify-between">
@@ -204,7 +209,7 @@ export default function ProjectDetail() {
                 </div>
               )}
             </dl>
-          </div>
+          </Card>
 
           <ROICalculator
             purchasePrice={project.purchasePrice}
@@ -219,22 +224,15 @@ export default function ProjectDetail() {
           />
 
           {/* Timeline */}
-          <div className="col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Timeline</h3>
+          <Card className="col-span-2">
+            <CardHeader>Timeline</CardHeader>
             <ProjectTimeline project={project} />
-          </div>
+          </Card>
 
           {!project.plan && (
             <div className="col-span-2 text-center py-10 bg-white rounded-lg shadow-sm border border-gray-200">
               <p className="text-gray-500 mb-3 text-sm">No refinishing plan yet</p>
-              <button
-                onClick={handleGeneratePlan}
-                disabled={generatingPlan}
-                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-              >
-                {generatingPlan && <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                {generatingPlan ? 'Generating plan...' : 'Generate Refinishing Plan'}
-              </button>
+              <GeneratePlanButton />
             </div>
           )}
         </div>
@@ -246,14 +244,7 @@ export default function ProjectDetail() {
         ) : (
           <div className="text-center py-16">
             <p className="text-gray-500 mb-3 text-sm">No refinishing plan yet</p>
-            <button
-              onClick={handleGeneratePlan}
-              disabled={generatingPlan}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-            >
-              {generatingPlan && <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-              {generatingPlan ? 'Generating plan with Claude...' : 'Generate Refinishing Plan'}
-            </button>
+            <GeneratePlanButton />
           </div>
         )
       )}
@@ -298,71 +289,30 @@ export default function ProjectDetail() {
             soldPrice={project.soldPrice}
           />
 
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Update Costs</h3>
+          <Card>
+            <CardHeader>Update Costs</CardHeader>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">Hours invested</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  defaultValue={project.hoursInvested || ''}
-                  onBlur={(e) => handleCostUpdate('hoursInvested', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">Hourly rate ($)</label>
-                <input
-                  type="number"
-                  step="1"
-                  defaultValue={project.hourlyRate || 25}
-                  onBlur={(e) => handleCostUpdate('hourlyRate', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">Listed price ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  defaultValue={project.listedPrice || ''}
-                  onBlur={(e) => handleCostUpdate('listedPrice', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">Sold price ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  defaultValue={project.soldPrice || ''}
-                  onBlur={(e) => handleCostUpdate('soldPrice', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">Selling fees ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  defaultValue={project.sellingFees || ''}
-                  onBlur={(e) => handleCostUpdate('sellingFees', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">Shipping ($)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  defaultValue={project.shippingCost || ''}
-                  onBlur={(e) => handleCostUpdate('shippingCost', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                />
-              </div>
+              {[
+                { label: 'Hours invested', field: 'hoursInvested', step: '0.5', value: project.hoursInvested },
+                { label: 'Hourly rate ($)', field: 'hourlyRate', step: '1', value: project.hourlyRate || 25 },
+                { label: 'Listed price ($)', field: 'listedPrice', step: '0.01', value: project.listedPrice },
+                { label: 'Sold price ($)', field: 'soldPrice', step: '0.01', value: project.soldPrice },
+                { label: 'Selling fees ($)', field: 'sellingFees', step: '0.01', value: project.sellingFees },
+                { label: 'Shipping ($)', field: 'shippingCost', step: '0.01', value: project.shippingCost },
+              ].map(({ label, field, step, value }) => (
+                <div key={field}>
+                  <label className="block text-[11px] font-medium text-gray-500 uppercase mb-1">{label}</label>
+                  <input
+                    type="number"
+                    step={step}
+                    defaultValue={value || ''}
+                    onBlur={(e) => handleCostUpdate(field, e.target.value)}
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                  />
+                </div>
+              ))}
             </div>
-          </div>
+          </Card>
         </div>
       )}
 

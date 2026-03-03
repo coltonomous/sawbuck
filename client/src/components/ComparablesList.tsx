@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import { useToast } from './Toast';
+import { Spinner, ExternalLinkIcon, Card, CardHeader } from './ui';
 
 interface Comparable {
   id: number;
@@ -64,15 +65,15 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
     prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-4">
+    <Card className="mb-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">eBay Comparables</h3>
+        <CardHeader>eBay Comparables</CardHeader>
         <button
           onClick={handleSearch}
           disabled={loading}
           className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
         >
-          {loading && <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+          {loading && <Spinner size="xs" />}
           {loading ? 'Searching...' : searched ? 'Refresh Comps' : 'Search eBay Comps'}
         </button>
       </div>
@@ -155,9 +156,7 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
                         rel="noopener noreferrer"
                         className="text-blue-500 hover:text-blue-700"
                       >
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
+                        <ExternalLinkIcon />
                       </a>
                     )}
                   </div>
@@ -171,6 +170,6 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
       {searched && comps.length === 0 && !loading && (
         <p className="text-sm text-gray-400">No comparable sales found.</p>
       )}
-    </div>
+    </Card>
   );
 }

@@ -1,13 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
-
-const PLATFORM_META: Record<string, { label: string; color: string }> = {
-  craigslist: { label: 'Craigslist', color: 'bg-purple-500' },
-  offerup: { label: 'OfferUp', color: 'bg-teal-500' },
-  mercari: { label: 'Mercari', color: 'bg-orange-500' },
-  ebay: { label: 'eBay', color: 'bg-blue-500' },
-};
+import { platformLabel, platformColor, Card, CardHeader, SearchIcon } from '../components/ui';
 
 export default function Settings() {
   const [status, setStatus] = useState<any>(null);
@@ -71,50 +65,47 @@ export default function Settings() {
       <p className="text-sm text-gray-500 mb-6">Configure platforms and search criteria for scraping.</p>
 
       {/* Platform toggles */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-5">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Platforms</h3>
+      <Card className="mb-5">
+        <CardHeader>Platforms</CardHeader>
         <div className="grid grid-cols-3 gap-3">
-          {platforms.map((p) => {
-            const meta = PLATFORM_META[p.platform] || { label: p.platform, color: 'bg-gray-500' };
-            return (
-              <button
-                key={p.platform}
-                type="button"
-                onClick={async () => {
-                  const next = !p.enabled;
-                  setPlatforms((prev) => prev.map((x) => x.platform === p.platform ? { ...x, enabled: next } : x));
-                  await api.togglePlatform(p.platform, next);
-                }}
-                className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-all ${
-                  p.enabled
-                    ? 'border-gray-200 bg-white shadow-sm'
-                    : 'border-gray-100 bg-gray-50 opacity-60'
-                }`}
+          {platforms.map((p) => (
+            <button
+              key={p.platform}
+              type="button"
+              onClick={async () => {
+                const next = !p.enabled;
+                setPlatforms((prev) => prev.map((x) => x.platform === p.platform ? { ...x, enabled: next } : x));
+                await api.togglePlatform(p.platform, next);
+              }}
+              className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-all ${
+                p.enabled
+                  ? 'border-gray-200 bg-white shadow-sm'
+                  : 'border-gray-100 bg-gray-50 opacity-60'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className={`w-2.5 h-2.5 rounded-full ${p.enabled ? platformColor(p.platform) : 'bg-gray-300'}`} />
+                <span className={`text-sm font-medium ${p.enabled ? 'text-gray-900' : 'text-gray-400'}`}>
+                  {platformLabel(p.platform)}
+                </span>
+              </div>
+              <div
+                className={`relative w-9 h-5 rounded-full transition-colors ${p.enabled ? 'bg-blue-600' : 'bg-gray-300'}`}
               >
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-2.5 h-2.5 rounded-full ${p.enabled ? meta.color : 'bg-gray-300'}`} />
-                  <span className={`text-sm font-medium ${p.enabled ? 'text-gray-900' : 'text-gray-400'}`}>
-                    {meta.label}
-                  </span>
-                </div>
                 <div
-                  className={`relative w-9 h-5 rounded-full transition-colors ${p.enabled ? 'bg-blue-600' : 'bg-gray-300'}`}
-                >
-                  <div
-                    className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-                      p.enabled ? 'translate-x-4' : 'translate-x-0'
-                    }`}
-                  />
-                </div>
-              </button>
-            );
-          })}
+                  className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                    p.enabled ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </div>
+            </button>
+          ))}
         </div>
-      </div>
+      </Card>
 
       {/* Add search config */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-5">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Add Search</h3>
+      <Card className="mb-5">
+        <CardHeader>Add Search</CardHeader>
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
             type="text"
@@ -151,12 +142,12 @@ export default function Settings() {
             Add Search
           </button>
         </form>
-      </div>
+      </Card>
 
       {/* Existing configs */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-5">
+      <Card className="mb-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Active Searches</h3>
+          <CardHeader>Active Searches</CardHeader>
           {status?.configs?.length > 0 && (
             <button
               onClick={async () => {
@@ -176,9 +167,7 @@ export default function Settings() {
         ) : status?.configs?.length === 0 ? (
           <div className="text-center py-6">
             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
-              <svg className="w-5 h-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-              </svg>
+              <SearchIcon className="w-5 h-5 text-gray-400" />
             </div>
             <p className="text-gray-900 font-medium text-sm">No search configs yet</p>
             <p className="text-gray-400 text-xs mt-0.5">Add a search term above to start scraping.</p>
@@ -219,11 +208,11 @@ export default function Settings() {
             ))}
           </ul>
         )}
-      </div>
+      </Card>
 
       {/* Recent runs */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Recent Scrape Runs</h3>
+      <Card>
+        <CardHeader>Recent Scrape Runs</CardHeader>
         {status?.recentRuns?.length === 0 ? (
           <div className="text-center py-6">
             <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-3">
@@ -236,29 +225,26 @@ export default function Settings() {
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {status?.recentRuns?.map((run: any) => {
-              const meta = PLATFORM_META[run.platform];
-              return (
-                <li key={run.id} className="py-3 text-sm flex justify-between items-center">
-                  <span className="flex items-center gap-2">
-                    <span className={`inline-block w-2 h-2 rounded-full ${meta?.color || 'bg-gray-400'}`} />
-                    <span className="text-gray-700">{meta?.label || run.platform}</span>
-                    <span className="text-gray-400">{run.listingsNew} new / {run.listingsFound} total</span>
+            {status?.recentRuns?.map((run: any) => (
+              <li key={run.id} className="py-3 text-sm flex justify-between items-center">
+                <span className="flex items-center gap-2">
+                  <span className={`inline-block w-2 h-2 rounded-full ${platformColor(run.platform)}`} />
+                  <span className="text-gray-700">{platformLabel(run.platform)}</span>
+                  <span className="text-gray-400">{run.listingsNew} new / {run.listingsFound} total</span>
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className={`inline-block w-1.5 h-1.5 rounded-full ${
+                    run.status === 'failed' ? 'bg-red-500' : run.status === 'completed' ? 'bg-green-500' : 'bg-yellow-500'
+                  }`} />
+                  <span className="text-xs text-gray-400">
+                    {new Date(run.startedAt).toLocaleDateString()}
                   </span>
-                  <span className="flex items-center gap-2">
-                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${
-                      run.status === 'failed' ? 'bg-red-500' : run.status === 'completed' ? 'bg-green-500' : 'bg-yellow-500'
-                    }`} />
-                    <span className="text-xs text-gray-400">
-                      {new Date(run.startedAt).toLocaleDateString()}
-                    </span>
-                  </span>
-                </li>
-              );
-            })}
+                </span>
+              </li>
+            ))}
           </ul>
         )}
-      </div>
+      </Card>
     </div>
   );
 }
