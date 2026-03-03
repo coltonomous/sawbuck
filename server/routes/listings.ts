@@ -1,18 +1,19 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
-import { eq, desc, and, gte, lte } from 'drizzle-orm';
+import { eq, desc, asc, and, gte, lte, count, sql } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
 import { processListingImages } from '../images/processor.js';
 import { calculatePricing } from '../analysis/pricing.js';
 import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
+import { getPrimaryImagePath } from '../lib/images.js';
 
 export const listingsRouter = new Hono();
 
 // GET / — list listings with filters
 listingsRouter.get('/', async (c) => {
-  const { type, style, minScore, maxPrice, platform, status, page = '1', limit = '20', sort } = c.req.query();
+  const { type, style, minScore, maxPrice, platform, status, page = '1', limit = '50', sort, sort_dir } = c.req.query();
 
   const conditions = [];
   if (type) conditions.push(eq(listings.furnitureType, type));
@@ -24,33 +25,40 @@ listingsRouter.get('/', async (c) => {
 
   const pageNum = parseInt(page);
   const limitNum = parseInt(limit);
+  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const orderBy = sort === 'newest' ? desc(listings.scrapedAt)
-    : sort === 'price_asc' ? listings.askingPrice
-    : sort === 'price_desc' ? desc(listings.askingPrice)
-    : desc(listings.dealScore);
+  // Map sort key + direction to Drizzle order clause
+  const dirFn = sort_dir === 'asc' ? asc : desc;
+  const sortCol = sort === 'title' ? listings.title
+    : sort === 'platform' ? listings.platform
+    : sort === 'askingPrice' ? listings.askingPrice
+    : sort === 'furnitureType' ? listings.furnitureType
+    : sort === 'status' ? listings.status
+    : sort === 'scrapedAt' ? listings.scrapedAt
+    : sort === 'dealScore' ? listings.dealScore
+    : null;
+  const orderBy = sortCol ? dirFn(sortCol) : desc(listings.dealScore);
 
-  const results = await db.select()
-    .from(listings)
-    .where(conditions.length > 0 ? and(...conditions) : undefined)
-    .orderBy(orderBy)
-    .limit(limitNum)
-    .offset((pageNum - 1) * limitNum);
+  const [results, countResult] = await Promise.all([
+    db.select()
+      .from(listings)
+      .where(whereClause)
+      .orderBy(orderBy)
+      .limit(limitNum)
+      .offset((pageNum - 1) * limitNum),
+    db.select({ total: count() })
+      .from(listings)
+      .where(whereClause),
+  ]);
 
-  // Attach primary image to each listing
-  const enriched = await Promise.all(results.map(async (listing) => {
-    const img = await db.select()
-      .from(listingImages)
-      .where(eq(listingImages.listingId, listing.id))
-      .limit(1)
-      .get();
-    return {
-      ...listing,
-      primaryImage: img ? (img.localPathResized || img.localPathOriginal || img.sourceUrl) : null,
-    };
-  }));
+  const total = countResult[0]?.total ?? 0;
 
-  return c.json(enriched);
+  const enriched = await Promise.all(results.map(async (listing) => ({
+    ...listing,
+    primaryImage: await getPrimaryImagePath(listing.id),
+  })));
+
+  return c.json({ listings: enriched, total });
 });
 
 // GET /:id — single listing with images (auto-enriches if missing details)

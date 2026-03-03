@@ -5,6 +5,7 @@ import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { useToast } from '../components/Toast';
 import { SkeletonCard } from '../components/Skeleton';
 import ListingsMap from '../components/ListingsMap';
+import { PlatformBadge, Spinner, EmptyState, SearchIcon, dealScoreColor, dealScoreTextColor } from '../components/ui';
 
 interface ScrapeProgress {
   type: 'start' | 'config_start' | 'config_done' | 'done';
@@ -78,13 +79,13 @@ export default function Dashboard() {
   const loadListings = async () => {
     try {
       const [cl, ou, mc, eb] = await Promise.all([
-        api.getListings({ limit: '50', platform: 'craigslist', sort: 'newest' }),
-        api.getListings({ limit: '50', platform: 'offerup', sort: 'newest' }),
-        api.getListings({ limit: '50', platform: 'mercari', sort: 'newest' }).catch(() => []),
-        api.getListings({ limit: '50', platform: 'ebay', sort: 'newest' }).catch(() => []),
+        api.getListings({ limit: '50', platform: 'craigslist', sort: 'scrapedAt', sort_dir: 'desc' }),
+        api.getListings({ limit: '50', platform: 'offerup', sort: 'scrapedAt', sort_dir: 'desc' }),
+        api.getListings({ limit: '50', platform: 'mercari', sort: 'scrapedAt', sort_dir: 'desc' }).catch(() => ({ listings: [], total: 0 })),
+        api.getListings({ limit: '50', platform: 'ebay', sort: 'scrapedAt', sort_dir: 'desc' }).catch(() => ({ listings: [], total: 0 })),
       ]);
       const seen = new Set<number>();
-      const all = [...cl, ...ou, ...mc, ...eb]
+      const all = [...cl.listings, ...ou.listings, ...mc.listings, ...eb.listings]
         .filter(l => { if (seen.has(l.id)) return false; seen.add(l.id); return true; });
       setAllListings(all);
     } catch (err) {
@@ -191,7 +192,7 @@ export default function Dashboard() {
             disabled={scraping}
             className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
           >
-            {scraping && <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+            {scraping && <Spinner />}
             {scraping ? 'Scraping...' : 'Run Scraper'}
           </button>
         </div>
@@ -267,7 +268,7 @@ export default function Dashboard() {
       {scraping && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <Spinner size="md" color="blue" />
             <span className="text-sm font-medium text-gray-700">
               {progress?.type === 'config_start'
                 ? `Scraping ${progress.platform} "${progress.searchTerm}" (${progress.current}/${progress.total})...`
@@ -315,17 +316,11 @@ export default function Dashboard() {
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : allListings.length === 0 ? (
-        <div className="text-center py-24">
-          <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
-            <svg className="w-6 h-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-            </svg>
-          </div>
-          <p className="text-gray-900 font-medium">No listings yet</p>
-          <p className="text-sm text-gray-500 mt-1">
-            Configure search terms in <Link to="/settings" className="text-blue-600 hover:underline">Settings</Link>, then run the scraper.
-          </p>
-        </div>
+        <EmptyState
+          icon={<SearchIcon />}
+          title="No listings yet"
+          subtitle={<>Configure search terms in <Link to="/settings" className="text-blue-600 hover:underline">Settings</Link>, then run the scraper.</>}
+        />
       ) : listings.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
           <p className="text-sm">No listings match your filters.</p>
@@ -354,12 +349,7 @@ export default function Dashboard() {
                 <div className="p-3.5">
                   <h3 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2">{listing.title}</h3>
                   <div className="mt-2.5 flex items-center justify-between">
-                    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
-                      listing.platform === 'craigslist' ? 'bg-purple-100 text-purple-700' :
-                      listing.platform === 'offerup' ? 'bg-teal-100 text-teal-700' :
-                      listing.platform === 'ebay' ? 'bg-blue-100 text-blue-700' :
-                      'bg-orange-100 text-orange-700'
-                    }`}>{listing.platform}</span>
+                    <PlatformBadge platform={listing.platform} />
                     {listing.askingPrice != null && (
                       <span className="font-semibold text-gray-900">${listing.askingPrice}</span>
                     )}
@@ -369,19 +359,11 @@ export default function Dashboard() {
                       <div className="flex items-center gap-1.5">
                         <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
                           <div
-                            className={`h-full rounded-full ${
-                              listing.dealScore >= 2 ? 'bg-green-500' :
-                              listing.dealScore >= 1.5 ? 'bg-yellow-500' :
-                              'bg-gray-300'
-                            }`}
+                            className={`h-full rounded-full ${dealScoreColor(listing.dealScore)}`}
                             style={{ width: `${Math.min(listing.dealScore / 3 * 100, 100)}%` }}
                           />
                         </div>
-                        <span className={`text-[11px] font-semibold ${
-                          listing.dealScore >= 2 ? 'text-green-700' :
-                          listing.dealScore >= 1.5 ? 'text-yellow-700' :
-                          'text-gray-500'
-                        }`}>
+                        <span className={`text-[11px] font-semibold ${dealScoreTextColor(listing.dealScore)}`}>
                           {listing.dealScore.toFixed(1)}x
                         </span>
                       </div>

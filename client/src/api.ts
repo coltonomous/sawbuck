@@ -16,7 +16,7 @@ export const api = {
   // Listings
   getListings: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return request<any[]>(`/listings${qs}`);
+    return request<{ listings: any[]; total: number }>(`/listings${qs}`);
   },
   getListing: (id: number) => request<any>(`/listings/${id}`),
   updateListing: (id: number, data: any) =>
