@@ -9,9 +9,5 @@ if [ ! -f "${SCRIPT_HOME}/.env" ]; then
 fi
 
 pushd "${SCRIPT_HOME}" > /dev/null
-    docker compose up -d --build --remove-orphans
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --remove-orphans "$@"
 popd > /dev/null
-
-echo ""
-echo "Sawbuck is starting..."
-echo "  App:  http://localhost:3001"

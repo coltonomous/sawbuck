@@ -1,0 +1,25 @@
+# Dev override — mounts source code for hot reload.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Or just: ./dev.sh
+services:
+  app:
+    ports:
+      - "3001:3001"
+      - "5173:5173"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./server:/app/server
+      - ./drizzle:/app/drizzle
+      - ./client/src:/app/client/src
+      - ./client/index.html:/app/client/index.html
+      - ./client/vite.config.ts:/app/client/vite.config.ts
+      - ./client/tsconfig.json:/app/client/tsconfig.json
+      - ./data:/app/data
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        npx drizzle-kit migrate &&
+        npx concurrently -n server,client -c blue,green \
+          "npx tsx watch server/index.ts" \
+          "cd client && npx vite --host 0.0.0.0"
