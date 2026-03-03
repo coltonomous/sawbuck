@@ -51,6 +51,18 @@ export default function ProjectDetail() {
     load();
   };
 
+  const handleDelete = async () => {
+    if (!project) return;
+    if (!confirm('Delete this project? This will remove all plans, materials, and photos.')) return;
+    try {
+      await api.deleteProject(project.id);
+      toast('success', 'Project deleted');
+      navigate('/projects');
+    } catch (err: any) {
+      toast('error', `Failed to delete: ${err.message}`);
+    }
+  };
+
   const handleCostUpdate = async (field: string, value: string) => {
     if (!project) return;
     const numVal = parseFloat(value);
@@ -137,6 +149,12 @@ export default function ProjectDetail() {
               Mark Sold
             </button>
           )}
+          <button
+            onClick={handleDelete}
+            className="px-3 py-1.5 bg-white border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
+          >
+            Delete
+          </button>
         </div>
       </div>
 

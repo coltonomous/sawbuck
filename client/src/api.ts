@@ -36,6 +36,8 @@ export const api = {
     request<any>('/projects', { method: 'POST', body: JSON.stringify(data) }),
   updateProject: (id: number, data: any) =>
     request<any>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteProject: (id: number) =>
+    request<any>(`/projects/${id}`, { method: 'DELETE' }),
 
   // Scrapers
   runScraper: () => request<any>('/scrapers/run', { method: 'POST' }),
