@@ -92,6 +92,33 @@ projectsRouter.patch('/:id', async (c) => {
   return c.json(updated);
 });
 
+// DELETE /:id — delete project and reset listing status
+projectsRouter.delete('/:id', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  const project = await db.select().from(projects).where(eq(projects.id, id)).get();
+  if (!project) return c.json({ error: 'Not found' }, 404);
+
+  // Delete related data (photos, materials, plans)
+  const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
+  for (const photo of photos) {
+    const filePath = path.join(__dirname, '..', '..', 'data', 'images', photo.localPath);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  await db.delete(projectPhotos).where(eq(projectPhotos.projectId, id));
+  await db.delete(materials).where(eq(materials.projectId, id));
+  await db.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id));
+  await db.delete(projects).where(eq(projects.id, id));
+
+  // Reset listing status back to analyzed (or new if never analyzed)
+  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+  if (listing) {
+    const newStatus = listing.furnitureType ? 'analyzed' : 'new';
+    await db.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId));
+  }
+
+  return c.json({ ok: true });
+});
+
 // POST /:id/refinish — generate refinishing plan
 projectsRouter.post('/:id/refinish', async (c) => {
   const id = parseInt(c.req.param('id'));
@@ -259,33 +286,6 @@ projectsRouter.post('/:id/photos', async (c) => {
   }).returning();
 
   return c.json(photo, 201);
-});
-
-// DELETE /:id — delete project and reset listing status
-projectsRouter.delete('/:id', async (c) => {
-  const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(eq(projects.id, id)).get();
-  if (!project) return c.json({ error: 'Not found' }, 404);
-
-  // Delete related data (photos, materials, plans)
-  const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
-  for (const photo of photos) {
-    const filePath = path.join(__dirname, '..', '..', 'data', 'images', photo.localPath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  }
-  await db.delete(projectPhotos).where(eq(projectPhotos.projectId, id));
-  await db.delete(materials).where(eq(materials.projectId, id));
-  await db.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id));
-  await db.delete(projects).where(eq(projects.id, id));
-
-  // Reset listing status back to analyzed (or new if never analyzed)
-  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
-  if (listing) {
-    const newStatus = listing.furnitureType ? 'analyzed' : 'new';
-    await db.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId));
-  }
-
-  return c.json({ ok: true });
 });
 
 // DELETE /:id/photos/:photoId — delete a photo
