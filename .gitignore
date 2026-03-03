@@ -12,3 +12,4 @@ data/images/resized/
 data/*.log
 .env
 .vite/
+.claude/settings.local.json
