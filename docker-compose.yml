@@ -1,0 +1,23 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+
+  # Optional: run the scraper on a schedule inside Docker
+  # Uncomment to enable automated scraping every 3 hours
+  # cron:
+  #   build: .
+  #   env_file:
+  #     - .env
+  #   volumes:
+  #     - ./data:/app/data
+  #   entrypoint: ["sh", "-c", "while true; do npx tsx scripts/cron-runner.ts; sleep 10800; done"]
+  #   restart: unless-stopped

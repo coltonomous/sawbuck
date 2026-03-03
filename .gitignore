@@ -1,0 +1,11 @@
+node_modules/
+dist/
+client/dist/
+data/furniture-flipper.db
+data/furniture-flipper.db-wal
+data/furniture-flipper.db-shm
+data/images/originals/
+data/images/resized/
+data/*.log
+.env
+.vite/
