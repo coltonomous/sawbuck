@@ -155,7 +155,7 @@ export default function Listings() {
                       className="rounded border-gray-300"
                     />
                   </th>
-                  <th className="px-4 py-3 w-12"></th>
+                  <th className="px-2 py-3 w-14"></th>
                   <SortHeader label="Title" field="title" />
                   <SortHeader label="Platform" field="platform" className="w-28" />
                   <SortHeader label="Price" field="askingPrice" className="w-24" />
@@ -183,7 +183,7 @@ export default function Listings() {
                         className="rounded border-gray-300"
                       />
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="px-2 py-2.5">
                       {listing.primaryImage ? (
                         <img
                           src={listing.primaryImage.startsWith('http') ? listing.primaryImage : `/images/resized/${listing.primaryImage.replace('resized/', '')}`}
