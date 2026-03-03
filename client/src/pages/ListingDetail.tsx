@@ -50,6 +50,19 @@ export default function ListingDetail() {
     }
   };
 
+  // Parse analysis verdict from raw JSON
+  let analysisData: any = null;
+  try { analysisData = listing?.analysisRaw ? JSON.parse(listing.analysisRaw) : null; } catch {}
+  const rec = analysisData?.flip_recommendation;
+  const recStyle = rec === 'strong_buy' ? 'bg-green-100 text-green-700' :
+    rec === 'buy' ? 'bg-blue-100 text-blue-700' :
+    rec === 'maybe' ? 'bg-yellow-100 text-yellow-700' :
+    rec === 'pass' ? 'bg-red-100 text-red-700' : '';
+  const recLabel = rec === 'strong_buy' ? 'Strong Buy' :
+    rec === 'buy' ? 'Buy' :
+    rec === 'maybe' ? 'Maybe' :
+    rec === 'pass' ? 'Pass' : null;
+
   if (loading) return <SkeletonDetail />;
   if (!listing) return (
     <div className="text-center py-24">
@@ -148,7 +161,12 @@ export default function ListingDetail() {
       {/* Analysis */}
       {listing.furnitureType ? (
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-4">
-          <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">Analysis</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Analysis</h3>
+            {recLabel && (
+              <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${recStyle}`}>{recLabel}</span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Type</span>
@@ -181,6 +199,9 @@ export default function ListingDetail() {
           </div>
           {listing.conditionNotes && (
             <p className="mt-4 pt-3 border-t text-sm text-gray-600 leading-relaxed">{listing.conditionNotes}</p>
+          )}
+          {analysisData?.refinishing_profit_verdict && (
+            <p className="mt-3 pt-3 border-t text-sm text-gray-700 leading-relaxed font-medium">{analysisData.refinishing_profit_verdict}</p>
           )}
         </div>
       ) : (
