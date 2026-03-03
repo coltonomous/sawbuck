@@ -1,12 +1,9 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', '..', 'data', 'images');
+import { IMAGES_DIR } from '../lib/paths.js';
 
 const REFERERS: Record<string, string> = {
   craigslist: 'https://craigslist.org/',
@@ -31,7 +28,7 @@ export async function downloadListingImages(listingId: number): Promise<number> 
   if (pendingImages.length === 0) return 0;
 
   // Create directory for this listing
-  const originalDir = path.join(DATA_DIR, 'originals', listing.platform, String(listingId));
+  const originalDir = path.join(IMAGES_DIR, 'originals', listing.platform, String(listingId));
   fs.mkdirSync(originalDir, { recursive: true });
 
   let downloaded = 0;

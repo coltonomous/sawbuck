@@ -9,5 +9,5 @@ if [ ! -f "${SCRIPT_HOME}/.env" ]; then
 fi
 
 pushd "${SCRIPT_HOME}" > /dev/null
-    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build --remove-orphans "$@"
+    docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --remove-orphans "$@"
 popd > /dev/null

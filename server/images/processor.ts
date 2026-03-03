@@ -1,22 +1,19 @@
 import sharp from 'sharp';
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', '..', 'data', 'images');
+import { IMAGES_DIR } from '../lib/paths.js';
 
 const MAX_EDGE = 1500;
 const WEBP_QUALITY = 85;
 
 export async function processImage(originalPath: string, listingId: number, index: number, platform: string): Promise<{ resizedPath: string; width: number; height: number }> {
-  const inputPath = path.join(DATA_DIR, originalPath);
+  const inputPath = path.join(IMAGES_DIR, originalPath);
   if (!fs.existsSync(inputPath)) throw new Error(`Image not found: ${inputPath}`);
 
-  const resizedDir = path.join(DATA_DIR, 'resized', platform, String(listingId));
+  const resizedDir = path.join(IMAGES_DIR, 'resized', platform, String(listingId));
   fs.mkdirSync(resizedDir, { recursive: true });
 
   const filename = `${index}.webp`;
@@ -77,7 +74,7 @@ export async function processListingImages(listingId: number): Promise<number> {
 }
 
 export async function getImageBase64(imagePath: string): Promise<{ base64: string; mediaType: string }> {
-  const fullPath = path.join(DATA_DIR, imagePath);
+  const fullPath = path.join(IMAGES_DIR, imagePath);
   const buffer = fs.readFileSync(fullPath);
   const base64 = buffer.toString('base64');
   const ext = path.extname(imagePath).toLowerCase();

@@ -1,15 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
 import { eq, desc, sql } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { generateMaterialsFromPlan, getMaterialsForProject } from '../analysis/sourcing.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PHOTO_DIR = path.join(__dirname, '..', '..', 'data', 'images', 'projects');
+import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
+import { getPrimaryImagePath } from '../lib/images.js';
 
 export const projectsRouter = new Hono();
 
@@ -101,7 +99,7 @@ projectsRouter.delete('/:id', async (c) => {
   // Delete related data (photos, materials, plans)
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   for (const photo of photos) {
-    const filePath = path.join(__dirname, '..', '..', 'data', 'images', photo.localPath);
+    const filePath = path.join(IMAGES_DIR, photo.localPath);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
   await db.delete(projectPhotos).where(eq(projectPhotos.projectId, id));
@@ -266,7 +264,7 @@ projectsRouter.post('/:id/photos', async (c) => {
   }
 
   // Save file
-  const projectDir = path.join(PHOTO_DIR, String(id));
+  const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
   fs.mkdirSync(projectDir, { recursive: true });
 
   const ext = path.extname(file.name) || '.jpg';
@@ -295,7 +293,7 @@ projectsRouter.delete('/:id/photos/:photoId', async (c) => {
 
   if (photo) {
     // Delete file
-    const filePath = path.join(__dirname, '..', '..', 'data', 'images', photo.localPath);
+    const filePath = path.join(IMAGES_DIR, photo.localPath);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
 
     await db.delete(projectPhotos).where(eq(projectPhotos.id, photoId));
@@ -314,22 +312,15 @@ projectsRouter.get('/pipeline/all', async (c) => {
     .from(projects)
     .orderBy(desc(projects.updatedAt));
 
-  // Fetch primary images for each project's listing
   const enriched = await Promise.all(allProjects.map(async (project) => {
-    const primaryImage = await db.select()
-      .from(listingImages)
-      .where(eq(listingImages.listingId, project.listingId))
-      .limit(1)
-      .get();
-
-    const listing = await db.select()
-      .from(listings)
-      .where(eq(listings.id, project.listingId))
-      .get();
+    const [primaryImagePath, listing] = await Promise.all([
+      getPrimaryImagePath(project.listingId),
+      db.select().from(listings).where(eq(listings.id, project.listingId)).get(),
+    ]);
 
     return {
       ...project,
-      primaryImagePath: primaryImage?.localPathResized || primaryImage?.localPathOriginal || null,
+      primaryImagePath,
       furnitureType: listing?.furnitureType || null,
       furnitureStyle: listing?.furnitureStyle || null,
     };
