@@ -27,9 +27,21 @@ const CL_SUBDOMAINS: Record<string, string> = {
   'honolulu': 'honolulu', 'anchorage': 'anchorage',
 };
 
+// Reverse map: subdomain → display name
+const CL_DISPLAY_NAMES: Record<string, string> = {
+  'sfbay': 'SF Bay Area', 'losangeles': 'Los Angeles', 'sandiego': 'San Diego',
+  'newyork': 'New York', 'washingtondc': 'Washington DC', 'saltlakecity': 'Salt Lake City',
+  'kansascity': 'Kansas City', 'stlouis': 'St. Louis', 'sanantonio': 'San Antonio',
+  'lasvegas': 'Las Vegas',
+};
+
 function resolveSubdomain(location: string): string {
   const normalized = location.toLowerCase().trim();
   return CL_SUBDOMAINS[normalized] || normalized;
+}
+
+function displayLocation(subdomain: string): string {
+  return CL_DISPLAY_NAMES[subdomain] || subdomain.charAt(0).toUpperCase() + subdomain.slice(1);
 }
 
 export class CraigslistScraper extends BaseScraper {
@@ -41,6 +53,7 @@ export class CraigslistScraper extends BaseScraper {
     if (config.minPrice) params.set('min_price', config.minPrice.toString());
     if (config.maxPrice) params.set('max_price', config.maxPrice.toString());
 
+    const cityName = displayLocation(location);
     const searchUrl = `https://${location}.craigslist.org/search/fua?${params}`;
     console.log(`[craigslist] Scraping: ${searchUrl}`);
 
@@ -119,7 +132,7 @@ export class CraigslistScraper extends BaseScraper {
               title: result.title,
               description: detail.description ? stripKeywordSpam(detail.description) : undefined,
               askingPrice: result.price ?? undefined,
-              location: result.location || undefined,
+              location: cityName,
               latitude: detail.lat ? parseFloat(detail.lat) : undefined,
               longitude: detail.lng ? parseFloat(detail.lng) : undefined,
               postedAt: detail.postedAt || undefined,
@@ -138,7 +151,7 @@ export class CraigslistScraper extends BaseScraper {
           url: result.url,
           title: result.title,
           askingPrice: result.price ?? undefined,
-          location: result.location || undefined,
+          location: cityName,
           imageUrls: result.imageUrls,
         });
       }

@@ -52,6 +52,21 @@ export async function fetchListingDetails(listing: ListingRow): Promise<void> {
   });
 }
 
+// Extract city display name from a Craigslist URL subdomain
+const CL_DISPLAY: Record<string, string> = {
+  'sfbay': 'SF Bay Area', 'losangeles': 'Los Angeles', 'sandiego': 'San Diego',
+  'newyork': 'New York', 'washingtondc': 'Washington DC', 'saltlakecity': 'Salt Lake City',
+  'kansascity': 'Kansas City', 'stlouis': 'St. Louis', 'sanantonio': 'San Antonio',
+  'lasvegas': 'Las Vegas',
+};
+
+function locationFromCraigslistUrl(url: string): string | null {
+  const match = url.match(/^https?:\/\/([^.]+)\.craigslist\.org/);
+  if (!match) return null;
+  const sub = match[1];
+  return CL_DISPLAY[sub] || sub.charAt(0).toUpperCase() + sub.slice(1);
+}
+
 async function fetchCraigslistDetail(page: any, listing: ListingRow) {
   const detail = await page.evaluate(() => {
     const description = document.querySelector('#postingbody')?.textContent?.trim()
@@ -104,6 +119,10 @@ async function fetchCraigslistDetail(page: any, listing: ListingRow) {
   if (detail.postedAt) updates.postedAt = detail.postedAt;
   if (detail.lat) updates.latitude = parseFloat(detail.lat);
   if (detail.lng) updates.longitude = parseFloat(detail.lng);
+  if (!listing.location || listing.location === 'google map') {
+    const city = locationFromCraigslistUrl(listing.url);
+    if (city) updates.location = city;
+  }
 
   if (Object.keys(updates).length > 0) {
     await db.update(listings).set(updates).where(eq(listings.id, listing.id));
