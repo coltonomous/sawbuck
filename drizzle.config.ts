@@ -5,6 +5,6 @@ export default defineConfig({
   schema: './server/db/schema.ts',
   out: './drizzle',
   dbCredentials: {
-    url: './data/furniture-flipper.db',
+    url: './data/sawbuck.db',
   },
 });

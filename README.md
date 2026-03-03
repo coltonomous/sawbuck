@@ -1,4 +1,4 @@
-# Furniture Flipper
+# Sawbuck
 
 Find underpriced furniture on Craigslist, OfferUp, Mercari, and eBay. Analyze condition and value with Claude's vision API. Plan refinishing projects, source materials, and track profit from acquisition to sale.
 
@@ -29,7 +29,7 @@ Find underpriced furniture on Craigslist, OfferUp, Mercari, and eBay. Analyze co
 
 ```bash
 git clone https://github.com/coltonomous/furniture_flipper.git
-cd furniture_flipper
+cd furniture_flipper # repo name stays as-is
 npm install
 npx playwright install chromium
 ```

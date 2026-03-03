@@ -1,6 +1,6 @@
 {
-  "name": "Furniture Flipper",
-  "short_name": "Flipper",
+  "name": "Sawbuck",
+  "short_name": "Sawbuck",
   "description": "Find underpriced furniture, plan refinishing, source parts, track projects",
   "start_url": "/",
   "display": "standalone",

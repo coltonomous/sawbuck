@@ -1,6 +1,9 @@
 node_modules/
 dist/
 client/dist/
+data/sawbuck.db
+data/sawbuck.db-wal
+data/sawbuck.db-shm
 data/furniture-flipper.db
 data/furniture-flipper.db-wal
 data/furniture-flipper.db-shm

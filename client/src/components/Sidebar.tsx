@@ -60,8 +60,7 @@ export default function Sidebar() {
             </svg>
           </div>
           <div>
-            <h1 className="text-white text-sm font-bold leading-tight">Furniture</h1>
-            <h1 className="text-amber-400 text-sm font-bold leading-tight">Flipper</h1>
+            <h1 className="text-amber-400 text-lg font-bold leading-tight">Sawbuck</h1>
           </div>
         </div>
       </div>
