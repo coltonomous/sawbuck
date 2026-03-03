@@ -40,6 +40,9 @@ export default function RefinishingPlan({ plan }: { plan: Plan }) {
     });
   };
 
+  const totalMinutes = plan.steps.reduce((s, step) => s + step.duration_minutes, 0);
+  const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+
   const difficultyColor = {
     beginner: 'bg-green-100 text-green-800',
     intermediate: 'bg-yellow-100 text-yellow-800',
@@ -63,7 +66,7 @@ export default function RefinishingPlan({ plan }: { plan: Plan }) {
         <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t text-center">
           <div>
             <p className="text-xs text-gray-500 uppercase">Time</p>
-            <p className="text-lg font-semibold text-gray-900">{plan.estimatedHours}h</p>
+            <p className="text-lg font-semibold text-gray-900">{totalHours}h</p>
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase">Materials</p>

@@ -206,6 +206,7 @@ export default function Listings() {
                       <span className={`text-[11px] px-1.5 py-0.5 rounded font-medium ${
                         listing.platform === 'craigslist' ? 'bg-purple-100 text-purple-700' :
                         listing.platform === 'offerup' ? 'bg-teal-100 text-teal-700' :
+                        listing.platform === 'ebay' ? 'bg-blue-100 text-blue-700' :
                         'bg-orange-100 text-orange-700'
                       }`}>
                         {listing.platform}

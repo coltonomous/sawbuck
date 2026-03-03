@@ -1,6 +1,7 @@
 import { CraigslistScraper } from '../server/scrapers/craigslist.js';
 import { OfferUpScraper } from '../server/scrapers/offerup.js';
 import { MercariScraper } from '../server/scrapers/mercari.js';
+import { EbayScraper } from '../server/scrapers/ebay.js';
 import { closeBrowser } from '../server/scrapers/browser-pool.js';
 
 const platform = process.argv[2] || 'craigslist';
@@ -11,12 +12,13 @@ const scrapers = {
   craigslist: () => new CraigslistScraper(),
   offerup: () => new OfferUpScraper(),
   mercari: () => new MercariScraper(),
+  ebay: () => new EbayScraper(),
 } as const;
 
 async function main() {
   const factory = scrapers[platform as keyof typeof scrapers];
   if (!factory) {
-    console.error(`Unknown platform: ${platform}. Use: craigslist, offerup, mercari`);
+    console.error(`Unknown platform: ${platform}. Use: craigslist, offerup, mercari, ebay`);
     process.exit(1);
   }
 

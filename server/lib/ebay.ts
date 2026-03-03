@@ -96,8 +96,13 @@ export async function searchEbayBrowse(options: BrowseSearchOptions): Promise<Eb
 
     if (options.minPrice != null || options.maxPrice != null) {
       const parts: string[] = ['conditionIds:{3000}', 'itemLocationCountry:US'];
-      if (options.minPrice != null) parts.push(`price:[${options.minPrice}]`);
-      if (options.maxPrice != null) parts.push(`price:[..${options.maxPrice}]`);
+      if (options.minPrice != null && options.maxPrice != null) {
+        parts.push(`price:[${options.minPrice}..${options.maxPrice}]`);
+      } else if (options.minPrice != null) {
+        parts.push(`price:[${options.minPrice}]`);
+      } else if (options.maxPrice != null) {
+        parts.push(`price:[..${options.maxPrice}]`);
+      }
       params.set('filter', parts.join(','));
     }
 

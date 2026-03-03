@@ -77,13 +77,14 @@ export default function Dashboard() {
 
   const loadListings = async () => {
     try {
-      const [cl, ou, mc] = await Promise.all([
+      const [cl, ou, mc, eb] = await Promise.all([
         api.getListings({ limit: '50', platform: 'craigslist', sort: 'newest' }),
         api.getListings({ limit: '50', platform: 'offerup', sort: 'newest' }),
         api.getListings({ limit: '50', platform: 'mercari', sort: 'newest' }).catch(() => []),
+        api.getListings({ limit: '50', platform: 'ebay', sort: 'newest' }).catch(() => []),
       ]);
       const seen = new Set<number>();
-      const all = [...cl, ...ou, ...mc]
+      const all = [...cl, ...ou, ...mc, ...eb]
         .filter(l => { if (seen.has(l.id)) return false; seen.add(l.id); return true; });
       setAllListings(all);
     } catch (err) {
@@ -356,6 +357,7 @@ export default function Dashboard() {
                     <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
                       listing.platform === 'craigslist' ? 'bg-purple-100 text-purple-700' :
                       listing.platform === 'offerup' ? 'bg-teal-100 text-teal-700' :
+                      listing.platform === 'ebay' ? 'bg-blue-100 text-blue-700' :
                       'bg-orange-100 text-orange-700'
                     }`}>{listing.platform}</span>
                     {listing.askingPrice != null && (

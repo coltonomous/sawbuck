@@ -75,6 +75,9 @@ export default function ProjectDetail() {
     </div>
   );
 
+  const purchasedMats = (project.materials ?? []).filter((m: any) => m.purchased);
+  const materialsCostIsEstimate = purchasedMats.length === 0;
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'plan', label: 'Refinishing Plan' },
@@ -188,6 +191,7 @@ export default function ProjectDetail() {
           <ROICalculator
             purchasePrice={project.purchasePrice}
             materialCost={project.totalMaterialCost || 0}
+            materialsCostIsEstimate={materialsCostIsEstimate}
             hoursInvested={project.hoursInvested || 0}
             hourlyRate={project.hourlyRate || 25}
             estimatedResalePrice={project.plan?.estimatedResalePrice || project.listing?.estimatedRefinishedValue || 0}
@@ -267,6 +271,7 @@ export default function ProjectDetail() {
           <ROICalculator
             purchasePrice={project.purchasePrice}
             materialCost={project.totalMaterialCost || 0}
+            materialsCostIsEstimate={materialsCostIsEstimate}
             hoursInvested={project.hoursInvested || 0}
             hourlyRate={project.hourlyRate || 25}
             estimatedResalePrice={project.plan?.estimatedResalePrice || 0}

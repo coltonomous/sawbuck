@@ -82,6 +82,7 @@ export default function ListingDetail() {
             <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${
               listing.platform === 'craigslist' ? 'bg-purple-100 text-purple-700' :
               listing.platform === 'offerup' ? 'bg-teal-100 text-teal-700' :
+              listing.platform === 'ebay' ? 'bg-blue-100 text-blue-700' :
               'bg-orange-100 text-orange-700'
             }`}>{listing.platform}</span>
             <span className="text-sm text-gray-500">{listing.location || 'No location'}</span>

@@ -27,9 +27,10 @@ export default function MaterialsList({
 }) {
   const [updating, setUpdating] = useState<number | null>(null);
 
-  const totalEstimated = materials.reduce((s, m) => s + (m.estimatedPrice ?? 0) * m.quantity, 0);
-  const totalActual = materials.reduce((s, m) => s + (m.actualPrice ?? m.estimatedPrice ?? 0) * m.quantity, 0);
-  const allPurchased = materials.length > 0 && materials.every((m) => m.purchased);
+  const totalEstimated = materials.reduce((s, m) => s + (m.estimatedPrice ?? 0), 0);
+  const purchased = materials.filter((m) => m.purchased);
+  const totalActual = purchased.reduce((s, m) => s + (m.actualPrice ?? m.estimatedPrice ?? 0), 0);
+  const allPurchased = materials.length > 0 && purchased.length === materials.length;
 
   const handleTogglePurchased = async (mat: Material) => {
     setUpdating(mat.id);

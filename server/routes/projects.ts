@@ -189,11 +189,12 @@ async function recalculateFinancials(projectId: number) {
   const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
   if (!project) return;
 
-  // Sum actual material costs (fall back to estimated if no actual)
+  // Sum purchased material costs; fall back to full estimate if none purchased
   const mats = await getMaterialsForProject(projectId);
-  const totalMaterialCost = mats.reduce((sum, m) => {
-    return sum + (m.actualPrice ?? m.estimatedPrice ?? 0) * m.quantity;
-  }, 0);
+  const purchased = mats.filter((m) => m.purchased);
+  const totalMaterialCost = purchased.length > 0
+    ? purchased.reduce((sum, m) => sum + (m.actualPrice ?? m.estimatedPrice ?? 0), 0)
+    : mats.reduce((sum, m) => sum + (m.estimatedPrice ?? 0), 0);
 
   const laborCost = (project.hoursInvested ?? 0) * (project.hourlyRate ?? 25);
   const totalCost = project.purchasePrice + totalMaterialCost + laborCost + (project.sellingFees ?? 0) + (project.shippingCost ?? 0);

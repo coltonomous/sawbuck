@@ -1,6 +1,7 @@
 interface Props {
   purchasePrice: number;
   materialCost: number;
+  materialsCostIsEstimate?: boolean;
   hoursInvested: number;
   hourlyRate: number;
   estimatedResalePrice: number;
@@ -12,6 +13,7 @@ interface Props {
 export default function ROICalculator({
   purchasePrice,
   materialCost,
+  materialsCostIsEstimate,
   hoursInvested,
   hourlyRate,
   estimatedResalePrice,
@@ -34,7 +36,7 @@ export default function ROICalculator({
 
       <dl className="space-y-2 text-sm">
         <Row label="Purchase price" value={purchasePrice} negative />
-        <Row label="Materials" value={materialCost} negative />
+        <Row label={materialsCostIsEstimate ? 'Materials (est.)' : 'Materials'} value={materialCost} negative />
         <Row label={`Labor (${hoursInvested}h @ $${hourlyRate}/h)`} value={laborCost} negative />
         {sellingFees > 0 && <Row label="Selling fees" value={sellingFees} negative />}
         {shippingCost > 0 && <Row label="Shipping" value={shippingCost} negative />}
