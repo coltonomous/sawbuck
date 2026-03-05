@@ -63,10 +63,11 @@ export async function generateText(
   prompt: string,
   systemPrompt?: string,
   maxTokens = 2000,
+  model: 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' = 'claude-sonnet-4-20250514',
 ): Promise<string> {
   return withRetry(async () => {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model,
       max_tokens: maxTokens,
       system: systemPrompt || '',
       messages: [{ role: 'user', content: prompt }],

@@ -206,7 +206,7 @@ Rules:
 - Do NOT use words like "stunning", "gorgeous", "exquisite", "timeless", or "elevate"`;
 
   try {
-    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400);
+    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400, 'claude-haiku-4-5-20251001');
     await db.update(projects).set({ listingText: text }).where(eq(projects.id, id));
     return c.json({ text });
   } catch (err: any) {
