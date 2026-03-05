@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { useToast } from '../components/Toast';
@@ -14,6 +14,7 @@ export default function ListingDetail() {
   const [analyzing, setAnalyzing] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
+  const projectFormRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -211,6 +212,7 @@ export default function ListingDetail() {
             onClick={() => {
               setProjectForm({ name: listing.title, purchasePrice: listing.askingPrice?.toString() || '' });
               setShowProjectForm(true);
+              setTimeout(() => projectFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
             }}
             className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
           >
@@ -229,7 +231,7 @@ export default function ListingDetail() {
 
       {/* Project creation form */}
       {showProjectForm && (
-        <div className="bg-white rounded-lg shadow-sm border-2 border-green-200 p-5 mb-4">
+        <div ref={projectFormRef} className="bg-white rounded-lg shadow-sm border-2 border-green-200 p-5 mb-4">
           <CardHeader>Create Project</CardHeader>
           <div className="space-y-3">
             <input
