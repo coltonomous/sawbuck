@@ -14,7 +14,7 @@ export interface PricingResult {
   activeCount: number;
 }
 
-function median(values: number[]): number {
+export function median(values: number[]): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
@@ -23,7 +23,7 @@ function median(values: number[]): number {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-function conditionMultiplier(conditionScore: number | null): number {
+export function conditionMultiplier(conditionScore: number | null): number {
   const score = conditionScore ?? 5;
   // Score of 8 = 1.0 (baseline). Each point below = -0.1, each point above = +0.05
   if (score >= 8) return Math.min(1.2, 1.0 + (score - 8) * 0.05);
@@ -36,7 +36,7 @@ function conditionMultiplier(conditionScore: number | null): number {
  * - Both available: 70% sold median + 30% active median
  * - Active-only: active median discounted 15% (asking > actual)
  */
-function blendedMedian(soldPrices: number[], activePrices: number[]): number {
+export function blendedMedian(soldPrices: number[], activePrices: number[]): number {
   const soldMedian = median(soldPrices);
   const activeMedian = median(activePrices);
 

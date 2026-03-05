@@ -9,13 +9,14 @@ import { generateMaterialsFromPlan, getMaterialsForProject } from '../analysis/s
 import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
+import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
 
 export const projectsRouter = new Hono();
 
 // GET / — list all projects
 projectsRouter.get('/', async (c) => {
   const { status } = c.req.query();
-  const conditions = status ? eq(projects.status, status as any) : undefined;
+  const conditions = status ? eq(projects.status, status as 'acquired' | 'refinishing' | 'listed' | 'sold' | 'abandoned') : undefined;
 
   const results = await db.select()
     .from(projects)
@@ -51,14 +52,13 @@ projectsRouter.get('/:id', async (c) => {
 
 // POST / — create project from listing
 projectsRouter.post('/', async (c) => {
-  const body = await c.req.json();
-  const { listingId, name, purchasePrice, purchaseDate, purchaseNotes } = body;
-
-  if (!listingId || !name || purchasePrice === undefined) {
-    return c.json({ error: 'listingId, name, and purchasePrice are required' }, 400);
+  const raw = await c.req.json();
+  const parsed = createProjectSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
   }
+  const { listingId, name, purchasePrice, purchaseDate, purchaseNotes } = parsed.data;
 
-  // Create the project
   const [project] = await db.insert(projects).values({
     listingId,
     name,
@@ -67,7 +67,6 @@ projectsRouter.post('/', async (c) => {
     purchaseNotes,
   }).returning();
 
-  // Update listing status to acquired
   await db.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId));
 
   return c.json(project, 201);
@@ -76,15 +75,17 @@ projectsRouter.post('/', async (c) => {
 // PATCH /:id — update project
 projectsRouter.patch('/:id', async (c) => {
   const id = parseInt(c.req.param('id'));
-  const body = await c.req.json();
+  const raw = await c.req.json();
+  const parsed = updateProjectSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
 
-  // Recalculate financials if relevant fields changed
   await db.update(projects).set({
-    ...body,
+    ...parsed.data,
     updatedAt: new Date().toISOString(),
   }).where(eq(projects.id, id));
 
-  // Recalculate totals
   await recalculateFinancials(id);
 
   const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
@@ -97,7 +98,6 @@ projectsRouter.delete('/:id', async (c) => {
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!project) return c.json({ error: 'Not found' }, 404);
 
-  // Delete related data (photos, materials, plans)
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   for (const photo of photos) {
     const filePath = path.join(IMAGES_DIR, photo.localPath);
@@ -108,7 +108,6 @@ projectsRouter.delete('/:id', async (c) => {
   await db.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id));
   await db.delete(projects).where(eq(projects.id, id));
 
-  // Reset listing status back to analyzed (or new if never analyzed)
   const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
   if (listing) {
     const newStatus = listing.furnitureType ? 'analyzed' : 'new';
@@ -128,18 +127,15 @@ projectsRouter.post('/:id/refinish', async (c) => {
     const plan = await generateRefinishingPlan(project.listingId, id);
     if (!plan) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
-    // Get the stored plan record to generate materials
     const storedPlans = await db.select()
       .from(refinishingPlans)
       .where(eq(refinishingPlans.projectId, id));
     const storedPlan = storedPlans[storedPlans.length - 1];
 
     if (storedPlan) {
-      // Auto-generate materials list
       await generateMaterialsFromPlan(storedPlan.id, id);
     }
 
-    // Update project status
     await db.update(projects).set({
       status: 'refinishing',
       updatedAt: new Date().toISOString(),
@@ -149,20 +145,23 @@ projectsRouter.post('/:id/refinish', async (c) => {
       plan,
       materials: storedPlan ? await getMaterialsForProject(id) : [],
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[projects] Error generating plan for project ${id}:`, err);
-    return c.json({ error: err.message }, 500);
+    return c.json({ error: message }, 500);
   }
 });
 
 // POST /:id/listing-text — generate marketplace listing copy via Claude (cached)
 projectsRouter.post('/:id/listing-text', async (c) => {
   const id = parseInt(c.req.param('id'));
-  const { regenerate } = await c.req.json().catch(() => ({ regenerate: false }));
+  const raw = await c.req.json().catch(() => ({}));
+  const parsed = generateListingTextSchema.safeParse(raw);
+  const regenerate = parsed.success ? parsed.data.regenerate : false;
+
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
-  // Return cached text unless regenerate requested
   if (project.listingText && !regenerate) {
     return c.json({ text: project.listingText });
   }
@@ -183,11 +182,11 @@ projectsRouter.post('/:id/listing-text', async (c) => {
   if (plan?.steps) {
     const steps = typeof plan.steps === 'string' ? JSON.parse(plan.steps) : plan.steps;
     if (Array.isArray(steps)) {
-      context.push(`Refinishing work done: ${steps.map((s: any) => s.name || s.title || s).join(', ')}`);
+      context.push(`Refinishing work done: ${steps.map((s: { name?: string; title?: string }) => s.name || s.title || '').filter(Boolean).join(', ')}`);
     }
   }
   if (mats.length > 0) {
-    const matNames = mats.map((m: any) => m.name).filter(Boolean);
+    const matNames = mats.map((m) => m.productName).filter(Boolean);
     if (matNames.length > 0) context.push(`Materials used: ${matNames.join(', ')}`);
   }
   if (project.listedPrice) context.push(`Asking price: $${project.listedPrice}`);
@@ -209,9 +208,10 @@ Rules:
     const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400, 'claude-haiku-4-5-20251001');
     await db.update(projects).set({ listingText: text }).where(eq(projects.id, id));
     return c.json({ text });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[projects] Error generating listing text for project ${id}:`, err);
-    return c.json({ error: err.message }, 500);
+    return c.json({ error: message }, 500);
   }
 });
 
@@ -224,7 +224,7 @@ projectsRouter.get('/:id/refinish', async (c) => {
 
   if (plans.length === 0) return c.json({ error: 'No plan found' }, 404);
 
-  const plan = plans[plans.length - 1]; // Latest plan
+  const plan = plans[plans.length - 1];
   return c.json({ ...plan, steps: parsePlanSteps(plan.steps) });
 });
 
@@ -239,11 +239,14 @@ projectsRouter.get('/:id/materials', async (c) => {
 projectsRouter.patch('/:id/materials/:materialId', async (c) => {
   const projectId = parseInt(c.req.param('id'));
   const materialId = parseInt(c.req.param('materialId'));
-  const body = await c.req.json();
+  const raw = await c.req.json();
+  const parsed = updateMaterialSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
 
-  await db.update(materials).set(body).where(eq(materials.id, materialId));
+  await db.update(materials).set(parsed.data).where(eq(materials.id, materialId));
 
-  // Recalculate project material costs
   await recalculateFinancials(projectId);
 
   const updated = await db.select().from(materials).where(eq(materials.id, materialId)).get();
@@ -253,17 +256,18 @@ projectsRouter.patch('/:id/materials/:materialId', async (c) => {
 // PATCH /:id/costs — update cost-related fields
 projectsRouter.patch('/:id/costs', async (c) => {
   const id = parseInt(c.req.param('id'));
-  const body = await c.req.json();
-
-  const allowed = ['hoursInvested', 'hourlyRate', 'soldPrice', 'soldDate', 'listedPrice', 'listedDate', 'listedPlatform', 'sellingFees', 'shippingCost'];
-  const updates: Record<string, any> = {};
-  for (const key of allowed) {
-    if (body[key] !== undefined) updates[key] = body[key];
+  const raw = await c.req.json();
+  const parsed = updateCostsSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
+  const updates = parsed.data;
   if (Object.keys(updates).length > 0) {
-    updates.updatedAt = new Date().toISOString();
-    await db.update(projects).set(updates).where(eq(projects.id, id));
+    await db.update(projects).set({
+      ...updates,
+      updatedAt: new Date().toISOString(),
+    }).where(eq(projects.id, id));
     await recalculateFinancials(id);
   }
 
@@ -275,7 +279,6 @@ async function recalculateFinancials(projectId: number) {
   const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
   if (!project) return;
 
-  // Sum purchased material costs; fall back to full estimate if none purchased
   const mats = await getMaterialsForProject(projectId);
   const purchased = mats.filter((m) => m.purchased);
   const totalMaterialCost = purchased.length > 0
@@ -299,14 +302,12 @@ async function recalculateFinancials(projectId: number) {
 // Photos
 // ============================================================
 
-// GET /:id/photos — list photos for project
 projectsRouter.get('/:id/photos', async (c) => {
   const id = parseInt(c.req.param('id'));
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   return c.json(photos);
 });
 
-// POST /:id/photos — upload a photo (multipart form)
 projectsRouter.post('/:id/photos', async (c) => {
   const id = parseInt(c.req.param('id'));
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
@@ -320,11 +321,10 @@ projectsRouter.post('/:id/photos', async (c) => {
   if (!file) return c.json({ error: 'No photo file provided' }, 400);
 
   const validTypes = ['before', 'during', 'after'] as const;
-  if (!validTypes.includes(photoType as any)) {
+  if (!(validTypes as readonly string[]).includes(photoType)) {
     return c.json({ error: 'type must be before, during, or after' }, 400);
   }
 
-  // Save file
   const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
   fs.mkdirSync(projectDir, { recursive: true });
 
@@ -347,25 +347,18 @@ projectsRouter.post('/:id/photos', async (c) => {
   return c.json(photo, 201);
 });
 
-// DELETE /:id/photos/:photoId — delete a photo
 projectsRouter.delete('/:id/photos/:photoId', async (c) => {
   const photoId = parseInt(c.req.param('photoId'));
   const photo = await db.select().from(projectPhotos).where(eq(projectPhotos.id, photoId)).get();
 
   if (photo) {
-    // Delete file
     const filePath = path.join(IMAGES_DIR, photo.localPath);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-
     await db.delete(projectPhotos).where(eq(projectPhotos.id, photoId));
   }
 
   return c.json({ ok: true });
 });
-
-// ============================================================
-// List projects with listing data for pipeline view
-// ============================================================
 
 // GET /pipeline — projects with listing primary image for kanban cards
 projectsRouter.get('/pipeline/all', async (c) => {

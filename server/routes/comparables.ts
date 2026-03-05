@@ -4,13 +4,19 @@ import { comparables, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
 import { closeBrowser } from '../scrapers/browser-pool.js';
+import { searchComparablesSchema } from '../lib/validation.js';
 
 export const comparablesRouter = new Hono();
 
 // POST /search — search for comparables
 comparablesRouter.post('/search', async (c) => {
-  const { listingId, query: explicitQuery } = await c.req.json();
+  const raw = await c.req.json();
+  const parsed = searchComparablesSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
 
+  const { listingId, query: explicitQuery } = parsed.data;
   let params: CompSearchParams | null = null;
 
   if (listingId) {
@@ -25,7 +31,6 @@ comparablesRouter.post('/search', async (c) => {
     };
   }
 
-  // If explicit query provided, use it as the title fallback
   if (explicitQuery) {
     params = params ?? { title: null, furnitureType: null, furnitureStyle: null, woodSpecies: null };
     params.title = explicitQuery;
@@ -39,9 +44,10 @@ comparablesRouter.post('/search', async (c) => {
     const { comps, blocked } = await searchEbayComps(params, listingId);
     await closeBrowser();
     return c.json({ comps, blocked });
-  } catch (err: any) {
+  } catch (err: unknown) {
     await closeBrowser();
-    return c.json({ error: err.message }, 500);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return c.json({ error: message }, 500);
   }
 });
 

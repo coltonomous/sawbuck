@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, type Project } from '../api';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import RefinishingPlan from '../components/RefinishingPlan';
@@ -46,7 +46,7 @@ export default function ProjectDetail() {
     setGeneratingPlan(false);
   };
 
-  const handleStatusChange = async (newStatus: string) => {
+  const handleStatusChange = async (newStatus: Project['status']) => {
     if (!project) return;
     await api.updateProject(project.id, { status: newStatus });
     load();

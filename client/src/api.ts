@@ -12,67 +12,334 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
+// ============================================================
+// Shared types
+// ============================================================
+
+export interface ListingImage {
+  id: number;
+  listingId: number;
+  sourceUrl: string;
+  localPathOriginal: string | null;
+  localPathResized: string | null;
+  width: number | null;
+  height: number | null;
+  fileSizeBytes: number | null;
+  downloadStatus: 'pending' | 'downloaded' | 'failed';
+  analysisStatus: 'pending' | 'analyzed' | 'skipped' | 'failed';
+  analysisResult: string | null;
+  isPrimary: boolean;
+  createdAt: string;
+}
+
+export interface Listing {
+  id: number;
+  externalId: string;
+  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay';
+  url: string;
+  title: string;
+  description: string | null;
+  askingPrice: number | null;
+  location: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  sellerName: string | null;
+  postedAt: string | null;
+  scrapedAt: string;
+  status: 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed';
+  furnitureType: string | null;
+  furnitureStyle: string | null;
+  conditionScore: number | null;
+  conditionNotes: string | null;
+  woodSpecies: string | null;
+  woodConfidence: number | null;
+  analysisRaw: string | null;
+  analyzedAt: string | null;
+  estimatedValue: number | null;
+  estimatedRefinishedValue: number | null;
+  dealScore: number | null;
+  matchedSearchTerms: string | null;
+  fingerprint: string | null;
+  primaryImage?: string | null;
+}
+
+export interface ListingDetail extends Listing {
+  images: ListingImage[];
+}
+
+export interface Comparable {
+  id: number;
+  listingId: number | null;
+  source: string;
+  sourceUrl: string | null;
+  title: string;
+  soldPrice: number;
+  soldDate: string | null;
+  condition: string | null;
+  furnitureType: string | null;
+  furnitureStyle: string | null;
+  searchQuery: string | null;
+  createdAt: string;
+}
+
+export interface RefinishingStep {
+  order: number;
+  title: string;
+  description: string;
+  duration_minutes: number;
+  products: { name: string; brand: string; quantity: number; unit: string; estimated_price: number }[];
+  tips: string[];
+}
+
+export interface RefinishingPlan {
+  id: number;
+  listingId: number;
+  projectId: number | null;
+  styleRecommendation: string | null;
+  description: string | null;
+  steps: RefinishingStep[];
+  estimatedHours: number | null;
+  estimatedMaterialCost: number | null;
+  estimatedResalePrice: number | null;
+  difficultyLevel: 'beginner' | 'intermediate' | 'advanced' | null;
+  beforeDescription: string | null;
+  afterDescription: string | null;
+  rawResponse: string | null;
+  createdAt: string;
+}
+
+export interface Material {
+  id: number;
+  refinishingPlanId: number;
+  projectId: number | null;
+  category: string;
+  productName: string;
+  brand: string | null;
+  quantity: number;
+  unit: string | null;
+  estimatedPrice: number | null;
+  actualPrice: number | null;
+  purchased: boolean;
+  amazonSearchUrl: string | null;
+  homeDepotSearchUrl: string | null;
+  lowesSearchUrl: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface ProjectPhoto {
+  id: number;
+  projectId: number;
+  photoType: 'before' | 'during' | 'after';
+  localPath: string;
+  caption: string | null;
+  takenAt: string;
+}
+
+export interface Project {
+  id: number;
+  listingId: number;
+  name: string;
+  status: 'acquired' | 'refinishing' | 'listed' | 'sold' | 'abandoned';
+  purchasePrice: number;
+  purchaseDate: string | null;
+  purchaseNotes: string | null;
+  totalMaterialCost: number | null;
+  hoursInvested: number | null;
+  hourlyRate: number | null;
+  listedPrice: number | null;
+  listedDate: string | null;
+  listedPlatform: string | null;
+  soldPrice: number | null;
+  soldDate: string | null;
+  sellingFees: number | null;
+  shippingCost: number | null;
+  totalCost: number | null;
+  profit: number | null;
+  roiPercentage: number | null;
+  notes: string | null;
+  listingText: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectDetail extends Project {
+  listing: ListingDetail | null;
+  plan: RefinishingPlan | null;
+  materials: Material[];
+  photos: ProjectPhoto[];
+}
+
+export interface PipelineProject extends Project {
+  primaryImagePath: string | null;
+  furnitureType: string | null;
+  furnitureStyle: string | null;
+}
+
+export interface SearchConfig {
+  id: number;
+  platform: string;
+  searchTerm: string;
+  category: string | null;
+  location: string | null;
+  minPrice: number | null;
+  maxPrice: number | null;
+  isActive: boolean;
+  lastRunAt: string | null;
+  createdAt: string;
+}
+
+export interface ScrapeRun {
+  id: number;
+  platform: string;
+  searchConfigId: number | null;
+  startedAt: string;
+  completedAt: string | null;
+  listingsFound: number | null;
+  listingsNew: number | null;
+  listingsDuplicate: number | null;
+  error: string | null;
+  status: 'running' | 'completed' | 'failed';
+}
+
+export interface StatsResponse {
+  summary: {
+    total_listings: number;
+    dismissed_count: number;
+    analyzed_count: number;
+    avg_asking_price: number | null;
+    first_scraped: string | null;
+    last_scraped: string | null;
+  };
+  projectSummary: {
+    total_projects: number;
+    total_profit: number | null;
+    avg_roi: number | null;
+    avg_flip_days: number | null;
+  };
+  profitOverTime: { month: string; total_profit: number; count: number }[];
+  dealsByPlatform: { platform: string; count: number }[];
+  flipTimes: { name: string; days: number }[];
+  scrapedOverTime: { week: string; count: number }[];
+  priceDistribution: { bucket: string; count: number }[];
+  dealScoreDistribution: { bucket: string; count: number }[];
+  statusBreakdown: { status: string; count: number }[];
+  topFurnitureTypes: { type: string; count: number }[];
+}
+
+export interface AnalysisResult extends ListingDetail {
+  analysis: Record<string, unknown>;
+  pricing: {
+    estimatedValue: number;
+    estimatedRefinishedValue: number;
+    dealScore: number;
+    comparableCount: number;
+    medianCompPrice: number;
+    conditionMultiplier: number;
+    soldCount: number;
+    activeCount: number;
+  } | null;
+}
+
+export interface CreateProjectInput {
+  listingId: number;
+  name: string;
+  purchasePrice: number;
+  purchaseDate?: string;
+  purchaseNotes?: string;
+}
+
+export interface CostUpdates {
+  hoursInvested?: number;
+  hourlyRate?: number;
+  soldPrice?: number;
+  soldDate?: string;
+  listedPrice?: number;
+  listedDate?: string;
+  listedPlatform?: string;
+  sellingFees?: number;
+  shippingCost?: number;
+}
+
+export interface MaterialUpdate {
+  purchased?: boolean;
+  actualPrice?: number;
+}
+
+export interface SearchConfigInput {
+  platform?: string;
+  searchTerm: string;
+  category?: string;
+  location?: string;
+  minPrice?: number;
+  maxPrice?: number;
+}
+
+// ============================================================
+// API client
+// ============================================================
+
 export const api = {
   // Listings
   getListings: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return request<{ listings: any[]; total: number }>(`/listings${qs}`);
+    return request<{ listings: Listing[]; total: number }>(`/listings${qs}`);
   },
-  getListing: (id: number) => request<any>(`/listings/${id}`),
-  updateListing: (id: number, data: any) =>
-    request<any>(`/listings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-  bulkUpdateListings: (ids: number[], updates: Record<string, any>) =>
+  getListing: (id: number) => request<ListingDetail>(`/listings/${id}`),
+  updateListing: (id: number, data: Partial<Listing>) =>
+    request<Listing>(`/listings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  bulkUpdateListings: (ids: number[], updates: Partial<Listing>) =>
     request<{ updated: number }>('/listings/bulk', { method: 'PATCH', body: JSON.stringify({ ids, updates }) }),
   analyzeListing: (id: number) =>
-    request<any>(`/listings/${id}/analyze`, { method: 'POST' }),
+    request<AnalysisResult>(`/listings/${id}/analyze`, { method: 'POST' }),
 
   // Projects
   getProjects: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return request<any[]>(`/projects${qs}`);
+    return request<Project[]>(`/projects${qs}`);
   },
-  getProject: (id: number) => request<any>(`/projects/${id}`),
-  createProject: (data: any) =>
-    request<any>('/projects', { method: 'POST', body: JSON.stringify(data) }),
-  updateProject: (id: number, data: any) =>
-    request<any>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  getProject: (id: number) => request<ProjectDetail>(`/projects/${id}`),
+  createProject: (data: CreateProjectInput) =>
+    request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
+  updateProject: (id: number, data: Partial<Project>) =>
+    request<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (id: number) =>
-    request<any>(`/projects/${id}`, { method: 'DELETE' }),
+    request<{ ok: boolean }>(`/projects/${id}`, { method: 'DELETE' }),
 
   // Scrapers
-  runScraper: () => request<any>('/scrapers/run', { method: 'POST' }),
-  getScraperStatus: () => request<any>('/scrapers/status'),
-  addSearchConfig: (data: any) =>
-    request<any>('/scrapers/configs', { method: 'POST', body: JSON.stringify(data) }),
+  runScraper: () => request<Record<string, unknown>>('/scrapers/run', { method: 'POST' }),
+  getScraperStatus: () => request<{ recentRuns: ScrapeRun[]; configs: SearchConfig[] }>('/scrapers/status'),
+  addSearchConfig: (data: SearchConfigInput) =>
+    request<SearchConfig>('/scrapers/configs', { method: 'POST', body: JSON.stringify(data) }),
   deleteSearchConfig: (id: number) =>
-    request<any>(`/scrapers/configs/${id}`, { method: 'DELETE' }),
+    request<{ ok: boolean }>(`/scrapers/configs/${id}`, { method: 'DELETE' }),
   clearAllSearchConfigs: () =>
-    request<any>('/scrapers/configs/all', { method: 'DELETE' }),
+    request<{ ok: boolean }>('/scrapers/configs/all', { method: 'DELETE' }),
   getPlatformSettings: () =>
     request<{ platform: string; enabled: boolean }[]>('/scrapers/platforms'),
   togglePlatform: (platform: string, enabled: boolean) =>
-    request<any>(`/scrapers/platforms/${platform}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+    request<{ ok: boolean }>(`/scrapers/platforms/${platform}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
 
   // Refinishing
   generateRefinishingPlan: (projectId: number) =>
-    request<any>(`/projects/${projectId}/refinish`, { method: 'POST' }),
+    request<{ plan: RefinishingPlan; materials: Material[] }>(`/projects/${projectId}/refinish`, { method: 'POST' }),
   getRefinishingPlan: (projectId: number) =>
-    request<any>(`/projects/${projectId}/refinish`),
+    request<RefinishingPlan>(`/projects/${projectId}/refinish`),
 
   // Materials
   getProjectMaterials: (projectId: number) =>
-    request<any[]>(`/projects/${projectId}/materials`),
-  updateMaterial: (projectId: number, materialId: number, data: any) =>
-    request<any>(`/projects/${projectId}/materials/${materialId}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    request<Material[]>(`/projects/${projectId}/materials`),
+  updateMaterial: (projectId: number, materialId: number, data: MaterialUpdate) =>
+    request<Material>(`/projects/${projectId}/materials/${materialId}`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   // Project costs
-  updateProjectCosts: (projectId: number, data: any) =>
-    request<any>(`/projects/${projectId}/costs`, { method: 'PATCH', body: JSON.stringify(data) }),
+  updateProjectCosts: (projectId: number, data: CostUpdates) =>
+    request<Project>(`/projects/${projectId}/costs`, { method: 'PATCH', body: JSON.stringify(data) }),
 
   // Photos
   getProjectPhotos: (projectId: number) =>
-    request<any[]>(`/projects/${projectId}/photos`),
-  uploadProjectPhoto: async (projectId: number, file: File, type: string, caption?: string) => {
+    request<ProjectPhoto[]>(`/projects/${projectId}/photos`),
+  uploadProjectPhoto: async (projectId: number, file: File, type: string, caption?: string): Promise<ProjectPhoto> => {
     const formData = new FormData();
     formData.append('photo', file);
     formData.append('type', type);
@@ -88,20 +355,20 @@ export const api = {
     return res.json();
   },
   deleteProjectPhoto: (projectId: number, photoId: number) =>
-    request<any>(`/projects/${projectId}/photos/${photoId}`, { method: 'DELETE' }),
+    request<{ ok: boolean }>(`/projects/${projectId}/photos/${photoId}`, { method: 'DELETE' }),
 
   // Listing text
   generateListingText: (projectId: number, regenerate = false) =>
     request<{ text: string }>(`/projects/${projectId}/listing-text`, { method: 'POST', body: JSON.stringify({ regenerate }) }),
 
   // Pipeline
-  getProjectsPipeline: () => request<any[]>('/projects/pipeline/all'),
+  getProjectsPipeline: () => request<PipelineProject[]>('/projects/pipeline/all'),
 
   // Stats
-  getStats: () => request<any>('/stats'),
+  getStats: () => request<StatsResponse>('/stats'),
 
   // Comparables
   searchComparables: (listingId: number) =>
-    request<any>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
-  getComparables: (listingId: number) => request<any[]>(`/comparables/${listingId}`),
+    request<{ comps: Comparable[]; blocked: boolean }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
+  getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
 };

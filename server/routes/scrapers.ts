@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { scrapeRuns, searchConfigs, platformSettings } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { runScraper, runAllActiveScrapers } from '../scrapers/manager.js';
+import { runScraperSchema, addSearchConfigSchema, togglePlatformSchema } from '../lib/validation.js';
 
 export const scrapersRouter = new Hono();
 
@@ -11,14 +12,14 @@ export const scrapersRouter = new Hono();
 // If no body, runs all active search configs
 scrapersRouter.post('/run', async (c) => {
   const body = await c.req.json().catch(() => ({}));
+  const parsed = runScraperSchema.safeParse(body);
 
-  if (body.platform && body.searchTerm) {
-    // Run a specific scraper
-    const result = await runScraper(body.platform, {
-      searchTerm: body.searchTerm,
-      location: body.location,
-      minPrice: body.minPrice,
-      maxPrice: body.maxPrice,
+  if (parsed.success && parsed.data.platform && parsed.data.searchTerm) {
+    const result = await runScraper(parsed.data.platform, {
+      searchTerm: parsed.data.searchTerm,
+      location: parsed.data.location,
+      minPrice: parsed.data.minPrice,
+      maxPrice: parsed.data.maxPrice,
     });
     return c.json(result);
   }
@@ -34,7 +35,6 @@ scrapersRouter.get('/run/stream', (c) => {
     await runAllActiveScrapers((progress) => {
       stream.writeSSE({ data: JSON.stringify(progress), event: progress.type });
     });
-    // Signal end
     await stream.writeSSE({ data: '{}', event: 'close' });
   });
 });
@@ -53,13 +53,21 @@ scrapersRouter.get('/status', async (c) => {
 
 // POST /configs — add search config
 scrapersRouter.post('/configs', async (c) => {
-  const body = await c.req.json();
-  // Platform-agnostic configs: store 'all' so the scraper fans out across enabled platforms
-  const result = await db.insert(searchConfigs).values({
-    ...body,
-    platform: body.platform || 'all',
-  } as any).returning();
-  return c.json(result[0], 201);
+  const raw = await c.req.json();
+  const parsed = addSearchConfigSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+
+  const [result] = await db.insert(searchConfigs).values({
+    platform: parsed.data.platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay',
+    searchTerm: parsed.data.searchTerm,
+    category: parsed.data.category ?? null,
+    location: parsed.data.location ?? null,
+    minPrice: parsed.data.minPrice ?? null,
+    maxPrice: parsed.data.maxPrice ?? null,
+  }).returning();
+  return c.json(result, 201);
 });
 
 // DELETE /configs/all — remove all search configs
@@ -78,10 +86,15 @@ scrapersRouter.get('/platforms', async (c) => {
 // PATCH /platforms/:platform — toggle platform enabled
 scrapersRouter.patch('/platforms/:platform', async (c) => {
   const platform = c.req.param('platform');
-  const { enabled } = await c.req.json();
+  const raw = await c.req.json();
+  const parsed = togglePlatformSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+
   await db.update(platformSettings)
-    .set({ enabled })
-    .where(eq(platformSettings.platform, platform));
+    .set({ enabled: parsed.data.enabled })
+    .where(eq(platformSettings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay'));
   return c.json({ ok: true });
 });
 

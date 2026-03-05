@@ -1,10 +1,33 @@
 import { Hono } from 'hono';
 import { sqlite } from '../db/index.js';
 
+interface SummaryRow {
+  total_listings: number;
+  dismissed_count: number;
+  analyzed_count: number;
+  avg_asking_price: number | null;
+  first_scraped: string | null;
+  last_scraped: string | null;
+}
+
+interface ProjectSummaryRow {
+  total_projects: number;
+  total_profit: number | null;
+  avg_roi: number | null;
+  avg_flip_days: number | null;
+}
+
+interface BucketRow { bucket: string; count: number }
+interface PlatformRow { platform: string; count: number }
+interface FlipTimeRow { name: string; days: number }
+interface WeekRow { week: string; count: number }
+interface StatusRow { status: string; count: number }
+interface FurnitureTypeRow { type: string; count: number }
+interface ProfitRow { month: string; total_profit: number; count: number }
+
 export const statsRouter = new Hono();
 
 statsRouter.get('/', (c) => {
-  // Summary stats
   const summary = sqlite.prepare(`
     SELECT
       COUNT(*) as total_listings,
@@ -14,9 +37,8 @@ statsRouter.get('/', (c) => {
       MIN(scraped_at) as first_scraped,
       MAX(scraped_at) as last_scraped
     FROM listings
-  `).get() as any;
+  `).get() as SummaryRow;
 
-  // Project summary
   const projectSummary = sqlite.prepare(`
     SELECT
       COUNT(*) as total_projects,
@@ -24,9 +46,8 @@ statsRouter.get('/', (c) => {
       AVG(CASE WHEN status = 'sold' THEN roi_percentage END) as avg_roi,
       AVG(CASE WHEN status = 'sold' THEN julianday(sold_date) - julianday(purchase_date) END) as avg_flip_days
     FROM projects
-  `).get() as any;
+  `).get() as ProjectSummaryRow;
 
-  // Profit over time (sold projects by month)
   const profitOverTime = sqlite.prepare(`
     SELECT
       strftime('%Y-%m', sold_date) as month,
@@ -36,9 +57,8 @@ statsRouter.get('/', (c) => {
     WHERE status = 'sold' AND sold_date IS NOT NULL
     GROUP BY strftime('%Y-%m', sold_date)
     ORDER BY month
-  `).all();
+  `).all() as ProfitRow[];
 
-  // Deals by platform
   const dealsByPlatform = sqlite.prepare(`
     SELECT
       platform,
@@ -46,9 +66,8 @@ statsRouter.get('/', (c) => {
     FROM listings
     GROUP BY platform
     ORDER BY count DESC
-  `).all();
+  `).all() as PlatformRow[];
 
-  // Flip times (projects)
   const flipTimes = sqlite.prepare(`
     SELECT
       name,
@@ -57,9 +76,8 @@ statsRouter.get('/', (c) => {
     WHERE status = 'sold' AND sold_date IS NOT NULL AND purchase_date IS NOT NULL
     ORDER BY sold_date DESC
     LIMIT 20
-  `).all();
+  `).all() as FlipTimeRow[];
 
-  // Scraped over time (by week)
   const scrapedOverTime = sqlite.prepare(`
     SELECT
       strftime('%Y-%m-%d', scraped_at, 'weekday 0', '-6 days') as week,
@@ -67,9 +85,8 @@ statsRouter.get('/', (c) => {
     FROM listings
     GROUP BY week
     ORDER BY week
-  `).all();
+  `).all() as WeekRow[];
 
-  // Price distribution (buckets)
   const priceDistribution = sqlite.prepare(`
     SELECT
       CASE
@@ -85,9 +102,8 @@ statsRouter.get('/', (c) => {
     WHERE asking_price IS NOT NULL
     GROUP BY bucket
     ORDER BY MIN(asking_price)
-  `).all();
+  `).all() as BucketRow[];
 
-  // Deal score distribution
   const dealScoreDistribution = sqlite.prepare(`
     SELECT
       CASE
@@ -103,17 +119,15 @@ statsRouter.get('/', (c) => {
     WHERE deal_score IS NOT NULL
     GROUP BY bucket
     ORDER BY MIN(deal_score)
-  `).all();
+  `).all() as BucketRow[];
 
-  // Status breakdown
   const statusBreakdown = sqlite.prepare(`
     SELECT status, COUNT(*) as count
     FROM listings
     GROUP BY status
     ORDER BY count DESC
-  `).all();
+  `).all() as StatusRow[];
 
-  // Top furniture types
   const topFurnitureTypes = sqlite.prepare(`
     SELECT furniture_type as type, COUNT(*) as count
     FROM listings
@@ -121,7 +135,7 @@ statsRouter.get('/', (c) => {
     GROUP BY furniture_type
     ORDER BY count DESC
     LIMIT 10
-  `).all();
+  `).all() as FurnitureTypeRow[];
 
   return c.json({
     summary,

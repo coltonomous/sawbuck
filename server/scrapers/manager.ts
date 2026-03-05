@@ -17,7 +17,7 @@ const scraperMap: Record<string, () => BaseScraper> = {
   ebay: () => new EbayScraper(),
 };
 
-function fingerprint(listing: ScrapedListing): string {
+export function fingerprint(listing: ScrapedListing): string {
   const normalized = `${listing.platform}:${listing.title.toLowerCase().trim()}:${listing.askingPrice ?? ''}:${listing.location?.toLowerCase().trim() ?? ''}`;
   return createHash('md5').update(normalized).digest('hex');
 }

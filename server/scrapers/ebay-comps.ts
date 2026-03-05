@@ -24,7 +24,7 @@ export interface EbayCompsResult {
   blocked: boolean;
 }
 
-function buildQueryVariants(params: CompSearchParams): string[] {
+export function buildQueryVariants(params: CompSearchParams): string[] {
   const variants: string[] = [];
   const { furnitureType, furnitureStyle, woodSpecies, title } = params;
 

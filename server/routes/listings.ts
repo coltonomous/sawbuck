@@ -8,6 +8,7 @@ import { processListingImages } from '../images/processor.js';
 import { calculatePricing } from '../analysis/pricing.js';
 import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
 import { getPrimaryImagePath } from '../lib/images.js';
+import { updateListingSchema, bulkUpdateListingsSchema } from '../lib/validation.js';
 
 export const listingsRouter = new Hono();
 
@@ -21,7 +22,7 @@ listingsRouter.get('/', async (c) => {
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
   if (maxPrice) conditions.push(lte(listings.askingPrice, parseFloat(maxPrice)));
   if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay'));
-  if (status) conditions.push(eq(listings.status, status as any));
+  if (status) conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed'));
 
   const pageNum = parseInt(page);
   const limitNum = parseInt(limit);
@@ -84,7 +85,7 @@ listingsRouter.get('/:id', async (c) => {
   );
   const needsCleanup = badDescription || badLocation;
   if (needsCleanup) {
-    const cleanupFields: Record<string, any> = {};
+    const cleanupFields: Record<string, null> = {};
     if (badDescription) cleanupFields.description = null;
     if (badLocation) cleanupFields.location = null;
     await db.update(listings).set(cleanupFields).where(eq(listings.id, id));
@@ -106,9 +107,12 @@ listingsRouter.get('/:id', async (c) => {
 
 // PATCH /bulk — bulk update listings
 listingsRouter.patch('/bulk', async (c) => {
-  const { ids, updates } = await c.req.json();
-  if (!Array.isArray(ids) || ids.length === 0) return c.json({ error: 'ids array is required' }, 400);
-  if (!updates || typeof updates !== 'object') return c.json({ error: 'updates object is required' }, 400);
+  const raw = await c.req.json();
+  const parsed = bulkUpdateListingsSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+  const { ids, updates } = parsed.data;
 
   for (const id of ids) {
     await db.update(listings).set(updates).where(eq(listings.id, id));
@@ -117,12 +121,16 @@ listingsRouter.patch('/bulk', async (c) => {
   return c.json({ updated: ids.length });
 });
 
-// PATCH /:id — update listing status
+// PATCH /:id — update listing
 listingsRouter.patch('/:id', async (c) => {
   const id = parseInt(c.req.param('id'));
-  const body = await c.req.json();
+  const raw = await c.req.json();
+  const parsed = updateListingSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
 
-  await db.update(listings).set(body).where(eq(listings.id, id));
+  await db.update(listings).set(parsed.data).where(eq(listings.id, id));
   const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
 
   return c.json(updated);
@@ -156,9 +164,10 @@ listingsRouter.post('/:id/analyze', async (c) => {
     const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
 
     return c.json({ ...updated, images, analysis, pricing });
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[analyze] Error analyzing listing ${id}:`, err);
-    return c.json({ error: err.message }, 500);
+    return c.json({ error: message }, 500);
   }
 });
 

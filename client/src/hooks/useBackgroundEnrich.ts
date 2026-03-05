@@ -1,5 +1,10 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { api } from '../api';
+import { api, type Listing } from '../api';
+
+interface EnrichUpdate {
+  primaryImage: string | null;
+  description: string | null;
+}
 
 /**
  * Background-enriches listings that are missing details (images, description).
@@ -7,8 +12,8 @@ import { api } from '../api';
  * Calls onUpdate with the enriched listing data so the UI can update in place.
  */
 export function useBackgroundEnrich(
-  listings: any[],
-  onUpdate: (id: number, data: any) => void,
+  listings: Listing[],
+  onUpdate: (id: number, data: EnrichUpdate) => void,
 ) {
   const queuedRef = useRef(new Set<number>());
   const activeRef = useRef(false);
