@@ -1,5 +1,7 @@
-import { useRef } from 'react';
+import { useRef, useState, useEffect } from 'react';
+import { api } from '../api';
 import { useToast } from './Toast';
+import { Spinner } from './ui';
 
 interface Props {
   project: any;
@@ -8,47 +10,29 @@ interface Props {
 
 export default function ExportListingText({ project, onClose }: Props) {
   const textRef = useRef<HTMLTextAreaElement>(null);
+  const [text, setText] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const listing = project.listing;
-  const plan = project.plan;
-
-  const lines: string[] = [];
-  lines.push(project.name);
-  lines.push('');
-
-  const details: string[] = [];
-  if (listing?.furnitureType) details.push(listing.furnitureType);
-  if (listing?.furnitureStyle) details.push(`${listing.furnitureStyle} style`);
-  if (listing?.woodSpecies) details.push(listing.woodSpecies);
-  if (details.length > 0) lines.push(details.join(' | '));
-
-  if (plan?.description) {
-    lines.push('');
-    lines.push(plan.description);
-  }
-
-  if (plan?.steps) {
-    const steps = typeof plan.steps === 'string' ? JSON.parse(plan.steps) : plan.steps;
-    if (Array.isArray(steps) && steps.length > 0) {
-      lines.push('');
-      lines.push('Refinishing work:');
-      steps.forEach((s: any) => {
-        lines.push(`- ${s.name || s.title || s}`);
-      });
+  const generate = async (regenerate = false) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { text: generated } = await api.generateListingText(project.id, regenerate);
+      setText(generated);
+    } catch (err: any) {
+      setError(err.message);
     }
-  }
+    setLoading(false);
+  };
 
-  if (project.listedPrice) {
-    lines.push('');
-    lines.push(`Price: $${project.listedPrice}`);
-  }
-
-  const text = lines.join('\n');
+  useEffect(() => { generate(); }, []);
 
   const handleCopy = async () => {
+    const value = textRef.current?.value || text;
     try {
-      await navigator.clipboard.writeText(textRef.current?.value || text);
+      await navigator.clipboard.writeText(value);
       toast('success', 'Copied to clipboard');
     } catch {
       textRef.current?.select();
@@ -69,20 +53,41 @@ export default function ExportListingText({ project, onClose }: Props) {
           </button>
         </div>
         <div className="p-5">
-          <textarea
-            ref={textRef}
-            defaultValue={text}
-            rows={12}
-            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono resize-y"
-          />
-          <div className="flex items-center justify-end gap-2 mt-3">
-            <button
-              onClick={handleCopy}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Copy to Clipboard
-            </button>
-          </div>
+          {loading ? (
+            <div className="flex items-center justify-center py-12 gap-2 text-sm text-gray-500">
+              <Spinner />
+              Generating listing copy...
+            </div>
+          ) : error ? (
+            <div className="text-center py-8">
+              <p className="text-sm text-red-500 mb-3">{error}</p>
+              <button onClick={() => generate()} className="text-sm text-blue-600 hover:underline">Try again</button>
+            </div>
+          ) : (
+            <>
+              <textarea
+                ref={textRef}
+                defaultValue={text}
+                rows={14}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm resize-y"
+              />
+              <div className="flex items-center justify-between mt-3">
+                <button
+                  onClick={() => generate(true)}
+                  disabled={loading}
+                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                >
+                  Regenerate
+                </button>
+                <button
+                  onClick={handleCopy}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  Copy to Clipboard
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -6,6 +6,7 @@ import { projects, listings, refinishingPlans, materials, projectPhotos, listing
 import { eq, desc, sql } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { generateMaterialsFromPlan, getMaterialsForProject } from '../analysis/sourcing.js';
+import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 
@@ -150,6 +151,66 @@ projectsRouter.post('/:id/refinish', async (c) => {
     });
   } catch (err: any) {
     console.error(`[projects] Error generating plan for project ${id}:`, err);
+    return c.json({ error: err.message }, 500);
+  }
+});
+
+// POST /:id/listing-text — generate marketplace listing copy via Claude (cached)
+projectsRouter.post('/:id/listing-text', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  const { regenerate } = await c.req.json().catch(() => ({ regenerate: false }));
+  const project = await db.select().from(projects).where(eq(projects.id, id)).get();
+  if (!project) return c.json({ error: 'Project not found' }, 404);
+
+  // Return cached text unless regenerate requested
+  if (project.listingText && !regenerate) {
+    return c.json({ text: project.listingText });
+  }
+
+  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+  const plans = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id));
+  const plan = plans[plans.length - 1] ?? null;
+  const mats = await getMaterialsForProject(id);
+
+  const context: string[] = [];
+  context.push(`Product name: ${project.name}`);
+  if (listing?.furnitureType) context.push(`Type: ${listing.furnitureType}`);
+  if (listing?.furnitureStyle) context.push(`Style: ${listing.furnitureStyle}`);
+  if (listing?.woodSpecies) context.push(`Wood: ${listing.woodSpecies}`);
+  if (listing?.conditionNotes) context.push(`Original condition notes: ${listing.conditionNotes}`);
+  if (listing?.description) context.push(`Original listing description: ${listing.description}`);
+  if (plan?.description) context.push(`Refinishing plan summary: ${plan.description}`);
+  if (plan?.steps) {
+    const steps = typeof plan.steps === 'string' ? JSON.parse(plan.steps) : plan.steps;
+    if (Array.isArray(steps)) {
+      context.push(`Refinishing work done: ${steps.map((s: any) => s.name || s.title || s).join(', ')}`);
+    }
+  }
+  if (mats.length > 0) {
+    const matNames = mats.map((m: any) => m.name).filter(Boolean);
+    if (matNames.length > 0) context.push(`Materials used: ${matNames.join(', ')}`);
+  }
+  if (project.listedPrice) context.push(`Asking price: $${project.listedPrice}`);
+
+  const prompt = `Write a short, casual marketplace listing for this refinished furniture piece.
+
+${context.join('\n')}
+
+Rules:
+- 2-3 short paragraphs, like a real Facebook Marketplace or Craigslist post
+- Casual, friendly tone — not a magazine ad. Write like a person, not a brand
+- Mention what it is, the style/wood if known, and that it's been refinished
+- Keep it factual and brief — no flowery language or over-selling
+- Do NOT include a title line, price, or dimensions
+- Do NOT invent a reason for selling or mention pickup/shipping logistics
+- Do NOT use words like "stunning", "gorgeous", "exquisite", "timeless", or "elevate"`;
+
+  try {
+    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400);
+    await db.update(projects).set({ listingText: text }).where(eq(projects.id, id));
+    return c.json({ text });
+  } catch (err: any) {
+    console.error(`[projects] Error generating listing text for project ${id}:`, err);
     return c.json({ error: err.message }, 500);
   }
 });

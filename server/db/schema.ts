@@ -201,6 +201,7 @@ export const projects = sqliteTable('projects', {
   roiPercentage: real('roi_percentage'),
 
   notes: text('notes'),
+  listingText: text('listing_text'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 }, (table) => [

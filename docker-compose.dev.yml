@@ -23,5 +23,5 @@ services:
       - |
         npx drizzle-kit migrate &&
         npx concurrently -n server,client -c blue,green \
-          "npx tsx watch server/index.ts" \
+          "npx tsx watch --poll server/index.ts" \
           "cd client && npx vite --host 0.0.0.0"

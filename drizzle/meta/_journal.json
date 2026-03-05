@@ -15,6 +15,13 @@
       "when": 1772489557757,
       "tag": "0001_flawless_piledriver",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1772672371897,
+      "tag": "0002_overconfident_warhawk",
+      "breakpoints": true
     }
   ]
 }

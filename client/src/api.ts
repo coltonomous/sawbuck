@@ -90,6 +90,10 @@ export const api = {
   deleteProjectPhoto: (projectId: number, photoId: number) =>
     request<any>(`/projects/${projectId}/photos/${photoId}`, { method: 'DELETE' }),
 
+  // Listing text
+  generateListingText: (projectId: number, regenerate = false) =>
+    request<{ text: string }>(`/projects/${projectId}/listing-text`, { method: 'POST', body: JSON.stringify({ regenerate }) }),
+
   // Pipeline
   getProjectsPipeline: () => request<any[]>('/projects/pipeline/all'),
 
