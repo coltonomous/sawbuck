@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type Project } from '../api';
+import { api, type Project, type ProjectDetail as ProjectDetailType, type Material } from '../api';
+import { PROJECT_PIPELINE_STATUSES } from '@shared/constants';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import RefinishingPlan from '../components/RefinishingPlan';
@@ -15,7 +16,7 @@ type Tab = 'overview' | 'plan' | 'materials' | 'photos' | 'financials';
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [project, setProject] = useState<any>(null);
+  const [project, setProject] = useState<ProjectDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
@@ -40,8 +41,8 @@ export default function ProjectDetail() {
       load();
       setTab('plan');
       toast('success', 'Refinishing plan generated');
-    } catch (err: any) {
-      toast('error', `Failed to generate plan: ${err.message}`);
+    } catch (err) {
+      toast('error', `Failed to generate plan: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
     setGeneratingPlan(false);
   };
@@ -59,8 +60,8 @@ export default function ProjectDetail() {
       await api.deleteProject(project.id);
       toast('success', 'Project deleted');
       navigate('/projects');
-    } catch (err: any) {
-      toast('error', `Failed to delete: ${err.message}`);
+    } catch (err) {
+      toast('error', `Failed to delete: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -86,7 +87,7 @@ export default function ProjectDetail() {
     />
   );
 
-  const purchasedMats = (project.materials ?? []).filter((m: any) => m.purchased);
+  const purchasedMats = (project.materials ?? []).filter((m: Material) => m.purchased);
   const materialsCostIsEstimate = purchasedMats.length === 0;
 
   const tabs: { key: Tab; label: string }[] = [
@@ -321,17 +322,17 @@ export default function ProjectDetail() {
   );
 }
 
-const PIPELINE = ['acquired', 'refinishing', 'listed', 'sold'] as const;
-
-function ProjectTimeline({ project }: { project: any }) {
+function ProjectTimeline({ project }: { project: ProjectDetailType }) {
+  const pipelineStatuses = PROJECT_PIPELINE_STATUSES;
+  const statusIdx = pipelineStatuses.indexOf(project.status as typeof pipelineStatuses[number]);
   const events: { label: string; date: string | null; done: boolean }[] = [
     { label: 'Acquired', date: project.purchaseDate || project.createdAt, done: true },
-    { label: 'Refinishing', date: PIPELINE.indexOf(project.status) >= 1 ? project.updatedAt : null, done: PIPELINE.indexOf(project.status) >= 1 },
-    { label: 'Listed', date: project.listedDate, done: PIPELINE.indexOf(project.status) >= 2 },
+    { label: 'Refinishing', date: statusIdx >= 1 ? project.updatedAt : null, done: statusIdx >= 1 },
+    { label: 'Listed', date: project.listedDate, done: statusIdx >= 2 },
     { label: 'Sold', date: project.soldDate, done: project.status === 'sold' },
   ];
 
-  const currentIdx = PIPELINE.indexOf(project.status);
+  const currentIdx = statusIdx;
 
   return (
     <div className="flex items-center justify-between">

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, type SearchConfig, type ScrapeRun } from '../api';
 import { useToast } from '../components/Toast';
 import { platformLabel, platformColor, Card, CardHeader, SearchIcon } from '../components/ui';
 
 export default function Settings() {
-  const [status, setStatus] = useState<any>(null);
+  const [status, setStatus] = useState<{ recentRuns: ScrapeRun[]; configs: SearchConfig[] } | null>(null);
   const [platforms, setPlatforms] = useState<{ platform: string; enabled: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
@@ -148,7 +148,7 @@ export default function Settings() {
       <Card className="mb-5">
         <div className="flex items-center justify-between mb-4">
           <CardHeader>Active Searches</CardHeader>
-          {status?.configs?.length > 0 && (
+          {(status?.configs?.length ?? 0) > 0 && (
             <button
               onClick={async () => {
                 if (!confirm('Delete all search configs?')) return;
@@ -174,7 +174,7 @@ export default function Settings() {
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {status?.configs?.map((config: any) => (
+            {status?.configs?.map((config) => (
               <li key={config.id} className="py-3 flex justify-between items-center text-sm">
                 <span className="flex items-center gap-2">
                   <span className="font-medium text-gray-900">{config.searchTerm}</span>
@@ -225,7 +225,7 @@ export default function Settings() {
           </div>
         ) : (
           <ul className="divide-y divide-gray-100">
-            {status?.recentRuns?.map((run: any) => (
+            {status?.recentRuns?.map((run) => (
               <li key={run.id} className="py-3 text-sm flex justify-between items-center">
                 <span className="flex items-center gap-2">
                   <span className={`inline-block w-2 h-2 rounded-full ${platformColor(run.platform)}`} />

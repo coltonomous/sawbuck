@@ -42,8 +42,8 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
       setSearched(true);
       setBlocked(response.blocked ?? false);
       toast('success', `Found ${arr.length} comparable${arr.length !== 1 ? 's' : ''}${response.blocked ? ' (scraper blocked, using active listings)' : ''}`);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     }
     setLoading(false);
   };

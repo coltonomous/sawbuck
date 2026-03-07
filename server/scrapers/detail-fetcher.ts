@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { withPage } from './browser-pool.js';
+import { CL_DISPLAY_NAMES } from '../../shared/constants.js';
 
 /**
  * Strip SEO keyword spam from Craigslist descriptions.
@@ -52,19 +53,11 @@ export async function fetchListingDetails(listing: ListingRow): Promise<void> {
   });
 }
 
-// Extract city display name from a Craigslist URL subdomain
-const CL_DISPLAY: Record<string, string> = {
-  'sfbay': 'SF Bay Area', 'losangeles': 'Los Angeles', 'sandiego': 'San Diego',
-  'newyork': 'New York', 'washingtondc': 'Washington DC', 'saltlakecity': 'Salt Lake City',
-  'kansascity': 'Kansas City', 'stlouis': 'St. Louis', 'sanantonio': 'San Antonio',
-  'lasvegas': 'Las Vegas',
-};
-
 function locationFromCraigslistUrl(url: string): string | null {
   const match = url.match(/^https?:\/\/([^.]+)\.craigslist\.org/);
   if (!match) return null;
   const sub = match[1];
-  return CL_DISPLAY[sub] || sub.charAt(0).toUpperCase() + sub.slice(1);
+  return CL_DISPLAY_NAMES[sub] || sub.charAt(0).toUpperCase() + sub.slice(1);
 }
 
 async function fetchCraigslistDetail(page: any, listing: ListingRow) {

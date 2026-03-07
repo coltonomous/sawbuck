@@ -12,8 +12,9 @@
     "noEmit": true,
     "baseUrl": "./src",
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "@shared/*": ["../../shared/*"]
     }
   },
-  "include": ["src"]
+  "include": ["src", "../shared"]
 }

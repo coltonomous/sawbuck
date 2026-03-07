@@ -1,11 +1,19 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, type Listing } from '../api';
 import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { useToast } from '../components/Toast';
 import { SkeletonCard } from '../components/Skeleton';
 import ListingsMap from '../components/ListingsMap';
 import { PlatformBadge, Spinner, EmptyState, SearchIcon, dealScoreColor, dealScoreTextColor } from '../components/ui';
+
+interface ScrapeStepResult {
+  found: number;
+  relevant?: number;
+  filtered?: number;
+  new: number;
+  error?: string;
+}
 
 interface ScrapeProgress {
   type: 'start' | 'config_start' | 'config_done' | 'done';
@@ -13,14 +21,14 @@ interface ScrapeProgress {
   current?: number;
   platform?: string;
   searchTerm?: string;
-  result?: { found: number; relevant?: number; filtered?: number; new: number; error?: string };
-  results?: { found: number; relevant?: number; filtered?: number; new: number; error?: string }[];
+  result?: ScrapeStepResult;
+  results?: ScrapeStepResult[];
 }
 
 type SortOption = 'newest' | 'price_low' | 'price_high' | 'score';
 
 export default function Dashboard() {
-  const [allListings, setAllListings] = useState<any[]>([]);
+  const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
   const [progress, setProgress] = useState<ScrapeProgress | null>(null);
@@ -35,7 +43,7 @@ export default function Dashboard() {
 
   const { toast } = useToast();
 
-  const handleEnriched = useCallback((id: number, data: any) => {
+  const handleEnriched = useCallback((id: number, data: Partial<Listing>) => {
     setAllListings(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   }, []);
 
@@ -140,9 +148,9 @@ export default function Dashboard() {
     eventSource.addEventListener('done', (e) => {
       const data = JSON.parse(e.data);
       const results = data.results || [];
-      const totalNew = results.reduce((sum: number, r: any) => sum + (r.new || 0), 0);
-      const totalRelevant = results.reduce((sum: number, r: any) => sum + (r.relevant || r.found || 0), 0);
-      const totalFiltered = results.reduce((sum: number, r: any) => sum + (r.filtered || 0), 0);
+      const totalNew = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.new || 0), 0);
+      const totalRelevant = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.relevant || r.found || 0), 0);
+      const totalFiltered = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.filtered || 0), 0);
       const msg = results.length === 0
         ? 'No search configs found. Add some in Settings first.'
         : `${totalRelevant} relevant listings${totalFiltered ? ` (${totalFiltered} irrelevant filtered)` : ''}, ${totalNew} new.`;
@@ -340,7 +348,7 @@ export default function Dashboard() {
               >
                 <div className="aspect-[4/3] overflow-hidden bg-gray-100">
                   <img
-                    src={listing.primaryImage.startsWith('http') ? listing.primaryImage : `/images/${listing.primaryImage}`}
+                    src={listing.primaryImage!.startsWith('http') ? listing.primaryImage! : `/images/${listing.primaryImage}`}
                     alt=""
                     loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"

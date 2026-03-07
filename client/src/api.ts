@@ -12,9 +12,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-// ============================================================
-// Shared types
-// ============================================================
+//Shared types
+
 
 export interface ListingImage {
   id: number;
@@ -275,9 +274,8 @@ export interface SearchConfigInput {
   maxPrice?: number;
 }
 
-// ============================================================
-// API client
-// ============================================================
+//API client
+
 
 export const api = {
   // Listings

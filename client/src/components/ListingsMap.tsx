@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { Link } from 'react-router-dom';
+import type { Listing } from '../api';
+import { PLATFORM_BADGE_COLORS, type Platform } from '@shared/constants';
 
 function makeIcon(color: string) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">
@@ -28,12 +30,12 @@ function getIcon(dealScore: number | null) {
 }
 
 interface Props {
-  listings: any[];
+  listings: Listing[];
 }
 
 export default function ListingsMap({ listings }: Props) {
   const withCoords = useMemo(
-    () => listings.filter(l => l.latitude != null && l.longitude != null),
+    () => listings.filter((l): l is Listing & { latitude: number; longitude: number } => l.latitude != null && l.longitude != null),
     [listings]
   );
 
@@ -71,12 +73,7 @@ export default function ListingsMap({ listings }: Props) {
               )}
               <p className="text-sm font-medium leading-snug line-clamp-2">{listing.title}</p>
               <div className="flex items-center justify-between mt-1">
-                <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${
-                  listing.platform === 'craigslist' ? 'bg-purple-100 text-purple-700' :
-                  listing.platform === 'offerup' ? 'bg-teal-100 text-teal-700' :
-                  listing.platform === 'ebay' ? 'bg-blue-100 text-blue-700' :
-                  'bg-orange-100 text-orange-700'
-                }`}>{listing.platform}</span>
+                <span className={`text-[10px] px-1 py-0.5 rounded font-medium ${PLATFORM_BADGE_COLORS[listing.platform as Platform] || 'bg-gray-100 text-gray-700'}`}>{listing.platform}</span>
                 {listing.askingPrice != null && (
                   <span className="font-semibold text-sm">${listing.askingPrice}</span>
                 )}

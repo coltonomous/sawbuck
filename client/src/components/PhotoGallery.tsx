@@ -1,22 +1,12 @@
 import { useState, useRef } from 'react';
-import { api } from '../api';
-
-interface Photo {
-  id: number;
-  projectId: number;
-  photoType: 'before' | 'during' | 'after';
-  localPath: string;
-  caption: string | null;
-  createdAt: string;
-}
+import { api, type ProjectPhoto } from '../api';
+import { PHOTO_TYPES } from '@shared/constants';
 
 interface Props {
   projectId: number;
-  photos: Photo[];
+  photos: ProjectPhoto[];
   onUpdate: () => void;
 }
-
-const TYPES = ['before', 'during', 'after'] as const;
 
 export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
   const [uploading, setUploading] = useState(false);
@@ -24,10 +14,10 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
   const [caption, setCaption] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const grouped = TYPES.reduce((acc, t) => {
+  const grouped = PHOTO_TYPES.reduce((acc, t) => {
     acc[t] = photos.filter((p) => p.photoType === t);
     return acc;
-  }, {} as Record<string, Photo[]>);
+  }, {} as Record<string, ProjectPhoto[]>);
 
   const handleUpload = async () => {
     const file = fileRef.current?.files?.[0];
@@ -38,8 +28,8 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
       setCaption('');
       if (fileRef.current) fileRef.current.value = '';
       onUpdate();
-    } catch (err: any) {
-      alert(`Upload failed: ${err.message}`);
+    } catch (err) {
+      alert(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
     setUploading(false);
   };
@@ -95,7 +85,7 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
       </div>
 
       {/* Photo grid by type */}
-      {TYPES.map((type) => (
+      {PHOTO_TYPES.map((type) => (
         <div key={type}>
           <h3 className="text-sm font-medium text-gray-500 uppercase mb-2">
             {type} ({grouped[type].length})

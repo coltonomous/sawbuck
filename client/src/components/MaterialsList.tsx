@@ -5,9 +5,9 @@ interface Material {
   id: number;
   category: string;
   productName: string;
-  brand: string;
+  brand: string | null;
   quantity: number;
-  unit: string;
+  unit: string | null;
   estimatedPrice: number | null;
   actualPrice: number | null;
   purchased: boolean;

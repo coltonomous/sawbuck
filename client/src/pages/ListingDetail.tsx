@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, type ListingDetail as ListingDetailType, type ListingImage } from '../api';
+import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
@@ -9,7 +10,7 @@ import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, Externa
 export default function ListingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [listing, setListing] = useState<any>(null);
+  const [listing, setListing] = useState<ListingDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -32,8 +33,8 @@ export default function ListingDetail() {
       const result = await api.analyzeListing(listing.id);
       setListing({ ...listing, ...result });
       toast('success', 'Analysis complete');
-    } catch (err: any) {
-      toast('error', `Analysis failed: ${err.message}`);
+    } catch (err) {
+      toast('error', `Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
     setAnalyzing(false);
   };
@@ -47,23 +48,18 @@ export default function ListingDetail() {
         purchasePrice: parseFloat(projectForm.purchasePrice),
       });
       navigate(`/projects/${project.id}`);
-    } catch (err: any) {
-      alert(`Failed to create project: ${err.message}`);
+    } catch (err) {
+      alert(`Failed to create project: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
   // Parse analysis verdict from raw JSON
-  let analysisData: any = null;
+  let analysisData: Record<string, unknown> | null = null;
   try { analysisData = listing?.analysisRaw ? JSON.parse(listing.analysisRaw) : null; } catch {}
-  const rec = analysisData?.flip_recommendation;
-  const recStyle = rec === 'strong_buy' ? 'bg-green-100 text-green-700' :
-    rec === 'buy' ? 'bg-blue-100 text-blue-700' :
-    rec === 'maybe' ? 'bg-yellow-100 text-yellow-700' :
-    rec === 'pass' ? 'bg-red-100 text-red-700' : '';
-  const recLabel = rec === 'strong_buy' ? 'Strong Buy' :
-    rec === 'buy' ? 'Buy' :
-    rec === 'maybe' ? 'Maybe' :
-    rec === 'pass' ? 'Pass' : null;
+  const rec = analysisData?.flip_recommendation as FlipRecommendation | undefined;
+  const recMeta = rec ? FLIP_REC_COLORS[rec] : null;
+  const recStyle = recMeta?.bg ?? '';
+  const recLabel = recMeta?.label ?? null;
 
   if (loading) return <SkeletonDetail />;
   if (!listing) return (
@@ -116,7 +112,7 @@ export default function ListingDetail() {
       {/* Images */}
       {listing.images?.length > 0 && (
         <div className="flex gap-2 overflow-x-auto mb-6 pb-2 -mx-1 px-1">
-          {listing.images.map((img: any) => (
+          {listing.images.map((img: ListingImage) => (
             <img
               key={img.id}
               src={img.localPathResized ? `/images/resized/${img.localPathResized.replace('resized/', '')}` : img.sourceUrl}
@@ -178,8 +174,8 @@ export default function ListingDetail() {
           {listing.conditionNotes && (
             <p className="mt-4 pt-3 border-t text-sm text-gray-600 leading-relaxed">{listing.conditionNotes}</p>
           )}
-          {analysisData?.refinishing_profit_verdict && (
-            <p className="mt-3 pt-3 border-t text-sm text-gray-700 leading-relaxed font-medium">{analysisData.refinishing_profit_verdict}</p>
+          {typeof analysisData?.refinishing_profit_verdict === 'string' && (
+            <p className="mt-3 pt-3 border-t text-sm text-gray-700 leading-relaxed font-medium">{String(analysisData.refinishing_profit_verdict)}</p>
           )}
         </Card>
       ) : (

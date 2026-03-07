@@ -1,4 +1,4 @@
-import { api } from '../api';
+import { api, type Listing } from '../api';
 import { useToast } from './Toast';
 
 interface Props {
@@ -11,7 +11,7 @@ export default function BulkActionBar({ selected, onClear, onDone }: Props) {
   const count = selected.size;
   const { toast } = useToast();
 
-  const handleAction = async (updates: Record<string, any>) => {
+  const handleAction = async (updates: Partial<Listing>) => {
     await api.bulkUpdateListings([...selected], updates);
     toast('success', `${count} listing${count !== 1 ? 's' : ''} updated`);
     onClear();

@@ -1,16 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, type PipelineProject } from '../api';
 import { SkeletonKanban } from '../components/Skeleton';
-
-const STATUSES = ['acquired', 'refinishing', 'listed', 'sold'] as const;
-
-const STATUS_META: Record<string, { bg: string; text: string; header: string; dot: string }> = {
-  acquired: { bg: 'bg-amber-50/60', text: 'text-amber-700', header: 'bg-amber-100/80', dot: 'bg-amber-500' },
-  refinishing: { bg: 'bg-orange-50/60', text: 'text-orange-700', header: 'bg-orange-100/80', dot: 'bg-orange-500' },
-  listed: { bg: 'bg-blue-50/60', text: 'text-blue-700', header: 'bg-blue-100/80', dot: 'bg-blue-500' },
-  sold: { bg: 'bg-green-50/60', text: 'text-green-700', header: 'bg-green-100/80', dot: 'bg-green-500' },
-};
+import { PROJECT_PIPELINE_STATUSES, PROJECT_STATUS_META } from '@shared/constants';
 
 function daysSince(dateStr: string | null): number | null {
   if (!dateStr) return null;
@@ -19,7 +11,7 @@ function daysSince(dateStr: string | null): number | null {
 }
 
 export default function Projects() {
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<PipelineProject[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -41,14 +33,14 @@ export default function Projects() {
     </div>
   );
 
-  const grouped = STATUSES.reduce((acc, status) => {
+  const grouped = PROJECT_PIPELINE_STATUSES.reduce((acc, status) => {
     acc[status] = projects.filter((p) => p.status === status);
     return acc;
-  }, {} as Record<string, any[]>);
+  }, {} as Record<string, PipelineProject[]>);
 
   const totalProfit = projects
     .filter((p) => p.profit != null)
-    .reduce((sum, p) => sum + p.profit, 0);
+    .reduce((sum, p) => sum + (p.profit ?? 0), 0);
 
   const totalInvested = projects
     .filter((p) => p.status !== 'sold')
@@ -93,8 +85,8 @@ export default function Projects() {
         </div>
       ) : (
         <div className="grid grid-cols-4 gap-4">
-          {STATUSES.map((status) => {
-            const meta = STATUS_META[status];
+          {PROJECT_PIPELINE_STATUSES.map((status) => {
+            const meta = PROJECT_STATUS_META[status];
             return (
               <div key={status}>
                 <div className={`${meta.header} rounded-t-lg px-4 py-2.5 flex items-center justify-between`}>

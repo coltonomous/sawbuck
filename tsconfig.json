@@ -16,6 +16,6 @@
       "@client/*": ["./client/src/*"]
     }
   },
-  "include": ["server/**/*.ts", "scripts/**/*.ts"],
+  "include": ["server/**/*.ts", "scripts/**/*.ts", "shared/**/*.ts"],
   "exclude": ["node_modules", "dist", "client"]
 }

@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
-import { api } from '../api';
+import { api, type StatsResponse } from '../api';
 import { SkeletonChartPage } from '../components/Skeleton';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
 } from 'recharts';
-
-const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+import { CHART_COLORS } from '@shared/constants';
 
 export default function Analytics() {
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -75,9 +74,9 @@ export default function Analytics() {
         <ChartCard title="Deals by Platform">
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
-              <Pie data={dealsByPlatform} dataKey="count" nameKey="platform" cx="50%" cy="50%" outerRadius={80} label={({ platform, count }: any) => `${platform} (${count})`}>
-                {dealsByPlatform.map((_: any, i: number) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              <Pie data={dealsByPlatform} dataKey="count" nameKey="platform" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
+                {dealsByPlatform.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip />
@@ -87,9 +86,9 @@ export default function Analytics() {
         <ChartCard title="Status Breakdown">
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
-              <Pie data={statusBreakdown} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label={({ status, count }: any) => `${status} (${count})`}>
-                {statusBreakdown.map((_: any, i: number) => (
-                  <Cell key={i} fill={COLORS[i % COLORS.length]} />
+              <Pie data={statusBreakdown} dataKey="count" nameKey="status" cx="50%" cy="50%" outerRadius={80} label={({ name, value }) => `${name} (${value})`}>
+                {statusBreakdown.map((_, i) => (
+                  <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip />

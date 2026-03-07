@@ -3,8 +3,10 @@ import { api } from '../api';
 import { useToast } from './Toast';
 import { Spinner } from './ui';
 
+import type { ProjectDetail } from '../api';
+
 interface Props {
-  project: any;
+  project: ProjectDetail;
   onClose: () => void;
 }
 
@@ -21,8 +23,8 @@ export default function ExportListingText({ project, onClose }: Props) {
     try {
       const { text: generated } = await api.generateListingText(project.id, regenerate);
       setText(generated);
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
     }
     setLoading(false);
   };

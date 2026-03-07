@@ -1,21 +1,19 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../api';
+import { api, type Listing } from '../api';
 import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { SkeletonTable } from '../components/Skeleton';
 import BulkActionBar from '../components/BulkActionBar';
 import { PlatformBadge, DealScoreBadge, StatusPill, EmptyState, SearchIcon } from '../components/ui';
+import { PLATFORMS, LISTING_STATUSES } from '@shared/constants';
 
 type SortKey = 'title' | 'platform' | 'askingPrice' | 'furnitureType' | 'dealScore' | 'status' | 'scrapedAt';
 type SortDir = 'asc' | 'desc';
-
-const PLATFORMS = ['craigslist', 'offerup', 'mercari', 'ebay'];
-const STATUSES = ['new', 'analyzed', 'watching', 'acquired', 'dismissed'];
 const PER_PAGE = 50;
 
 export default function Listings() {
   const navigate = useNavigate();
-  const [listings, setListings] = useState<any[]>([]);
+  const [listings, setListings] = useState<Listing[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [sortKey, setSortKey] = useState<SortKey>('scrapedAt');
@@ -47,7 +45,7 @@ export default function Listings() {
 
   useEffect(() => { fetchListings(); }, [fetchListings]);
 
-  const handleEnriched = useCallback((id: number, data: any) => {
+  const handleEnriched = useCallback((id: number, data: Partial<Listing>) => {
     setListings(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   }, []);
 
@@ -105,7 +103,7 @@ export default function Listings() {
           className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white"
         >
           <option value="">All statuses</option>
-          {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+          {LISTING_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
         {(platformFilter || statusFilter) && (
           <button

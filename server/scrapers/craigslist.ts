@@ -1,59 +1,18 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
 import { withPage } from './browser-pool.js';
 import { stripKeywordSpam } from './detail-fetcher.js';
-
-// Common city/area names → Craigslist subdomain
-const CL_SUBDOMAINS: Record<string, string> = {
-  'seattle': 'seattle', 'kent': 'seattle', 'tacoma': 'seattle', 'bellevue': 'seattle', 'renton': 'seattle', 'everett': 'seattle', 'redmond': 'seattle', 'kirkland': 'seattle', 'olympia': 'seattle', 'auburn': 'seattle',
-  'portland': 'portland', 'beaverton': 'portland', 'hillsboro': 'portland', 'gresham': 'portland',
-  'sf': 'sfbay', 'sfbay': 'sfbay', 'san francisco': 'sfbay', 'oakland': 'sfbay', 'san jose': 'sfbay', 'berkeley': 'sfbay', 'fremont': 'sfbay', 'palo alto': 'sfbay',
-  'la': 'losangeles', 'los angeles': 'losangeles', 'losangeles': 'losangeles', 'pasadena': 'losangeles', 'long beach': 'losangeles', 'glendale': 'losangeles', 'burbank': 'losangeles',
-  'san diego': 'sandiego', 'sandiego': 'sandiego',
-  'sacramento': 'sacramento',
-  'phoenix': 'phoenix', 'mesa': 'phoenix', 'scottsdale': 'phoenix', 'tempe': 'phoenix', 'chandler': 'phoenix', 'gilbert': 'phoenix',
-  'denver': 'denver', 'aurora': 'denver', 'boulder': 'boulder',
-  'chicago': 'chicago', 'evanston': 'chicago', 'naperville': 'chicago',
-  'new york': 'newyork', 'newyork': 'newyork', 'nyc': 'newyork', 'brooklyn': 'newyork', 'queens': 'newyork', 'manhattan': 'newyork', 'bronx': 'newyork',
-  'austin': 'austin', 'houston': 'houston', 'dallas': 'dallas', 'san antonio': 'sanantonio',
-  'atlanta': 'atlanta', 'miami': 'miami', 'tampa': 'tampa', 'orlando': 'orlando',
-  'boston': 'boston', 'detroit': 'detroit', 'minneapolis': 'minneapolis', 'dc': 'washingtondc', 'washington': 'washingtondc', 'washington dc': 'washingtondc',
-  'philadelphia': 'philadelphia', 'philly': 'philadelphia', 'pittsburgh': 'pittsburgh',
-  'las vegas': 'lasvegas', 'vegas': 'lasvegas', 'reno': 'reno',
-  'nashville': 'nashville', 'memphis': 'memphis', 'charlotte': 'charlotte', 'raleigh': 'raleigh',
-  'columbus': 'columbus', 'cincinnati': 'cincinnati', 'cleveland': 'cleveland',
-  'salt lake': 'saltlakecity', 'salt lake city': 'saltlakecity', 'slc': 'saltlakecity',
-  'indianapolis': 'indianapolis', 'milwaukee': 'milwaukee', 'kansas city': 'kansascity',
-  'st louis': 'stlouis', 'stlouis': 'stlouis',
-  'honolulu': 'honolulu', 'anchorage': 'anchorage',
-};
-
-// Reverse map: subdomain → display name
-const CL_DISPLAY_NAMES: Record<string, string> = {
-  'sfbay': 'SF Bay Area', 'losangeles': 'Los Angeles', 'sandiego': 'San Diego',
-  'newyork': 'New York', 'washingtondc': 'Washington DC', 'saltlakecity': 'Salt Lake City',
-  'kansascity': 'Kansas City', 'stlouis': 'St. Louis', 'sanantonio': 'San Antonio',
-  'lasvegas': 'Las Vegas',
-};
-
-function resolveSubdomain(location: string): string {
-  const normalized = location.toLowerCase().trim();
-  return CL_SUBDOMAINS[normalized] || normalized;
-}
-
-function displayLocation(subdomain: string): string {
-  return CL_DISPLAY_NAMES[subdomain] || subdomain.charAt(0).toUpperCase() + subdomain.slice(1);
-}
+import { resolveClSubdomain, clDisplayLocation } from '../../shared/constants.js';
 
 export class CraigslistScraper extends BaseScraper {
   platform = 'craigslist' as const;
 
   async scrape(config: ScraperConfig): Promise<ScrapedListing[]> {
-    const location = resolveSubdomain(config.location || 'sfbay');
+    const location = resolveClSubdomain(config.location || 'sfbay');
     const params = new URLSearchParams({ query: config.searchTerm });
     if (config.minPrice) params.set('min_price', config.minPrice.toString());
     if (config.maxPrice) params.set('max_price', config.maxPrice.toString());
 
-    const cityName = displayLocation(location);
+    const cityName = clDisplayLocation(location);
     const searchUrl = `https://${location}.craigslist.org/search/fua?${params}`;
     console.log(`[craigslist] Scraping: ${searchUrl}`);
 

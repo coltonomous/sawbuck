@@ -18,15 +18,15 @@ interface Step {
 }
 
 interface Plan {
-  styleRecommendation: string;
-  description: string;
-  difficultyLevel: string;
-  beforeDescription: string;
-  afterDescription: string;
+  styleRecommendation: string | null;
+  description: string | null;
+  difficultyLevel: string | null;
+  beforeDescription: string | null;
+  afterDescription: string | null;
   steps: Step[];
-  estimatedHours: number;
-  estimatedMaterialCost: number;
-  estimatedResalePrice: number;
+  estimatedHours: number | null;
+  estimatedMaterialCost: number | null;
+  estimatedResalePrice: number | null;
 }
 
 export default function RefinishingPlan({ plan }: { plan: Plan }) {
@@ -47,7 +47,7 @@ export default function RefinishingPlan({ plan }: { plan: Plan }) {
     beginner: 'bg-green-100 text-green-800',
     intermediate: 'bg-yellow-100 text-yellow-800',
     advanced: 'bg-red-100 text-red-800',
-  }[plan.difficultyLevel] || 'bg-gray-100 text-gray-800';
+  }[plan.difficultyLevel ?? ''] || 'bg-gray-100 text-gray-800';
 
   return (
     <div className="space-y-4">

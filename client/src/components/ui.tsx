@@ -1,42 +1,33 @@
 import { type ReactNode } from 'react';
+import {
+  PLATFORM_BADGE_COLORS,
+  PLATFORM_DOT_COLORS,
+  PLATFORM_LABELS,
+  LISTING_STATUS_COLORS,
+  dealScoreColor,
+  dealScoreTextColor,
+  type Platform,
+  type ListingStatus,
+} from '@shared/constants';
+
+export { dealScoreColor, dealScoreTextColor };
 
 // ── Platform badge ──────────────────────────────────────────────────
 
-const PLATFORM_COLORS: Record<string, string> = {
-  craigslist: 'bg-purple-100 text-purple-700',
-  offerup: 'bg-teal-100 text-teal-700',
-  ebay: 'bg-blue-100 text-blue-700',
-  mercari: 'bg-orange-100 text-orange-700',
-};
-
-const PLATFORM_LABELS: Record<string, string> = {
-  craigslist: 'Craigslist',
-  offerup: 'OfferUp',
-  ebay: 'eBay',
-  mercari: 'Mercari',
-};
-
 export function PlatformBadge({ platform }: { platform: string }) {
   return (
-    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${PLATFORM_COLORS[platform] || 'bg-gray-100 text-gray-700'}`}>
+    <span className={`px-1.5 py-0.5 rounded text-[11px] font-medium ${PLATFORM_BADGE_COLORS[platform as Platform] || 'bg-gray-100 text-gray-700'}`}>
       {platform}
     </span>
   );
 }
 
-/** Full label version for settings/display contexts */
 export function platformLabel(platform: string): string {
-  return PLATFORM_LABELS[platform] || platform;
+  return PLATFORM_LABELS[platform as Platform] || platform;
 }
 
 export function platformColor(platform: string): string {
-  const map: Record<string, string> = {
-    craigslist: 'bg-purple-500',
-    offerup: 'bg-teal-500',
-    ebay: 'bg-blue-500',
-    mercari: 'bg-orange-500',
-  };
-  return map[platform] || 'bg-gray-500';
+  return PLATFORM_DOT_COLORS[platform as Platform] || 'bg-gray-500';
 }
 
 // ── Deal score badge ────────────────────────────────────────────────
@@ -52,31 +43,11 @@ export function DealScoreBadge({ score, className = '' }: { score: number; class
   );
 }
 
-export function dealScoreColor(score: number): string {
-  return score >= 2 ? 'bg-green-500'
-    : score >= 1.5 ? 'bg-yellow-500'
-    : 'bg-gray-300';
-}
-
-export function dealScoreTextColor(score: number): string {
-  return score >= 2 ? 'text-green-700'
-    : score >= 1.5 ? 'text-yellow-700'
-    : 'text-gray-500';
-}
-
 // ── Status pill ─────────────────────────────────────────────────────
-
-const STATUS_COLORS: Record<string, string> = {
-  new: 'bg-blue-50 text-blue-600',
-  analyzed: 'bg-green-50 text-green-600',
-  watching: 'bg-amber-50 text-amber-600',
-  acquired: 'bg-purple-50 text-purple-600',
-  dismissed: 'bg-gray-100 text-gray-400',
-};
 
 export function StatusPill({ status }: { status: string }) {
   return (
-    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${STATUS_COLORS[status] || 'bg-gray-100 text-gray-500'}`}>
+    <span className={`px-2 py-0.5 rounded-full text-[11px] font-medium ${LISTING_STATUS_COLORS[status as ListingStatus] || 'bg-gray-100 text-gray-500'}`}>
       {status}
     </span>
   );
