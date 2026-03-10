@@ -61,14 +61,11 @@ export async function analyzeWithVision(
   });
 }
 
-/**
- * Analyze images with Claude Vision using tool use for guaranteed structured output.
- * Returns parsed + validated data matching the provided Zod schema.
- */
 export async function analyzeWithVisionStructured<T>(
   images: ImageInput[],
   prompt: string,
-  schema: z.ZodSchema<T>,
+  jsonSchema: Record<string, unknown>,
+  zodSchema: z.ZodSchema<T>,
   toolName: string,
   toolDescription: string,
   systemPrompt?: string,
@@ -89,9 +86,6 @@ export async function analyzeWithVisionStructured<T>(
 
     content.push({ type: 'text', text: prompt });
 
-    // Convert Zod schema to JSON Schema for tool use
-    const jsonSchema = zodToJsonSchema(schema);
-
     const response = await client.messages.create({
       model: config.claude.model,
       max_tokens: config.claude.maxTokens,
@@ -107,75 +101,8 @@ export async function analyzeWithVisionStructured<T>(
 
     const toolBlock = response.content.find((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use');
     if (!toolBlock) throw new Error('No tool use block in Claude response');
-    return schema.parse(toolBlock.input);
+    return zodSchema.parse(toolBlock.input);
   });
-}
-
-/**
- * Convert a Zod schema to a JSON Schema object compatible with Anthropic tool use.
- * Handles the common Zod types used in this codebase.
- */
-function zodToJsonSchema(schema: z.ZodSchema): Record<string, unknown> {
-  const def = (schema as any)._zpiDef || (schema as any)._def;
-
-  // Zod v4 uses _zpiDef; v3 uses _def. Handle both.
-  if (!def) {
-    // Fallback: try to get shape from the schema
-    return { type: 'object' };
-  }
-
-  const typeName = def.typeName || def.type;
-
-  switch (typeName) {
-    case 'ZodObject':
-    case 'object': {
-      const shape = def.shape || (typeof def.shape === 'function' ? def.shape() : {});
-      const properties: Record<string, unknown> = {};
-      const required: string[] = [];
-      for (const [key, value] of Object.entries(shape)) {
-        properties[key] = zodToJsonSchema(value as z.ZodSchema);
-        // Check if field is optional
-        const valDef = (value as any)._zpiDef || (value as any)._def;
-        const valType = valDef?.typeName || valDef?.type;
-        if (valType !== 'ZodOptional') {
-          required.push(key);
-        }
-      }
-      return { type: 'object', properties, required };
-    }
-    case 'ZodString':
-    case 'string':
-      return { type: 'string' };
-    case 'ZodNumber':
-    case 'number': {
-      const result: Record<string, unknown> = { type: 'number' };
-      const checks = def.checks || [];
-      for (const check of checks) {
-        if (check.kind === 'min') result.minimum = check.value;
-        if (check.kind === 'max') result.maximum = check.value;
-      }
-      return result;
-    }
-    case 'ZodBoolean':
-    case 'boolean':
-      return { type: 'boolean' };
-    case 'ZodArray':
-    case 'array':
-      return { type: 'array', items: zodToJsonSchema(def.type || def.innerType) };
-    case 'ZodEnum':
-    case 'enum':
-      return { type: 'string', enum: def.values || def.entries };
-    case 'ZodNullable':
-    case 'nullable': {
-      const inner = zodToJsonSchema(def.innerType);
-      return { ...inner, nullable: true };
-    }
-    case 'ZodOptional':
-    case 'optional':
-      return zodToJsonSchema(def.innerType);
-    default:
-      return {};
-  }
 }
 
 export async function generateText(

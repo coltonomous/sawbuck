@@ -1,7 +1,3 @@
-/**
- * Centralized configuration — replaces magic numbers scattered across the codebase.
- * All tunables live here so they're documented by name and changeable in one place.
- */
 export const config = {
   browser: {
     maxConcurrent: 3,
@@ -13,18 +9,6 @@ export const config = {
     maxEdge: 1500,
     webpQuality: 85,
     downloadTimeoutMs: 15_000,
-  },
-  pricing: {
-    soldWeight: 0.7,
-    activeWeight: 0.3,
-    activeDiscount: 0.85,
-    minSoldForSoldOnly: 3,
-    conditionBaseline: 8,
-    conditionAboveFactor: 0.05,
-    conditionBelowFactor: 0.1,
-    conditionMaxMultiplier: 1.2,
-    conditionMinMultiplier: 0.3,
-    refinishedConditionScore: 8.5,
   },
   claude: {
     maxRetries: 3,

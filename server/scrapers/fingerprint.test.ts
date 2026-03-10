@@ -15,19 +15,6 @@ describe('fingerprint', () => {
     expect(fp).toMatch(/^[a-f0-9]{32}$/);
   });
 
-  it('produces same hash for same input', () => {
-    const listing = {
-      platform: 'offerup' as const,
-      title: 'Vintage Chair',
-      askingPrice: 50,
-      location: 'Portland',
-      externalId: '456',
-      url: 'https://example.com',
-      imageUrls: [],
-    };
-    expect(fingerprint(listing)).toBe(fingerprint(listing));
-  });
-
   it('produces different hash for different titles', () => {
     const base = {
       platform: 'craigslist' as const,

@@ -20,6 +20,29 @@ const FurnitureAnalysisSchema = z.object({
   refinishing_profit_verdict: z.string(),
 });
 
+// JSON Schema for Anthropic tool use — mirrors FurnitureAnalysisSchema above
+const ANALYSIS_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    furniture_type: { type: 'string' },
+    furniture_style: { type: 'string' },
+    condition_score: { type: 'number', minimum: 1, maximum: 10 },
+    condition_notes: { type: 'string' },
+    wood_species: { type: 'string', nullable: true },
+    wood_confidence: { type: 'number', minimum: 0, maximum: 1 },
+    notable_features: { type: 'array', items: { type: 'string' } },
+    damage_items: { type: 'array', items: { type: 'string' } },
+    refinishing_potential: { type: 'string', enum: ['high', 'medium', 'low'] },
+    flip_recommendation: { type: 'string', enum: ['strong_buy', 'buy', 'maybe', 'pass'] },
+    refinishing_profit_verdict: { type: 'string' },
+  },
+  required: [
+    'furniture_type', 'furniture_style', 'condition_score', 'condition_notes',
+    'wood_species', 'wood_confidence', 'notable_features', 'damage_items',
+    'refinishing_potential', 'flip_recommendation', 'refinishing_profit_verdict',
+  ],
+} as const;
+
 export type FurnitureAnalysis = z.infer<typeof FurnitureAnalysisSchema>;
 
 const SYSTEM_PROMPT = `You are a brutally honest furniture appraiser with 20+ years of experience in vintage, mid-century, and antique furniture. You do NOT sugarcoat. You do NOT give optimistic assessments to be nice.
@@ -100,6 +123,7 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     analysis = await analyzeWithVisionStructured(
       imageInputs,
       prompt,
+      ANALYSIS_JSON_SCHEMA,
       FurnitureAnalysisSchema,
       'submit_analysis',
       'Submit the structured furniture analysis',
