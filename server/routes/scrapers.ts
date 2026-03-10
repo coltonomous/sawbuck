@@ -1,22 +1,13 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { db } from '../db/index.js';
-import { scrapeRuns, searchConfigs, platformSettings } from '../db/schema.js';
+import { scrapeRuns, searchConfigs, platformSettings, backgroundJobs } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
-import { runScraper, runAllActiveScrapers, type ScrapeResult } from '../scrapers/manager.js';
+import { runScraper, runAllActiveScrapers } from '../scrapers/manager.js';
 import { runScraperSchema, addSearchConfigSchema, togglePlatformSchema } from '../lib/validation.js';
 import crypto from 'crypto';
 
 export const scrapersRouter = new Hono();
-
-// In-memory job tracker for background scrape operations
-interface ScrapeJob {
-  status: 'running' | 'completed' | 'failed';
-  startedAt: string;
-  result?: ScrapeResult | ScrapeResult[];
-  error?: string;
-}
-const scrapeJobs = new Map<string, ScrapeJob>();
 
 // POST /run — trigger scrape in background. Returns job ID immediately.
 // Body: { platform?, searchTerm?, location? }
@@ -26,37 +17,54 @@ scrapersRouter.post('/run', async (c) => {
   const parsed = runScraperSchema.safeParse(body);
 
   const jobId = crypto.randomUUID();
-  scrapeJobs.set(jobId, { status: 'running', startedAt: new Date().toISOString() });
+  await db.insert(backgroundJobs).values({ id: jobId, type: 'scrape' });
 
   if (parsed.success && parsed.data.platform && parsed.data.searchTerm) {
-    // Fire and forget — single platform scrape
     runScraper(parsed.data.platform, {
       searchTerm: parsed.data.searchTerm,
       location: parsed.data.location,
       minPrice: parsed.data.minPrice,
       maxPrice: parsed.data.maxPrice,
-    }).then((result) => {
-      scrapeJobs.set(jobId, { status: 'completed', startedAt: scrapeJobs.get(jobId)!.startedAt, result });
-    }).catch((err) => {
-      scrapeJobs.set(jobId, { status: 'failed', startedAt: scrapeJobs.get(jobId)!.startedAt, error: err.message });
+    }).then(async (result) => {
+      await db.update(backgroundJobs).set({
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        result: JSON.stringify(result),
+      }).where(eq(backgroundJobs.id, jobId));
+    }).catch(async (err) => {
+      await db.update(backgroundJobs).set({
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: err.message,
+      }).where(eq(backgroundJobs.id, jobId));
     });
   } else {
-    // Fire and forget — all active configs
-    runAllActiveScrapers().then((results) => {
-      scrapeJobs.set(jobId, { status: 'completed', startedAt: scrapeJobs.get(jobId)!.startedAt, result: results });
-    }).catch((err) => {
-      scrapeJobs.set(jobId, { status: 'failed', startedAt: scrapeJobs.get(jobId)!.startedAt, error: err.message });
+    runAllActiveScrapers().then(async (results) => {
+      await db.update(backgroundJobs).set({
+        status: 'completed',
+        completedAt: new Date().toISOString(),
+        result: JSON.stringify(results),
+      }).where(eq(backgroundJobs.id, jobId));
+    }).catch(async (err) => {
+      await db.update(backgroundJobs).set({
+        status: 'failed',
+        completedAt: new Date().toISOString(),
+        error: err.message,
+      }).where(eq(backgroundJobs.id, jobId));
     });
   }
 
   return c.json({ jobId }, 202);
 });
 
-// GET /jobs/:id — poll job status
-scrapersRouter.get('/jobs/:id', (c) => {
-  const job = scrapeJobs.get(c.req.param('id'));
+// GET /jobs/:id — poll job status (persisted in DB, survives restarts)
+scrapersRouter.get('/jobs/:id', async (c) => {
+  const job = await db.select().from(backgroundJobs).where(eq(backgroundJobs.id, c.req.param('id'))).get();
   if (!job) return c.json({ error: 'Job not found' }, 404);
-  return c.json(job);
+  return c.json({
+    ...job,
+    result: job.result ? JSON.parse(job.result) : undefined,
+  });
 });
 
 // GET /run/stream — SSE stream of scrape progress

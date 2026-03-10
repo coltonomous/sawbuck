@@ -153,7 +153,12 @@ listingsRouter.post('/:id/analyze', async (c) => {
     // Step 3: Claude Vision analysis
     const analysis = await analyzeListing(id);
     if (!analysis) {
-      return c.json({ error: 'Analysis failed — no usable images or parse error' }, 422);
+      // Fetch the specific error reason from the DB
+      const withError = await db.select({ analysisError: listings.analysisError })
+        .from(listings).where(eq(listings.id, id)).get();
+      return c.json({
+        error: withError?.analysisError || 'Analysis failed — no usable images or parse error',
+      }, 422);
     }
 
     // Step 4: Price estimation

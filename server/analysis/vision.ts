@@ -59,7 +59,9 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     ));
 
   if (images.length === 0) {
-    console.warn(`[vision] No downloaded images for listing ${listingId}`);
+    const err = 'No downloaded images available for analysis';
+    console.warn(`[vision] ${err} (listing ${listingId})`);
+    await db.update(listings).set({ analysisError: err }).where(eq(listings.id, listingId));
     return null;
   }
 
@@ -80,7 +82,9 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
   }
 
   if (imageInputs.length === 0) {
-    console.warn(`[vision] No readable images for listing ${listingId}`);
+    const err = 'All images failed to load — files may be corrupted or missing';
+    console.warn(`[vision] ${err} (listing ${listingId})`);
+    await db.update(listings).set({ analysisError: err }).where(eq(listings.id, listingId));
     return null;
   }
 
@@ -102,11 +106,13 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
       SYSTEM_PROMPT,
     );
   } catch (err: any) {
-    console.error(`[vision] Failed to get structured analysis for listing ${listingId}:`, err.message);
+    const errorMsg = `Claude analysis failed: ${err.message}`;
+    console.error(`[vision] ${errorMsg} (listing ${listingId})`);
+    await db.update(listings).set({ analysisError: errorMsg }).where(eq(listings.id, listingId));
     return null;
   }
 
-  // Update listing with analysis results
+  // Update listing with analysis results (clear any prior error)
   await db.update(listings).set({
     furnitureType: analysis.furniture_type,
     furnitureStyle: analysis.furniture_style,
@@ -117,6 +123,7 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     analysisRaw: JSON.stringify(analysis),
     analyzedAt: new Date().toISOString(),
     status: 'analyzed',
+    analysisError: null,
   }).where(eq(listings.id, listingId));
 
   // Mark images as analyzed
