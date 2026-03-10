@@ -19,7 +19,7 @@ const scraperMap: Record<string, () => BaseScraper> = {
 
 export function fingerprint(listing: ScrapedListing): string {
   const normalized = `${listing.platform}:${listing.title.toLowerCase().trim()}:${listing.askingPrice ?? ''}:${listing.location?.toLowerCase().trim() ?? ''}`;
-  return createHash('md5').update(normalized).digest('hex');
+  return createHash('sha256').update(normalized).digest('hex').slice(0, 32);
 }
 
 export interface ScrapeResult {
@@ -54,6 +54,17 @@ export async function runScraper(
   try {
     const scraped = await scraper.scrape(config);
     result.found = scraped.length;
+
+    // Validate scraper output — warn if selectors may be broken
+    if (scraped.length === 0) {
+      console.warn(`[manager] ${platform} returned 0 results — selectors may be broken`);
+    }
+    for (const item of scraped) {
+      if (!item.title || !item.externalId) {
+        console.warn(`[manager] ${platform} returned item with missing title/id — selectors likely broken`);
+        break;
+      }
+    }
 
     // Filter to relevant results only
     // CL: strict synonym matching (keyword spam problem). OfferUp/Mercari: loose "is furniture?" check.

@@ -1,11 +1,11 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
+import { config } from '../lib/config.js';
 
-const MAX_CONCURRENT = 3;
-const PAGE_TIMEOUT_MS = 45_000;
+const { maxConcurrent: MAX_CONCURRENT, pageTimeoutMs: PAGE_TIMEOUT_MS, poolSlotTimeoutMs: POOL_SLOT_TIMEOUT_MS } = config.browser;
 
 let browser: Browser | null = null;
 let activeContexts = 0;
-const waitQueue: Array<() => void> = [];
+const waitQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 
 export async function getBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
@@ -23,7 +23,8 @@ export async function getBrowser(): Promise<Browser> {
     activeContexts = 0;
     // Drain wait queue so callers don't hang forever
     while (waitQueue.length > 0) {
-      waitQueue.shift()!();
+      const entry = waitQueue.shift()!;
+      entry.reject(new Error('Browser disconnected while waiting for slot'));
     }
   });
   return browser;
@@ -34,9 +35,19 @@ async function acquireSlot(): Promise<void> {
     activeContexts++;
     return;
   }
-  // Wait for a slot to free up
-  await new Promise<void>((resolve) => {
-    waitQueue.push(resolve);
+  // Wait for a slot to free up, with a timeout to prevent hanging forever
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      const idx = waitQueue.findIndex((e) => e.resolve === onReady);
+      if (idx !== -1) waitQueue.splice(idx, 1);
+      reject(new Error(`Browser pool slot timeout after ${POOL_SLOT_TIMEOUT_MS}ms`));
+    }, POOL_SLOT_TIMEOUT_MS);
+
+    const onReady = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+    waitQueue.push({ resolve: onReady, reject });
   });
   activeContexts++;
 }
@@ -44,7 +55,7 @@ async function acquireSlot(): Promise<void> {
 function releaseSlot(): void {
   activeContexts--;
   if (waitQueue.length > 0) {
-    waitQueue.shift()!();
+    waitQueue.shift()!.resolve();
   }
 }
 
@@ -75,7 +86,8 @@ export async function closeBrowser(): Promise<void> {
   }
   activeContexts = 0;
   while (waitQueue.length > 0) {
-    waitQueue.shift()!();
+    const entry = waitQueue.shift()!;
+    entry.reject(new Error('Browser pool closed'));
   }
 }
 

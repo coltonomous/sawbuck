@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
+import { config as appConfig } from '../lib/config.js';
 
 export interface PricingResult {
   estimatedValue: number;
@@ -24,10 +25,10 @@ export function median(values: number[]): number {
 }
 
 export function conditionMultiplier(conditionScore: number | null): number {
+  const { conditionBaseline, conditionAboveFactor, conditionBelowFactor, conditionMaxMultiplier, conditionMinMultiplier } = appConfig.pricing;
   const score = conditionScore ?? 5;
-  // Score of 8 = 1.0 (baseline). Each point below = -0.1, each point above = +0.05
-  if (score >= 8) return Math.min(1.2, 1.0 + (score - 8) * 0.05);
-  return Math.max(0.3, 1.0 - (8 - score) * 0.1);
+  if (score >= conditionBaseline) return Math.min(conditionMaxMultiplier, 1.0 + (score - conditionBaseline) * conditionAboveFactor);
+  return Math.max(conditionMinMultiplier, 1.0 - (conditionBaseline - score) * conditionBelowFactor);
 }
 
 /**
@@ -40,16 +41,16 @@ export function blendedMedian(soldPrices: number[], activePrices: number[]): num
   const soldMedian = median(soldPrices);
   const activeMedian = median(activePrices);
 
-  if (soldPrices.length >= 3) {
+  if (soldPrices.length >= appConfig.pricing.minSoldForSoldOnly) {
     return soldMedian;
   }
 
   if (soldPrices.length > 0 && activePrices.length > 0) {
-    return soldMedian * 0.7 + activeMedian * 0.3;
+    return soldMedian * appConfig.pricing.soldWeight + activeMedian * appConfig.pricing.activeWeight;
   }
 
   if (activePrices.length > 0) {
-    return activeMedian * 0.85; // 15% discount for asking vs sold
+    return activeMedian * appConfig.pricing.activeDiscount;
   }
 
   return soldMedian; // May be 0 if both empty
@@ -86,8 +87,8 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
   const cm = conditionMultiplier(listing.conditionScore);
   const estimatedValue = Math.round(medianPrice * cm * 100) / 100;
 
-  // Refinished value: assume condition goes to 8+ after refinishing
-  const refinishedMultiplier = conditionMultiplier(8.5);
+  // Refinished value: assume condition goes to baseline+ after refinishing
+  const refinishedMultiplier = conditionMultiplier(appConfig.pricing.refinishedConditionScore);
   const estimatedRefinishedValue = Math.round(medianPrice * refinishedMultiplier * 100) / 100;
 
   const askingPrice = listing.askingPrice || 0;

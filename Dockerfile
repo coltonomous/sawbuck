@@ -38,5 +38,8 @@ RUN mkdir -p /app/data/images/originals /app/data/images/resized
 
 EXPOSE 3001
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3001/health || exit 1
+
 # Run migrations then start server
 CMD ["sh", "-c", "npx drizzle-kit migrate && NODE_ENV=production npx tsx server/index.ts"]

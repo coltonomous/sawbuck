@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
+import { config } from '../lib/config.js';
 
 const REFERERS: Record<string, string> = {
   craigslist: 'https://craigslist.org/',
@@ -14,6 +15,15 @@ const REFERERS: Record<string, string> = {
 function getExtFromUrl(url: string): string {
   const match = url.match(/\.(jpe?g|png|webp|gif)/i);
   return match ? match[1].toLowerCase() : 'jpg';
+}
+
+function validateImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:' || parsed.protocol === 'http:';
+  } catch {
+    return false;
+  }
 }
 
 export async function downloadListingImages(listingId: number): Promise<number> {
@@ -35,18 +45,37 @@ export async function downloadListingImages(listingId: number): Promise<number> 
   for (let i = 0; i < pendingImages.length; i++) {
     const img = pendingImages[i];
     try {
+      if (!validateImageUrl(img.sourceUrl)) {
+        console.warn(`[downloader] Invalid image URL: ${img.sourceUrl}`);
+        await db.update(listingImages).set({
+          downloadStatus: 'failed',
+        }).where(eq(listingImages.id, img.id));
+        continue;
+      }
+
       const response = await fetch(img.sourceUrl, {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
           'Referer': REFERERS[listing.platform] || '',
           'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
         },
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(config.images.downloadTimeoutMs),
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
+      // Check Content-Length before downloading full body
+      const contentLength = parseInt(response.headers.get('content-length') || '0');
+      if (contentLength > config.images.maxSizeBytes) {
+        throw new Error(`Image too large: ${contentLength} bytes (max ${config.images.maxSizeBytes})`);
+      }
+
       const buffer = Buffer.from(await response.arrayBuffer());
+
+      // Double-check actual size (Content-Length can be missing/wrong)
+      if (buffer.length > config.images.maxSizeBytes) {
+        throw new Error(`Downloaded image too large: ${buffer.length} bytes`);
+      }
       const ext = getExtFromUrl(img.sourceUrl);
       const filename = `${i}.${ext}`;
       const filePath = path.join(originalDir, filename);

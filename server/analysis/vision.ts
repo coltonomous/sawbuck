@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { analyzeWithVision, type ImageInput } from '../lib/claude.js';
+import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
 import { getImageBase64 } from '../images/processor.js';
+import { config } from '../lib/config.js';
 
 const FurnitureAnalysisSchema = z.object({
   furniture_type: z.string(),
@@ -27,7 +28,7 @@ Your job is to analyze photos of furniture listings and give the unfiltered trut
 
 Grade condition like a strict teacher: 7+ means genuinely good, not "good enough." A 5 means real problems. Don't hand out 8s and 9s to be encouraging.
 
-IMPORTANT: Respond with ONLY a valid JSON object matching the requested schema. No markdown, no explanation, just JSON.`;
+Use the submit_analysis tool to return your analysis.`;
 
 const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. Return a JSON object with these fields:
 
@@ -62,8 +63,8 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     return null;
   }
 
-  // Use up to 3 images — prefer resized, fall back to originals
-  const toAnalyze = images.slice(0, 3);
+  // Use up to N images — prefer resized, fall back to originals
+  const toAnalyze = images.slice(0, config.claude.maxAnalysisImages);
   const imageInputs: ImageInput[] = [];
 
   for (const img of toAnalyze) {
@@ -90,20 +91,18 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     prompt += `\n\nThe seller is asking $${listing.askingPrice} for this piece. Factor this into your refinishing_profit_verdict.`;
   }
 
-  const response = await analyzeWithVision(imageInputs, prompt, SYSTEM_PROMPT);
-
-  // Parse JSON from response — handle markdown code blocks if Claude wraps it
-  let jsonStr = response.trim();
-  const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
-
   let analysis: FurnitureAnalysis;
   try {
-    const parsed = JSON.parse(jsonStr);
-    analysis = FurnitureAnalysisSchema.parse(parsed);
+    analysis = await analyzeWithVisionStructured(
+      imageInputs,
+      prompt,
+      FurnitureAnalysisSchema,
+      'submit_analysis',
+      'Submit the structured furniture analysis',
+      SYSTEM_PROMPT,
+    );
   } catch (err: any) {
-    console.error(`[vision] Failed to parse Claude response for listing ${listingId}:`, err.message);
-    console.error('[vision] Raw response:', response.slice(0, 500));
+    console.error(`[vision] Failed to get structured analysis for listing ${listingId}:`, err.message);
     return null;
   }
 
