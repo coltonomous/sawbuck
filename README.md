@@ -52,6 +52,14 @@ npm run db:migrate
 npm run init
 ```
 
+Load sample listings so you can poke around without scraping anything:
+
+```bash
+npm run seed
+```
+
+This inserts 8 furniture listings (mix of analyzed and unanalyzed), eBay comparables, and a few search configs. No API keys needed.
+
 ## Development
 
 ```bash
@@ -60,6 +68,14 @@ npm run dev
 
 Starts the API server on `:3001` and Vite dev server on `:5173` concurrently.
 
+## Tests
+
+```bash
+npm test
+```
+
+Pricing logic, fingerprint hashing, scraper parsing, and API route smoke tests. CI runs on every push to `main`.
+
 ## Scripts
 
 | Command | Description |
@@ -67,12 +83,11 @@ Starts the API server on `:3001` and Vite dev server on `:5173` concurrently.
 | `npm run dev` | Start server + client in dev mode |
 | `npm run build` | Build client for production |
 | `npm start` | Run production server |
+| `npm test` | Run test suite |
+| `npm run seed` | Load sample data |
 | `npm run scrape` | Run all active scrapers once |
-| `npm run db:generate` | Generate Drizzle migrations |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:studio` | Open Drizzle Studio |
-| `npm run test:scraper` | Test scraper manually |
-| `npm run test:vision` | Test vision analysis manually |
 
 ## Docker
 
@@ -109,7 +124,8 @@ Serves the production build on `:3001`. Listing images and the SQLite database p
 
 ```
 server/
-  index.ts              # Hono server entry
+  app.ts                # Hono app setup (routes, middleware)
+  index.ts              # Server entry (listen + shutdown)
   db/                   # Drizzle schema and connection
   routes/               # API route handlers
   scrapers/             # Platform scrapers + manager

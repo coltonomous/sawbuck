@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import app from '../index.js';
+import app from '../app.js';
 
 describe('API routes', () => {
   describe('GET /health', () => {
