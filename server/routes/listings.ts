@@ -21,7 +21,7 @@ listingsRouter.get('/', async (c) => {
   if (style) conditions.push(eq(listings.furnitureStyle, style));
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
   if (maxPrice) conditions.push(lte(listings.askingPrice, parseFloat(maxPrice)));
-  if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay'));
+  if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook'));
   if (status) conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed'));
 
   const pageNum = parseInt(page);

@@ -65,7 +65,7 @@ export const generateListingTextSchema = z.object({
 // Scrapers
 // ============================================================
 
-const platform = z.enum(['craigslist', 'offerup', 'mercari', 'ebay']);
+const platform = z.enum(['craigslist', 'offerup', 'mercari', 'ebay', 'facebook']);
 
 export const runScraperSchema = z.object({
   platform: platform,

@@ -1,6 +1,8 @@
+import type { Platform } from '../../shared/constants.js';
+
 export interface ScrapedListing {
   externalId: string;
-  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay';
+  platform: Platform;
   url: string;
   title: string;
   description?: string;
@@ -22,6 +24,6 @@ export interface ScraperConfig {
 }
 
 export abstract class BaseScraper {
-  abstract platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay';
+  abstract platform: Platform;
   abstract scrape(config: ScraperConfig): Promise<ScrapedListing[]>;
 }
