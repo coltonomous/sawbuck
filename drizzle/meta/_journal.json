@@ -22,6 +22,13 @@
       "when": 1772672371897,
       "tag": "0002_overconfident_warhawk",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1773693358365,
+      "tag": "0003_keen_santa_claus",
+      "breakpoints": true
     }
   ]
 }

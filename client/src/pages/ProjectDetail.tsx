@@ -216,6 +216,8 @@ export default function ProjectDetail() {
             purchasePrice={project.purchasePrice}
             materialCost={project.totalMaterialCost || 0}
             materialsCostIsEstimate={materialsCostIsEstimate}
+            totalMaterials={(project.materials ?? []).length}
+            purchasedMaterials={purchasedMats.length}
             hoursInvested={project.hoursInvested || 0}
             hourlyRate={project.hourlyRate || 25}
             estimatedResalePrice={project.plan?.estimatedResalePrice || project.listing?.estimatedRefinishedValue || 0}

@@ -81,21 +81,35 @@ Pricing logic, fingerprint hashing, scraper parsing, and API route smoke tests. 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start server + client in dev mode |
+| `npm run dev:server` | Start API server only |
+| `npm run dev:client` | Start Vite dev server only |
 | `npm run build` | Build client for production |
 | `npm start` | Run production server |
 | `npm test` | Run test suite |
 | `npm run seed` | Load sample data |
 | `npm run scrape` | Run all active scrapers once |
+| `npm run db:generate` | Generate a new migration from schema changes |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:studio` | Open Drizzle Studio |
 
 ## Docker
+
+Production:
 
 ```bash
 docker compose up --build
 ```
 
 Serves the production build on `:3001`. Listing images and the SQLite database persist in `./data/`.
+
+Development (hot reload):
+
+```bash
+./up.sh        # start dev containers (pass --build when deps change)
+./down.sh      # stop containers
+```
+
+Runs the API on `:3001` and Vite dev server on `:5173` with source code mounted for hot reload.
 
 ## API Routes
 
@@ -134,9 +148,10 @@ server/
   images/               # Download + resize pipeline
 client/
   src/
-    pages/              # Dashboard, Listings, Settings, Projects, Analytics
+    pages/              # Dashboard, Listings, ListingDetail, Settings, Projects, Analytics
     components/         # ComparablesList, RefinishingPlan, ROICalculator, etc.
     api.ts              # API client
+shared/                 # Constants shared between server and client
 scripts/                # CLI utilities (init, cron, test helpers)
 drizzle/                # SQL migrations
 ```

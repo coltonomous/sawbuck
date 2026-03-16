@@ -17,11 +17,12 @@ services:
       - ./client/index.html:/app/client/index.html
       - ./client/vite.config.ts:/app/client/vite.config.ts
       - ./client/tsconfig.json:/app/client/tsconfig.json
+      - ./shared:/app/shared
       - ./data:/app/data
     entrypoint: ["sh", "-c"]
     command:
       - |
         npx drizzle-kit migrate &&
         npx concurrently -n server,client -c blue,green \
-          "npx tsx watch --poll server/index.ts" \
+          "npx tsx watch server/index.ts" \
           "cd client && npx vite --host 0.0.0.0"
