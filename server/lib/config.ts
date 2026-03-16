@@ -23,6 +23,7 @@ export const config = {
     detailPageLimit: {
       craigslist: 5,
       mercari: 12,
+      facebook: 5,
     },
   },
 } as const;

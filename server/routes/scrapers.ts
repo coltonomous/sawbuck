@@ -98,7 +98,7 @@ scrapersRouter.post('/configs', async (c) => {
   }
 
   const [result] = await db.insert(searchConfigs).values({
-    platform: parsed.data.platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay',
+    platform: parsed.data.platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook',
     searchTerm: parsed.data.searchTerm,
     category: parsed.data.category ?? null,
     location: parsed.data.location ?? null,
@@ -132,7 +132,7 @@ scrapersRouter.patch('/platforms/:platform', async (c) => {
 
   await db.update(platformSettings)
     .set({ enabled: parsed.data.enabled })
-    .where(eq(platformSettings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay'));
+    .where(eq(platformSettings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook'));
   return c.json({ ok: true });
 });
 

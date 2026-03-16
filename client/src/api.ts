@@ -52,7 +52,7 @@ export interface ListingImage {
 export interface Listing {
   id: number;
   externalId: string;
-  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay';
+  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook';
   url: string;
   title: string;
   description: string | null;

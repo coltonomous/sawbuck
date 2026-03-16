@@ -7,6 +7,7 @@ import { filterRelevant } from './relevance-filter.js';
 import { OfferUpScraper } from './offerup.js';
 import { MercariScraper } from './mercari.js';
 import { EbayScraper } from './ebay.js';
+import { FacebookScraper } from './facebook.js';
 import { closeBrowser } from './browser-pool.js';
 import type { BaseScraper, ScrapedListing, ScraperConfig } from './base-scraper.js';
 
@@ -15,6 +16,7 @@ const scraperMap: Record<string, () => BaseScraper> = {
   offerup: () => new OfferUpScraper(),
   mercari: () => new MercariScraper(),
   ebay: () => new EbayScraper(),
+  facebook: () => new FacebookScraper(),
 };
 
 export function fingerprint(listing: ScrapedListing): string {
@@ -184,7 +186,7 @@ export async function runAllActiveScrapers(
   // If no platform settings exist yet, default to all
   const activePlatforms = enabledPlatforms.length > 0
     ? enabledPlatforms
-    : ['craigslist', 'offerup', 'mercari', 'ebay'];
+    : ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook'];
 
   // Auto-insert missing platform rows so new platforms appear in Settings UI
   const knownPlatforms = Object.keys(scraperMap);

@@ -49,6 +49,8 @@ export async function fetchListingDetails(listing: ListingRow): Promise<void> {
       await fetchOfferUpDetail(page, listing);
     } else if (listing.platform === 'mercari') {
       await fetchMercariDetail(page, listing);
+    } else if (listing.platform === 'facebook') {
+      await fetchFacebookDetail(page, listing);
     }
   });
 }
@@ -278,4 +280,122 @@ async function fetchMercariDetail(page: any, listing: ListingRow) {
   }
 
   console.log(`[detail-fetcher] Mercari listing ${listing.id}: ${detail.description?.length || 0} chars, ${detail.images.length} images`);
+}
+
+async function fetchFacebookDetail(page: any, listing: ListingRow) {
+  // Facebook item pages are JS-heavy — wait for content to render
+  await page.waitForSelector('img', { timeout: 8000 }).catch(() => {});
+
+  // Dismiss login modal if it appears
+  await page.evaluate(() => {
+    const closeButtons = document.querySelectorAll('[aria-label="Close"], [aria-label="close"]');
+    for (const btn of closeButtons) {
+      (btn as HTMLElement).click();
+    }
+  });
+  await page.waitForTimeout(500);
+
+  const detail = await page.evaluate(() => {
+    let description = '';
+    let location = '';
+    const images: string[] = [];
+
+    // Strategy 1: JSON-LD structured data
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const data = JSON.parse(script.textContent || '');
+        if (data.description) description = data.description;
+        if (data.image) {
+          const imgs = Array.isArray(data.image) ? data.image : [data.image];
+          imgs.forEach((i: any) => {
+            const url = typeof i === 'string' ? i : i?.url;
+            if (url) images.push(url);
+          });
+        }
+        if (data.availableAtOrFrom?.address?.addressLocality) {
+          location = data.availableAtOrFrom.address.addressLocality;
+          if (data.availableAtOrFrom.address.addressRegion) {
+            location += ', ' + data.availableAtOrFrom.address.addressRegion;
+          }
+        }
+      } catch {}
+    }
+
+    // Strategy 2: Open Graph meta tags
+    if (!description) {
+      const ogDesc = document.querySelector('meta[property="og:description"]');
+      if (ogDesc) description = ogDesc.getAttribute('content') || '';
+    }
+    if (images.length === 0) {
+      const ogImage = document.querySelector('meta[property="og:image"]');
+      if (ogImage) {
+        const url = ogImage.getAttribute('content');
+        if (url) images.push(url);
+      }
+    }
+
+    // Strategy 3: Extract from DOM — FB detail pages show images in a carousel
+    if (images.length < 2) {
+      document.querySelectorAll('img').forEach((img) => {
+        const src = img.src;
+        if (
+          src && src.startsWith('http') && !src.includes('data:') &&
+          !src.includes('emoji') && !src.includes('static') &&
+          (img.naturalWidth > 200 || img.width > 200)
+        ) {
+          images.push(src);
+        }
+      });
+    }
+
+    // Extract description from the detail section if not found via structured data
+    if (!description) {
+      // FB often puts the seller description in a span under the listing details
+      const allSpans = document.querySelectorAll('span');
+      for (const span of allSpans) {
+        const text = span.textContent?.trim() || '';
+        // Descriptions are typically 20-5000 chars, not single words
+        if (text.length > 30 && text.length < 5000 && !text.includes('See more') && !text.includes('Log in')) {
+          description = text;
+          break;
+        }
+      }
+    }
+
+    // Extract location from "Listed X ago in City, ST" pattern
+    if (!location) {
+      const allSpans = document.querySelectorAll('span');
+      for (const span of allSpans) {
+        const text = span.textContent?.trim() || '';
+        const locMatch = text.match(/(?:Listed|posted).+?in\s+(.+)/i);
+        if (locMatch && locMatch[1].length < 60) {
+          location = locMatch[1].trim();
+          break;
+        }
+      }
+    }
+
+    return { description, images: [...new Set(images)], location };
+  });
+
+  const updates: Record<string, any> = {};
+  if (detail.description) updates.description = detail.description;
+  if (detail.location) updates.location = detail.location;
+
+  if (Object.keys(updates).length > 0) {
+    await db.update(listings).set(updates).where(eq(listings.id, listing.id));
+  }
+
+  const existing = await db.select().from(listingImages).where(eq(listingImages.listingId, listing.id));
+  if (existing.length === 0 && detail.images.length > 0) {
+    for (let i = 0; i < detail.images.length; i++) {
+      await db.insert(listingImages).values({
+        listingId: listing.id,
+        sourceUrl: detail.images[i],
+        isPrimary: i === 0,
+      });
+    }
+  }
+
+  console.log(`[detail-fetcher] FB listing ${listing.id}: ${detail.description?.length || 0} chars, ${detail.images.length} images`);
 }
