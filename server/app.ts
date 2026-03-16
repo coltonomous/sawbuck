@@ -41,6 +41,14 @@ const RATE_LIMIT_CLAUDE = 10;    // Claude-calling routes: 10 req/min
 
 const hits = new Map<string, { count: number; resetAt: number }>();
 
+// Purge expired entries every 5 minutes to prevent unbounded Map growth
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of hits) {
+    if (now > entry.resetAt) hits.delete(key);
+  }
+}, 5 * 60_000).unref();
+
 function rateLimit(limit: number) {
   return async (c: Parameters<Parameters<typeof app.use>[1]>[0], next: () => Promise<void>) => {
     const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
@@ -70,21 +78,6 @@ app.use('/api/*', rateLimit(RATE_LIMIT_API));
 app.use('/api/listings/:id/analyze', rateLimit(RATE_LIMIT_CLAUDE));
 app.use('/api/projects/:id/refinish', rateLimit(RATE_LIMIT_CLAUDE));
 app.use('/api/projects/:id/listing-text', rateLimit(RATE_LIMIT_CLAUDE));
-
-// ── API key auth ────────────────────────────────────────────────────
-// In production, API_KEY is required. Fail fast at startup if missing.
-if (isProd && !process.env.API_KEY) {
-  console.error('FATAL: API_KEY must be set in production. Exiting.');
-  process.exit(1);
-}
-
-app.use('/api/*', async (c, next) => {
-  const apiKey = process.env.API_KEY;
-  if (!apiKey) return next();
-  const provided = c.req.header('Authorization')?.replace('Bearer ', '');
-  if (provided !== apiKey) return c.json({ error: 'Unauthorized' }, 401);
-  return next();
-});
 
 // ── Global error handler ────────────────────────────────────────────
 app.onError((err, c) => {

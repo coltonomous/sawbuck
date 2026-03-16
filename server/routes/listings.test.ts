@@ -41,14 +41,6 @@ describe('API routes', () => {
     });
   });
 
-  describe('API key auth', () => {
-    it('allows requests when no API_KEY is configured', async () => {
-      // API_KEY is not set in test env, so all requests should pass
-      const res = await app.request('/api/listings?limit=1');
-      expect(res.status).toBe(200);
-    });
-  });
-
   describe('GET /api/scrapers/jobs/:id', () => {
     it('returns 404 for non-existent job', async () => {
       const res = await app.request('/api/scrapers/jobs/nonexistent-id');
