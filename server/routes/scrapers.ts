@@ -116,8 +116,19 @@ scrapersRouter.delete('/configs/all', async (c) => {
 });
 
 // GET /platforms — list platform enabled/disabled state
+// Auto-inserts any missing platforms so new ones appear in Settings immediately
 scrapersRouter.get('/platforms', async (c) => {
-  const platforms = await db.select().from(platformSettings);
+  const { PLATFORMS } = await import('../../shared/constants.js');
+  const existing = await db.select().from(platformSettings);
+  const existingSet = new Set(existing.map((p) => p.platform));
+  for (const p of PLATFORMS) {
+    if (!existingSet.has(p)) {
+      await db.insert(platformSettings).values({ platform: p as any, enabled: true }).onConflictDoNothing();
+    }
+  }
+  const platforms = existingSet.size === PLATFORMS.length
+    ? existing
+    : await db.select().from(platformSettings);
   return c.json(platforms);
 });
 
