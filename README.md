@@ -37,13 +37,16 @@ npx playwright install chromium
 Create a `.env` file:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
+# Optional — server-side fallback. If not set, users enter their own key in Settings.
+# ANTHROPIC_API_KEY=sk-ant-...
 
 # Optional — enables eBay Browse API for active listing comps
 # Register at https://developer.ebay.com to get credentials
 EBAY_CLIENT_ID=
 EBAY_CLIENT_SECRET=
 ```
+
+For local development with your own key, uncomment `ANTHROPIC_API_KEY`. In production, leave it unset — users provide their own key via Settings, stored in their browser's localStorage and sent per-request over HTTPS.
 
 Initialize the database and run migrations:
 
@@ -97,10 +100,12 @@ Pricing logic, fingerprint hashing, scraper parsing, and API route smoke tests. 
 Production:
 
 ```bash
-docker compose up --build
+DOMAIN=sawbuck.example.com docker compose up --build -d
 ```
 
-Serves the production build on `:3001`. Listing images and the SQLite database persist in `./data/`.
+Caddy automatically provisions TLS via Let's Encrypt for your domain. The app runs behind the reverse proxy on ports 80/443. Listing images and the SQLite database persist in `./data/`.
+
+For local testing without a domain, `DOMAIN` defaults to `localhost` (self-signed cert).
 
 Development (hot reload):
 

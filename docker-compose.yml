@@ -1,14 +1,29 @@
 services:
   app:
     build: .
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     env_file:
       - .env
     environment:
       - NODE_ENV=production
     volumes:
       - ./data:/app/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
     restart: unless-stopped
 
   # Optional: run the scraper on a schedule inside Docker
@@ -21,3 +36,7 @@ services:
   #     - ./data:/app/data
   #   entrypoint: ["sh", "-c", "while true; do npx tsx scripts/cron-runner.ts; sleep 10800; done"]
   #   restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

@@ -94,14 +94,14 @@ function buildPrompt(listing: typeof listings.$inferSelect): string {
   return parts.filter(Boolean).join('\n');
 }
 
-export async function generateRefinishingPlan(listingId: number, projectId?: number): Promise<RefinishingPlan | null> {
+export async function generateRefinishingPlan(listingId: number, projectId?: number, apiKey?: string): Promise<RefinishingPlan | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
   console.log(`[refinishing] Generating plan for listing ${listingId}: ${listing.title}`);
 
   const prompt = buildPrompt(listing);
-  const response = await generateText(prompt, SYSTEM_PROMPT, 3000);
+  const response = await generateText(prompt, SYSTEM_PROMPT, 3000, undefined, apiKey);
 
   // Parse JSON — handle markdown wrapping
   let jsonStr = response.trim();

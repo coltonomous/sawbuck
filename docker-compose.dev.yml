@@ -1,6 +1,8 @@
 # Dev override — mounts source code for hot reload.
 # Usage: ./up.sh  (pass --build when deps change)
 services:
+  caddy:
+    profiles: [disabled]
   app:
     build:
       context: .

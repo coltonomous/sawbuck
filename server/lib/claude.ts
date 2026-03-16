@@ -2,7 +2,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { config } from './config.js';
 
-const client = new Anthropic();
+// Singleton for server-side env key (null if ANTHROPIC_API_KEY not set)
+const envClient = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
+
+function getClient(apiKey?: string): Anthropic {
+  if (apiKey) return new Anthropic({ apiKey });
+  if (envClient) return envClient;
+  throw new Error('No Anthropic API key configured. Provide one in Settings or set ANTHROPIC_API_KEY.');
+}
 
 const MAX_RETRIES = config.claude.maxRetries;
 const BASE_DELAY = config.claude.baseDelayMs;
@@ -32,7 +39,9 @@ export async function analyzeWithVision(
   images: ImageInput[],
   prompt: string,
   systemPrompt?: string,
+  apiKey?: string,
 ): Promise<string> {
+  const claude = getClient(apiKey);
   return withRetry(async () => {
     const content: Anthropic.Messages.ContentBlockParam[] = [];
 
@@ -49,14 +58,14 @@ export async function analyzeWithVision(
 
     content.push({ type: 'text', text: prompt });
 
-    const response = await client.messages.create({
+    const response = await claude.messages.create({
       model: config.claude.model,
       max_tokens: config.claude.maxTokens,
       system: systemPrompt || '',
       messages: [{ role: 'user', content }],
     });
 
-    const textBlock = response.content.find((b) => b.type === 'text');
+    const textBlock = response.content.find((b: Anthropic.Messages.ContentBlock) => b.type === 'text');
     return textBlock?.text || '';
   });
 }
@@ -69,7 +78,9 @@ export async function analyzeWithVisionStructured<T>(
   toolName: string,
   toolDescription: string,
   systemPrompt?: string,
+  apiKey?: string,
 ): Promise<T> {
+  const claude = getClient(apiKey);
   return withRetry(async () => {
     const content: Anthropic.Messages.ContentBlockParam[] = [];
 
@@ -86,7 +97,7 @@ export async function analyzeWithVisionStructured<T>(
 
     content.push({ type: 'text', text: prompt });
 
-    const response = await client.messages.create({
+    const response = await claude.messages.create({
       model: config.claude.model,
       max_tokens: config.claude.maxTokens,
       system: systemPrompt || '',
@@ -99,7 +110,7 @@ export async function analyzeWithVisionStructured<T>(
       tool_choice: { type: 'tool', name: toolName },
     });
 
-    const toolBlock = response.content.find((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use');
+    const toolBlock = response.content.find((b: Anthropic.Messages.ContentBlock): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use');
     if (!toolBlock) throw new Error('No tool use block in Claude response');
     return zodSchema.parse(toolBlock.input);
   });
@@ -110,16 +121,18 @@ export async function generateText(
   systemPrompt?: string,
   maxTokens = 2000,
   model: 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' = 'claude-sonnet-4-20250514',
+  apiKey?: string,
 ): Promise<string> {
+  const claude = getClient(apiKey);
   return withRetry(async () => {
-    const response = await client.messages.create({
+    const response = await claude.messages.create({
       model,
       max_tokens: maxTokens,
       system: systemPrompt || '',
       messages: [{ role: 'user', content: prompt }],
     });
 
-    const textBlock = response.content.find((b) => b.type === 'text');
+    const textBlock = response.content.find((b: Anthropic.Messages.ContentBlock) => b.type === 'text');
     return textBlock?.text || '';
   });
 }

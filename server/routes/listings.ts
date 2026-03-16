@@ -151,7 +151,8 @@ listingsRouter.post('/:id/analyze', async (c) => {
     await processListingImages(id);
 
     // Step 3: Claude Vision analysis
-    const analysis = await analyzeListing(id);
+    const apiKey = c.req.header('X-Anthropic-Key');
+    const analysis = await analyzeListing(id, apiKey);
     if (!analysis) {
       // Fetch the specific error reason from the DB
       const withError = await db.select({ analysisError: listings.analysisError })

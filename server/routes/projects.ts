@@ -124,7 +124,8 @@ projectsRouter.post('/:id/refinish', async (c) => {
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   try {
-    const plan = await generateRefinishingPlan(project.listingId, id);
+    const apiKey = c.req.header('X-Anthropic-Key');
+    const plan = await generateRefinishingPlan(project.listingId, id, apiKey);
     if (!plan) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
     const storedPlans = await db.select()
@@ -205,7 +206,8 @@ Rules:
 - Do NOT use words like "stunning", "gorgeous", "exquisite", "timeless", or "elevate"`;
 
   try {
-    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400, 'claude-haiku-4-5-20251001');
+    const listingApiKey = c.req.header('X-Anthropic-Key');
+    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400, 'claude-haiku-4-5-20251001', listingApiKey);
     await db.update(projects).set({ listingText: text }).where(eq(projects.id, id));
     return c.json({ text });
   } catch (err: unknown) {

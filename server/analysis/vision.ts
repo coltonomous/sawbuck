@@ -69,7 +69,7 @@ const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. R
   "refinishing_profit_verdict": "1-3 sentence brutal verdict: will buying this piece, refinishing it, and reselling it actually turn a profit? Factor in realistic material costs ($30-150), time investment (hobbyist rate ~$25/hr), and what refinished pieces of this type/style actually sell for. If the margins are thin or negative, say so plainly. No sugarcoating."
 }`;
 
-export async function analyzeListing(listingId: number): Promise<FurnitureAnalysis | null> {
+export async function analyzeListing(listingId: number, apiKey?: string): Promise<FurnitureAnalysis | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
@@ -128,6 +128,7 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
       'submit_analysis',
       'Submit the structured furniture analysis',
       SYSTEM_PROMPT,
+      apiKey,
     );
   } catch (err: any) {
     const errorMsg = `Claude analysis failed: ${err.message}`;

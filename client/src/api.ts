@@ -1,9 +1,27 @@
 const BASE = '/api';
 
+const ANTHROPIC_KEY_STORAGE = 'sawbuck_anthropic_key';
+
+export function getStoredApiKey(): string | null {
+  return localStorage.getItem(ANTHROPIC_KEY_STORAGE);
+}
+
+export function setStoredApiKey(key: string): void {
+  localStorage.setItem(ANTHROPIC_KEY_STORAGE, key);
+}
+
+export function clearStoredApiKey(): void {
+  localStorage.removeItem(ANTHROPIC_KEY_STORAGE);
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const apiKey = getStoredApiKey();
+  if (apiKey) headers['X-Anthropic-Key'] = apiKey;
+
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers: { ...headers, ...(options?.headers as Record<string, string>) },
   });
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }));
@@ -342,8 +360,13 @@ export const api = {
     formData.append('photo', file);
     formData.append('type', type);
     if (caption) formData.append('caption', caption);
+    const uploadHeaders: Record<string, string> = {};
+    const key = getStoredApiKey();
+    if (key) uploadHeaders['X-Anthropic-Key'] = key;
+
     const res = await fetch(`${BASE}/projects/${projectId}/photos`, {
       method: 'POST',
+      headers: uploadHeaders,
       body: formData,
     });
     if (!res.ok) {
