@@ -150,7 +150,7 @@ export function isRelevantStrict(title: string, searchTerm: string): boolean {
  * Used for OfferUp/Mercari where their search already returns related items
  * and we just need to drop obvious non-furniture (appliances, cleaning products, etc).
  */
-export function isFurniture(title: string): boolean {
+function isFurniture(title: string): boolean {
   const titleLower = title.toLowerCase();
 
   // Check all synonym group terms

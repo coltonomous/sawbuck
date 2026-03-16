@@ -10,3 +10,10 @@ data
 __tests__
 .DS_Store
 *.log
+vitest.config.ts
+Caddyfile
+docker-compose*.yml
+Dockerfile*
+up.sh
+down.sh
+.github/

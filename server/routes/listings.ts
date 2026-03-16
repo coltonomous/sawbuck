@@ -132,6 +132,7 @@ listingsRouter.patch('/:id', async (c) => {
 
   await db.update(listings).set(parsed.data).where(eq(listings.id, id));
   const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
+  if (!updated) return c.json({ error: 'Not found' }, 404);
 
   return c.json(updated);
 });

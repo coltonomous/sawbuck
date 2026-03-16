@@ -3,7 +3,7 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { generateMaterialsFromPlan, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/claude.js';
@@ -89,6 +89,7 @@ projectsRouter.patch('/:id', async (c) => {
   await recalculateFinancials(id);
 
   const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
+  if (!updated) return c.json({ error: 'Not found' }, 404);
   return c.json(updated);
 });
 

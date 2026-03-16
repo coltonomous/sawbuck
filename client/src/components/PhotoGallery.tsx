@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { api, type ProjectPhoto } from '../api';
+import { useToast } from './Toast';
 import { PHOTO_TYPES } from '@shared/constants';
 
 interface Props {
@@ -13,6 +14,7 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
   const [uploadType, setUploadType] = useState<string>('during');
   const [caption, setCaption] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const grouped = PHOTO_TYPES.reduce((acc, t) => {
     acc[t] = photos.filter((p) => p.photoType === t);
@@ -29,7 +31,7 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
       if (fileRef.current) fileRef.current.value = '';
       onUpdate();
     } catch (err) {
-      alert(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast('error', `Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
     setUploading(false);
   };

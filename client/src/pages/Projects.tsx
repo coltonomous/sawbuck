@@ -112,7 +112,7 @@ export default function Projects() {
                         {project.primaryImagePath && (
                           <img
                             src={`/images/${project.primaryImagePath}`}
-                            alt=""
+                            alt={project.name}
                             className="w-full h-24 object-cover rounded-md mb-2.5"
                           />
                         )}

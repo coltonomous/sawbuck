@@ -48,15 +48,19 @@ export default function Settings() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await api.addSearchConfig({
-      searchTerm: form.searchTerm,
-      location: form.location || undefined,
-      minPrice: form.minPrice ? parseFloat(form.minPrice) : undefined,
-      maxPrice: form.maxPrice ? parseFloat(form.maxPrice) : undefined,
-    });
-    toast('success', `Search "${form.searchTerm}" added`);
-    setForm({ searchTerm: '', location: '', minPrice: '', maxPrice: '' });
-    await reload();
+    try {
+      await api.addSearchConfig({
+        searchTerm: form.searchTerm,
+        location: form.location || undefined,
+        minPrice: form.minPrice ? parseFloat(form.minPrice) : undefined,
+        maxPrice: form.maxPrice ? parseFloat(form.maxPrice) : undefined,
+      });
+      toast('success', `Search "${form.searchTerm}" added`);
+      setForm({ searchTerm: '', location: '', minPrice: '', maxPrice: '' });
+      await reload();
+    } catch (err) {
+      toast('error', `Failed to add search: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
   const [apiKey, setApiKey] = useState(getStoredApiKey() ?? '');
@@ -146,7 +150,12 @@ export default function Settings() {
               onClick={async () => {
                 const next = !p.enabled;
                 setPlatforms((prev) => prev.map((x) => x.platform === p.platform ? { ...x, enabled: next } : x));
-                await api.togglePlatform(p.platform, next);
+                try {
+                  await api.togglePlatform(p.platform, next);
+                } catch (err) {
+                  setPlatforms((prev) => prev.map((x) => x.platform === p.platform ? { ...x, enabled: !next } : x));
+                  toast('error', `Failed to toggle platform: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                }
               }}
               className={`flex items-center justify-between rounded-lg border px-4 py-3 transition-all ${
                 p.enabled
@@ -223,9 +232,13 @@ export default function Settings() {
             <button
               onClick={async () => {
                 if (!confirm('Delete all search configs?')) return;
-                await api.clearAllSearchConfigs();
-                toast('success', 'All search configs cleared');
-                await reload();
+                try {
+                  await api.clearAllSearchConfigs();
+                  toast('success', 'All search configs cleared');
+                  await reload();
+                } catch (err) {
+                  toast('error', `Failed to clear configs: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                }
               }}
               className="text-xs text-red-500 hover:text-red-700 transition-colors"
             >
@@ -266,9 +279,13 @@ export default function Settings() {
                   )}
                   <button
                     onClick={async () => {
-                      await api.deleteSearchConfig(config.id);
-                      toast('success', 'Search config deleted');
-                      await reload();
+                      try {
+                        await api.deleteSearchConfig(config.id);
+                        toast('success', 'Search config deleted');
+                        await reload();
+                      } catch (err) {
+                        toast('error', `Failed to delete config: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                      }
                     }}
                     className="text-xs text-red-400 hover:text-red-600 transition-colors"
                   >

@@ -1,11 +1,10 @@
+import { withRetry as _withRetry } from './retry.js';
+
 const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID;
 const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET;
 
 const TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
 const BROWSE_URL = 'https://api.ebay.com/buy/browse/v1/item_summary/search';
-
-const MAX_RETRIES = 3;
-const BASE_DELAY = 1000;
 
 // Token cache — eBay tokens last 2 hours, we refresh 60s before expiry
 let cachedToken: string | null = null;
@@ -15,21 +14,8 @@ function hasCredentials(): boolean {
   return Boolean(EBAY_CLIENT_ID && EBAY_CLIENT_SECRET);
 }
 
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (err: any) {
-      const status = err?.status ?? err?.statusCode;
-      const isRetryable = status === 429 || (status >= 500 && status < 600);
-      if (!isRetryable || attempt === MAX_RETRIES - 1) throw err;
-
-      const delay = BASE_DELAY * Math.pow(2, attempt) + Math.random() * 1000;
-      console.warn(`[ebay] Retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms (${status || err?.message})`);
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  throw new Error('Should not reach here');
+function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  return _withRetry(fn, { maxRetries: 3, baseDelayMs: 1000, label: 'ebay' });
 }
 
 async function getAccessToken(): Promise<string> {

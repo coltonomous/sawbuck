@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
+import { resolveImageUrl } from '../utils';
 
 export default function ListingDetail() {
   const { id } = useParams();
@@ -49,7 +50,7 @@ export default function ListingDetail() {
       });
       navigate(`/projects/${project.id}`);
     } catch (err) {
-      alert(`Failed to create project: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      toast('error', `Failed to create project: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -115,8 +116,8 @@ export default function ListingDetail() {
           {listing.images.map((img: ListingImage) => (
             <img
               key={img.id}
-              src={img.localPathResized ? `/images/resized/${img.localPathResized.replace('resized/', '')}` : img.sourceUrl}
-              alt=""
+              src={img.localPathResized ? resolveImageUrl(img.localPathResized, true) : img.sourceUrl}
+              alt={listing.title}
               loading="lazy"
               className="h-52 rounded-lg object-cover shrink-0 bg-gray-100"
             />

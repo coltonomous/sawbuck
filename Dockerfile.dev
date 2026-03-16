@@ -17,6 +17,8 @@ RUN npx playwright install --with-deps chromium
 COPY server/ ./server/
 COPY drizzle/ ./drizzle/
 COPY client/ ./client/
+COPY shared/ ./shared/
+COPY scripts/ ./scripts/
 COPY drizzle.config.ts tsconfig.json ./
 
 RUN mkdir -p /app/data/images/originals /app/data/images/resized

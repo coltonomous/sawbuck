@@ -1,35 +1,7 @@
 import { useState } from 'react';
+import { type RefinishingPlan as RefinishingPlanType } from '../api';
 
-interface Product {
-  name: string;
-  brand: string;
-  quantity: number;
-  unit: string;
-  estimated_price: number;
-}
-
-interface Step {
-  order: number;
-  title: string;
-  description: string;
-  duration_minutes: number;
-  products: Product[];
-  tips: string[];
-}
-
-interface Plan {
-  styleRecommendation: string | null;
-  description: string | null;
-  difficultyLevel: string | null;
-  beforeDescription: string | null;
-  afterDescription: string | null;
-  steps: Step[];
-  estimatedHours: number | null;
-  estimatedMaterialCost: number | null;
-  estimatedResalePrice: number | null;
-}
-
-export default function RefinishingPlan({ plan }: { plan: Plan }) {
+export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType }) {
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set([0]));
 
   const toggleStep = (index: number) => {

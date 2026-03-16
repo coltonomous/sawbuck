@@ -12,10 +12,14 @@ export default function BulkActionBar({ selected, onClear, onDone }: Props) {
   const { toast } = useToast();
 
   const handleAction = async (updates: Partial<Listing>) => {
-    await api.bulkUpdateListings([...selected], updates);
-    toast('success', `${count} listing${count !== 1 ? 's' : ''} updated`);
-    onClear();
-    onDone();
+    try {
+      await api.bulkUpdateListings([...selected], updates);
+      toast('success', `${count} listing${count !== 1 ? 's' : ''} updated`);
+      onClear();
+      onDone();
+    } catch (err) {
+      toast('error', `Bulk update failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
   };
 
   return (

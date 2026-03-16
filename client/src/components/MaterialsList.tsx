@@ -1,20 +1,6 @@
 import { useState } from 'react';
-import { api } from '../api';
-
-interface Material {
-  id: number;
-  category: string;
-  productName: string;
-  brand: string | null;
-  quantity: number;
-  unit: string | null;
-  estimatedPrice: number | null;
-  actualPrice: number | null;
-  purchased: boolean;
-  amazonSearchUrl: string | null;
-  homeDepotSearchUrl: string | null;
-  lowesSearchUrl: string | null;
-}
+import { api, type Material } from '../api';
+import { useToast } from './Toast';
 
 export default function MaterialsList({
   materials,
@@ -26,6 +12,7 @@ export default function MaterialsList({
   onUpdate?: () => void;
 }) {
   const [updating, setUpdating] = useState<number | null>(null);
+  const { toast } = useToast();
 
   const totalEstimated = materials.reduce((s, m) => s + (m.estimatedPrice ?? 0), 0);
   const purchased = materials.filter((m) => m.purchased);
@@ -34,8 +21,12 @@ export default function MaterialsList({
 
   const handleTogglePurchased = async (mat: Material) => {
     setUpdating(mat.id);
-    await api.updateMaterial(projectId, mat.id, { purchased: !mat.purchased });
-    onUpdate?.();
+    try {
+      await api.updateMaterial(projectId, mat.id, { purchased: !mat.purchased });
+      onUpdate?.();
+    } catch (err) {
+      toast('error', `Failed to update material: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
     setUpdating(null);
   };
 
@@ -43,8 +34,12 @@ export default function MaterialsList({
     const val = parseFloat(price);
     if (isNaN(val)) return;
     setUpdating(mat.id);
-    await api.updateMaterial(projectId, mat.id, { actualPrice: val });
-    onUpdate?.();
+    try {
+      await api.updateMaterial(projectId, mat.id, { actualPrice: val });
+      onUpdate?.();
+    } catch (err) {
+      toast('error', `Failed to update price: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
     setUpdating(null);
   };
 

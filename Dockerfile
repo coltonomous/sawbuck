@@ -4,6 +4,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY client/vite.config.ts client/tsconfig.json client/index.html ./client/
 COPY client/src/ ./client/src/
+COPY shared/ ./shared/
 RUN npm ci --ignore-scripts
 RUN cd client && npx vite build
 
@@ -19,7 +20,7 @@ WORKDIR /app
 
 # Install production deps + native modules
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --omit=dev
 
 # Install Playwright Chromium + system dependencies
 RUN npx playwright install --with-deps chromium
@@ -32,6 +33,7 @@ COPY scripts/ ./scripts/
 
 # Copy built client from stage 1
 COPY --from=client-build /app/client/dist/ ./client/dist/
+COPY shared/ ./shared/
 
 # Create data directory (will be overridden by volume mount)
 RUN mkdir -p /app/data/images/originals /app/data/images/resized
@@ -39,7 +41,10 @@ RUN mkdir -p /app/data/images/originals /app/data/images/resized
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:3001/health || exit 1
+  CMD node -e "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+
+RUN addgroup --system app && adduser --system --ingroup app app
+USER app
 
 # Run migrations then start server
 CMD ["sh", "-c", "npx drizzle-kit migrate && NODE_ENV=production npx tsx server/index.ts"]

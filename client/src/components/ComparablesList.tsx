@@ -1,17 +1,7 @@
 import { useState, useEffect } from 'react';
-import { api } from '../api';
+import { api, type Comparable } from '../api';
 import { useToast } from './Toast';
 import { Spinner, ExternalLinkIcon, Card, CardHeader } from './ui';
-
-interface Comparable {
-  id: number;
-  title: string;
-  soldPrice: number;
-  soldDate: string | null;
-  condition: string | null;
-  sourceUrl: string | null;
-  source: string | null;
-}
 
 export default function ComparablesList({ listingId }: { listingId: number }) {
   const [comps, setComps] = useState<Comparable[]>([]);
@@ -53,8 +43,6 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
 
   const soldPrices = soldComps.map(c => c.soldPrice).filter(Boolean);
   const activePrices = activeComps.map(c => c.soldPrice).filter(Boolean);
-  const allPrices = comps.map(c => c.soldPrice).filter(Boolean);
-
   const calcMedian = (prices: number[]) => {
     if (prices.length === 0) return 0;
     const sorted = [...prices].sort((a, b) => a - b);

@@ -5,6 +5,7 @@ import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { SkeletonTable } from '../components/Skeleton';
 import BulkActionBar from '../components/BulkActionBar';
 import { PlatformBadge, DealScoreBadge, StatusPill, EmptyState, SearchIcon } from '../components/ui';
+import { resolveImageUrl } from '../utils';
 import { PLATFORMS, LISTING_STATUSES } from '@shared/constants';
 
 type SortKey = 'title' | 'platform' | 'askingPrice' | 'furnitureType' | 'dealScore' | 'status' | 'scrapedAt';
@@ -172,8 +173,8 @@ export default function Listings() {
                     <td className="px-2 py-2.5">
                       {listing.primaryImage ? (
                         <img
-                          src={listing.primaryImage.startsWith('http') ? listing.primaryImage : `/images/resized/${listing.primaryImage.replace('resized/', '')}`}
-                          alt=""
+                          src={resolveImageUrl(listing.primaryImage, true)}
+                          alt={listing.title}
                           loading="lazy"
                           className="w-10 h-10 rounded-md object-cover"
                         />

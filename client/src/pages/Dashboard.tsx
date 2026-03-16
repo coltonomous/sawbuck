@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast';
 import { SkeletonCard } from '../components/Skeleton';
 import ListingsMap from '../components/ListingsMap';
 import { PlatformBadge, Spinner, EmptyState, SearchIcon, dealScoreColor, dealScoreTextColor } from '../components/ui';
+import { resolveImageUrl } from '../utils';
 
 interface ScrapeStepResult {
   found: number;
@@ -348,8 +349,8 @@ export default function Dashboard() {
               >
                 <div className="aspect-[4/3] overflow-hidden bg-gray-100">
                   <img
-                    src={listing.primaryImage!.startsWith('http') ? listing.primaryImage! : `/images/${listing.primaryImage}`}
-                    alt=""
+                    src={resolveImageUrl(listing.primaryImage!)}
+                    alt={listing.title}
                     loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />

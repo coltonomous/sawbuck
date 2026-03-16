@@ -1,7 +1,8 @@
 import { createHash } from 'crypto';
 import { db } from '../db/index.js';
 import { listings, listingImages, searchConfigs, scrapeRuns, platformSettings } from '../db/schema.js';
-import { eq, and, sql } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
+import type { Platform } from '../../shared/constants.js';
 import { CraigslistScraper } from './craigslist.js';
 import { filterRelevant } from './relevance-filter.js';
 import { OfferUpScraper } from './offerup.js';
@@ -193,7 +194,7 @@ export async function runAllActiveScrapers(
   const existingPlatforms = new Set<string>(allPlatformSettings.map(p => p.platform));
   for (const p of knownPlatforms) {
     if (!existingPlatforms.has(p)) {
-      await db.insert(platformSettings).values({ platform: p as any, enabled: true }).onConflictDoNothing();
+      await db.insert(platformSettings).values({ platform: p as Platform, enabled: true }).onConflictDoNothing();
     }
   }
 
@@ -206,13 +207,14 @@ export async function runAllActiveScrapers(
 
   // Expand configs: platform-agnostic ('all') configs fan out across enabled platforms,
   // legacy per-platform configs only run if that platform is enabled
+  const activeSet = new Set<string>(activePlatforms);
   const jobs: { platform: string; config: typeof allConfigs[0] }[] = [];
   for (const config of allConfigs) {
     if ((config.platform as string) === 'all') {
       for (const p of activePlatforms) {
         jobs.push({ platform: p, config });
       }
-    } else if (activePlatforms.includes(config.platform as any)) {
+    } else if (activeSet.has(config.platform)) {
       jobs.push({ platform: config.platform, config });
     }
   }

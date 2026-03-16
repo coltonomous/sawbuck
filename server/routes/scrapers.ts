@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { scrapeRuns, searchConfigs, platformSettings, backgroundJobs } from '../db/schema.js';
 import { desc, eq } from 'drizzle-orm';
 import { runScraper, runAllActiveScrapers } from '../scrapers/manager.js';
+import type { Platform } from '../../shared/constants.js';
 import { runScraperSchema, addSearchConfigSchema, togglePlatformSchema } from '../lib/validation.js';
 import crypto from 'crypto';
 
@@ -123,7 +124,7 @@ scrapersRouter.get('/platforms', async (c) => {
   const existingSet = new Set(existing.map((p) => p.platform));
   for (const p of PLATFORMS) {
     if (!existingSet.has(p)) {
-      await db.insert(platformSettings).values({ platform: p as any, enabled: true }).onConflictDoNothing();
+      await db.insert(platformSettings).values({ platform: p as Platform, enabled: true }).onConflictDoNothing();
     }
   }
   const platforms = existingSet.size === PLATFORMS.length

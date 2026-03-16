@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import { config } from './config.js';
+import { withRetry as _withRetry } from './retry.js';
 
 // Singleton for server-side env key (null if ANTHROPIC_API_KEY not set)
 const envClient = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
@@ -11,23 +12,12 @@ function getClient(apiKey?: string): Anthropic {
   throw new Error('No Anthropic API key configured. Provide one in Settings or set ANTHROPIC_API_KEY.');
 }
 
-const MAX_RETRIES = config.claude.maxRetries;
-const BASE_DELAY = config.claude.baseDelayMs;
-
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      return await fn();
-    } catch (err: any) {
-      const isRetryable = err?.status === 429 || err?.status === 529 || err?.status >= 500;
-      if (!isRetryable || attempt === MAX_RETRIES - 1) throw err;
-
-      const delay = BASE_DELAY * Math.pow(2, attempt) + Math.random() * 1000;
-      console.warn(`[claude] Retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms (${err?.status || err?.message})`);
-      await new Promise((r) => setTimeout(r, delay));
-    }
-  }
-  throw new Error('Should not reach here');
+function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  return _withRetry(fn, {
+    maxRetries: config.claude.maxRetries,
+    baseDelayMs: config.claude.baseDelayMs,
+    label: 'claude',
+  });
 }
 
 export interface ImageInput {

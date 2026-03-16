@@ -23,7 +23,8 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - app
+      app:
+        condition: service_healthy
     restart: unless-stopped
 
   # Optional: run the scraper on a schedule inside Docker

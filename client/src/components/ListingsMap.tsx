@@ -4,6 +4,7 @@ import L from 'leaflet';
 import { Link } from 'react-router-dom';
 import type { Listing } from '../api';
 import { PLATFORM_BADGE_COLORS, type Platform } from '@shared/constants';
+import { resolveImageUrl } from '../utils';
 
 function makeIcon(color: string) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="36" viewBox="0 0 24 36">
@@ -66,8 +67,8 @@ export default function ListingsMap({ listings }: Props) {
             <div className="w-48">
               {listing.primaryImage && (
                 <img
-                  src={listing.primaryImage.startsWith('http') ? listing.primaryImage : `/images/${listing.primaryImage}`}
-                  alt=""
+                  src={resolveImageUrl(listing.primaryImage)}
+                  alt={listing.title}
                   className="w-full h-24 object-cover rounded mb-2"
                 />
               )}
