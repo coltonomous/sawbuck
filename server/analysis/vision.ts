@@ -2,8 +2,9 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { analyzeWithVision, type ImageInput } from '../lib/claude.js';
+import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
 import { getImageBase64 } from '../images/processor.js';
+import { config } from '../lib/config.js';
 
 const FurnitureAnalysisSchema = z.object({
   furniture_type: z.string(),
@@ -19,6 +20,29 @@ const FurnitureAnalysisSchema = z.object({
   refinishing_profit_verdict: z.string(),
 });
 
+// JSON Schema for Anthropic tool use — mirrors FurnitureAnalysisSchema above
+const ANALYSIS_JSON_SCHEMA = {
+  type: 'object',
+  properties: {
+    furniture_type: { type: 'string' },
+    furniture_style: { type: 'string' },
+    condition_score: { type: 'number', minimum: 1, maximum: 10 },
+    condition_notes: { type: 'string' },
+    wood_species: { type: 'string', nullable: true },
+    wood_confidence: { type: 'number', minimum: 0, maximum: 1 },
+    notable_features: { type: 'array', items: { type: 'string' } },
+    damage_items: { type: 'array', items: { type: 'string' } },
+    refinishing_potential: { type: 'string', enum: ['high', 'medium', 'low'] },
+    flip_recommendation: { type: 'string', enum: ['strong_buy', 'buy', 'maybe', 'pass'] },
+    refinishing_profit_verdict: { type: 'string' },
+  },
+  required: [
+    'furniture_type', 'furniture_style', 'condition_score', 'condition_notes',
+    'wood_species', 'wood_confidence', 'notable_features', 'damage_items',
+    'refinishing_potential', 'flip_recommendation', 'refinishing_profit_verdict',
+  ],
+} as const;
+
 export type FurnitureAnalysis = z.infer<typeof FurnitureAnalysisSchema>;
 
 const SYSTEM_PROMPT = `You are a brutally honest furniture appraiser with 20+ years of experience in vintage, mid-century, and antique furniture. You do NOT sugarcoat. You do NOT give optimistic assessments to be nice.
@@ -27,7 +51,7 @@ Your job is to analyze photos of furniture listings and give the unfiltered trut
 
 Grade condition like a strict teacher: 7+ means genuinely good, not "good enough." A 5 means real problems. Don't hand out 8s and 9s to be encouraging.
 
-IMPORTANT: Respond with ONLY a valid JSON object matching the requested schema. No markdown, no explanation, just JSON.`;
+Use the submit_analysis tool to return your analysis.`;
 
 const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. Return a JSON object with these fields:
 
@@ -58,12 +82,14 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     ));
 
   if (images.length === 0) {
-    console.warn(`[vision] No downloaded images for listing ${listingId}`);
+    const err = 'No downloaded images available for analysis';
+    console.warn(`[vision] ${err} (listing ${listingId})`);
+    await db.update(listings).set({ analysisError: err }).where(eq(listings.id, listingId));
     return null;
   }
 
-  // Use up to 3 images — prefer resized, fall back to originals
-  const toAnalyze = images.slice(0, 3);
+  // Use up to N images — prefer resized, fall back to originals
+  const toAnalyze = images.slice(0, config.claude.maxAnalysisImages);
   const imageInputs: ImageInput[] = [];
 
   for (const img of toAnalyze) {
@@ -79,7 +105,9 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
   }
 
   if (imageInputs.length === 0) {
-    console.warn(`[vision] No readable images for listing ${listingId}`);
+    const err = 'All images failed to load — files may be corrupted or missing';
+    console.warn(`[vision] ${err} (listing ${listingId})`);
+    await db.update(listings).set({ analysisError: err }).where(eq(listings.id, listingId));
     return null;
   }
 
@@ -90,24 +118,25 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     prompt += `\n\nThe seller is asking $${listing.askingPrice} for this piece. Factor this into your refinishing_profit_verdict.`;
   }
 
-  const response = await analyzeWithVision(imageInputs, prompt, SYSTEM_PROMPT);
-
-  // Parse JSON from response — handle markdown code blocks if Claude wraps it
-  let jsonStr = response.trim();
-  const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
-
   let analysis: FurnitureAnalysis;
   try {
-    const parsed = JSON.parse(jsonStr);
-    analysis = FurnitureAnalysisSchema.parse(parsed);
+    analysis = await analyzeWithVisionStructured(
+      imageInputs,
+      prompt,
+      ANALYSIS_JSON_SCHEMA,
+      FurnitureAnalysisSchema,
+      'submit_analysis',
+      'Submit the structured furniture analysis',
+      SYSTEM_PROMPT,
+    );
   } catch (err: any) {
-    console.error(`[vision] Failed to parse Claude response for listing ${listingId}:`, err.message);
-    console.error('[vision] Raw response:', response.slice(0, 500));
+    const errorMsg = `Claude analysis failed: ${err.message}`;
+    console.error(`[vision] ${errorMsg} (listing ${listingId})`);
+    await db.update(listings).set({ analysisError: errorMsg }).where(eq(listings.id, listingId));
     return null;
   }
 
-  // Update listing with analysis results
+  // Update listing with analysis results (clear any prior error)
   await db.update(listings).set({
     furnitureType: analysis.furniture_type,
     furnitureStyle: analysis.furniture_style,
@@ -118,6 +147,7 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     analysisRaw: JSON.stringify(analysis),
     analyzedAt: new Date().toISOString(),
     status: 'analyzed',
+    analysisError: null,
   }).where(eq(listings.id, listingId));
 
   // Mark images as analyzed

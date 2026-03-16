@@ -41,6 +41,9 @@ export const listings = sqliteTable('listings', {
 
   // Deduplication
   fingerprint: text('fingerprint'),
+
+  // Analysis error tracking
+  analysisError: text('analysis_error'),
 }, (table) => [
   uniqueIndex('idx_listings_platform_external').on(table.platform, table.externalId),
   index('idx_listings_status').on(table.status),
@@ -207,6 +210,22 @@ export const projects = sqliteTable('projects', {
 }, (table) => [
   index('idx_projects_status').on(table.status),
   index('idx_projects_listing_id').on(table.listingId),
+]);
+
+// ============================================================
+// Background Jobs
+// ============================================================
+
+export const backgroundJobs = sqliteTable('background_jobs', {
+  id: text('id').primaryKey(), // UUID
+  type: text('type', { enum: ['scrape', 'analyze'] }).notNull(),
+  status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
+  result: text('result'), // JSON
+  error: text('error'),
+  startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
+  completedAt: text('completed_at'),
+}, (table) => [
+  index('idx_background_jobs_status').on(table.status),
 ]);
 
 export const projectPhotos = sqliteTable('project_photos', {

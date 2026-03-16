@@ -5,9 +5,10 @@ import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
+import { config } from '../lib/config.js';
 
-const MAX_EDGE = 1500;
-const WEBP_QUALITY = 85;
+const MAX_EDGE = config.images.maxEdge;
+const WEBP_QUALITY = config.images.webpQuality;
 
 export async function processImage(originalPath: string, listingId: number, index: number, platform: string): Promise<{ resizedPath: string; width: number; height: number }> {
   const inputPath = path.join(IMAGES_DIR, originalPath);
