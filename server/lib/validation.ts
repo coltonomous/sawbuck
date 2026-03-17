@@ -88,6 +88,49 @@ export const togglePlatformSchema = z.object({
   enabled: z.boolean(),
 });
 
+const SUPPORTED_LISTING_HOSTS = [
+  /^([a-z]+\.)?craigslist\.org$/,
+  /^(www\.)?offerup\.com$/,
+  /^(www\.)?mercari\.com$/,
+  /^(www\.)?ebay\.com$/,
+  /^(www\.)?facebook\.com$/,
+];
+
+export const importListingSchema = z.object({
+  url: z.string()
+    .trim()
+    .transform((val) => {
+      // Strip common tracking params
+      try {
+        const u = new URL(val);
+        // Only allow http/https
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') {
+          return val; // will fail host check below
+        }
+        for (const key of [...u.searchParams.keys()]) {
+          if (/^(utm_|fbclid|gclid|ref|si|_trkparms|_trksid|hash|sxsrf)/.test(key)) {
+            u.searchParams.delete(key);
+          }
+        }
+        return u.toString();
+      } catch {
+        return val;
+      }
+    })
+    .refine((val) => {
+      try {
+        const u = new URL(val);
+        return u.protocol === 'http:' || u.protocol === 'https:';
+      } catch { return false; }
+    }, { message: 'Must be a valid HTTP(S) URL' })
+    .refine((val) => {
+      try {
+        const host = new URL(val).hostname;
+        return SUPPORTED_LISTING_HOSTS.some((re) => re.test(host));
+      } catch { return false; }
+    }, { message: 'Unsupported platform. Supported: Craigslist, OfferUp, Mercari, eBay, Facebook Marketplace.' }),
+});
+
 // ============================================================
 // Comparables
 // ============================================================

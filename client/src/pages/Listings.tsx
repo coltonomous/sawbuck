@@ -1,10 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, type Listing } from '../api';
+import type { FormEvent } from 'react';
 import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { SkeletonTable } from '../components/Skeleton';
 import BulkActionBar from '../components/BulkActionBar';
-import { PlatformBadge, DealScoreBadge, StatusPill, EmptyState, SearchIcon } from '../components/ui';
+import { PlatformBadge, DealScoreBadge, StatusPill, EmptyState, SearchIcon, Spinner } from '../components/ui';
 import { resolveImageUrl } from '../utils';
 import { PLATFORMS, LISTING_STATUSES } from '@shared/constants';
 
@@ -23,6 +24,37 @@ export default function Listings() {
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [showImport, setShowImport] = useState(false);
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImport = async (e: FormEvent) => {
+    e.preventDefault();
+    const url = importUrl.trim();
+    if (!url) return;
+    setImporting(true);
+    setImportError('');
+    try {
+      const { listing, alreadyExists } = await api.importListing(url);
+      setImportUrl('');
+      setShowImport(false);
+      if (alreadyExists) {
+        navigate(`/listings/${listing.id}`);
+      } else {
+        navigate(`/listings/${listing.id}`);
+      }
+    } catch (err: any) {
+      setImportError(err.message || 'Import failed');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (showImport) importInputRef.current?.focus();
+  }, [showImport]);
 
   const fetchListings = useCallback(() => {
     setLoading(true);
@@ -82,7 +114,70 @@ export default function Listings() {
     <div>
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-2xl font-bold text-gray-900">All Listings</h2>
+        <button
+          onClick={() => { setShowImport(!showImport); setImportError(''); }}
+          className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
+            showImport
+              ? 'text-gray-500 hover:text-gray-700'
+              : 'border border-gray-300 hover:bg-gray-50 text-gray-700'
+          }`}
+        >
+          {showImport ? (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+              Cancel
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+              Paste a Link
+            </>
+          )}
+        </button>
       </div>
+
+      {showImport && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-5 animate-in fade-in slide-in-from-top-1">
+          <form onSubmit={handleImport} className="flex gap-2">
+            <div className="relative flex-1">
+              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+                </svg>
+              </div>
+              <input
+                ref={importInputRef}
+                type="url"
+                value={importUrl}
+                onChange={(e) => { setImportUrl(e.target.value); setImportError(''); }}
+                placeholder="https://..."
+                className="w-full border border-gray-300 rounded-lg pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent placeholder:text-gray-400"
+                disabled={importing}
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={importing || !importUrl.trim()}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap"
+            >
+              {importing ? (
+                <>
+                  <Spinner size="xs" />
+                  Importing
+                </>
+              ) : 'Import Listing'}
+            </button>
+          </form>
+          {importError ? (
+            <p className="text-sm text-red-600 mt-2">{importError}</p>
+          ) : (
+            <p className="text-xs text-gray-400 mt-2">
+              Craigslist, OfferUp, Mercari, eBay, or Facebook Marketplace
+            </p>
+          )}
+        </div>
+      )}
+
       <p className="text-sm text-gray-500 mb-5">
         {total} listing{total !== 1 ? 's' : ''}
         {(platformFilter || statusFilter) && ' (filtered)'}

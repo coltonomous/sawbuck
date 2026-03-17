@@ -308,6 +308,8 @@ export const api = {
     request<{ updated: number }>('/listings/bulk', { method: 'PATCH', body: JSON.stringify({ ids, updates }) }),
   analyzeListing: (id: number) =>
     request<AnalysisResult>(`/listings/${id}/analyze`, { method: 'POST' }),
+  importListing: (url: string) =>
+    request<{ listing: ListingDetail; alreadyExists: boolean }>('/listings/import', { method: 'POST', body: JSON.stringify({ url }) }),
 
   // Projects
   getProjects: (params?: Record<string, string>) => {
