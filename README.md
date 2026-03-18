@@ -1,10 +1,10 @@
 # Sawbuck
 
-Find underpriced furniture on Craigslist, OfferUp, Mercari, and eBay. Analyze condition and value with Claude's vision API. Plan refinishing projects, source materials, and track profit from acquisition to sale.
+Find underpriced furniture on Craigslist, OfferUp, Mercari, eBay, and Facebook Marketplace. Analyze condition and value with Claude's vision API. Plan refinishing projects, source materials, and track profit from acquisition to sale.
 
 ## What It Does
 
-- **Deal Finder** — scrapes listing platforms on a schedule, deduplicates across sources, filters irrelevant results, and surfaces the best deals by price-to-value ratio
+- **Deal Finder** — scrapes listing platforms on a schedule, deduplicates across sources, filters irrelevant results, and surfaces the best deals by price-to-value ratio. Users can also paste a direct listing URL to import items the scraper missed
 - **Vision Analysis** — sends listing photos to Claude for furniture type/style identification, condition scoring, wood species detection, and a blunt profit verdict on whether refinishing is worth the effort
 - **eBay Comparables** — pulls sold comps via Playwright scraper with CAPTCHA detection and multi-query fallback, supplements with eBay Browse API active listings when blocked. Pricing engine blends sold and active data with source-aware weighting
 - **Refinishing Plans** — generates step-by-step refinishing instructions with specific product recommendations, realistic time/cost estimates, and expected resale prices
@@ -18,7 +18,7 @@ Find underpriced furniture on Craigslist, OfferUp, Mercari, and eBay. Analyze co
 |-------|------|
 | Server | Hono, Node.js, TypeScript |
 | Database | SQLite via Drizzle ORM |
-| Scraping | Playwright (browser pool) |
+| Scraping | Playwright (browser pool with stealth + request interception) |
 | AI | Claude Sonnet (vision + text) |
 | eBay API | Browse API v1 (OAuth client credentials) |
 | Client | React 19, Vite, Tailwind CSS v4 |
@@ -122,13 +122,19 @@ Runs the API on `:3001` and Vite dev server on `:5173` with source code mounted 
 |--------|----------|-------------|
 | GET | `/api/listings` | List all scraped listings |
 | GET | `/api/listings/:id` | Listing detail with images and analysis |
+| POST | `/api/listings/import` | Import a listing by pasting its URL |
+| PATCH | `/api/listings/:id` | Update listing status |
+| PATCH | `/api/listings/bulk` | Bulk update listing statuses |
 | POST | `/api/listings/:id/analyze` | Run Claude vision analysis |
-| POST | `/api/listings/:id/pricing` | Calculate pricing from comps |
+| GET | `/api/listings/:id/price` | Calculate pricing from comps |
 | POST | `/api/comparables/search` | Search eBay sold + active comps |
 | GET | `/api/comparables/:listingId` | Get stored comps for a listing |
 | GET | `/api/scrapers/status` | Platform settings and search configs |
 | POST | `/api/scrapers/run` | Trigger a scrape run |
+| GET | `/api/scrapers/run/stream` | SSE stream of scrape progress |
 | GET/POST | `/api/projects` | Project CRUD |
+| POST | `/api/projects/:id/refinish` | Generate refinishing plan |
+| POST | `/api/projects/:id/listing-text` | Generate marketplace listing copy |
 | GET | `/api/stats` | Dashboard analytics |
 
 ## How Pricing Works
