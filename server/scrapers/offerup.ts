@@ -1,5 +1,5 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
-import { withPage } from './browser-pool.js';
+import { withPage, humanDelay } from './browser-pool.js';
 
 export class OfferUpScraper extends BaseScraper {
   platform = 'offerup' as const;
@@ -34,13 +34,13 @@ export class OfferUpScraper extends BaseScraper {
         });
         if (filterClicked) {
           console.log(`[offerup] Clicked category filter: ${filterClicked}`);
-          await page.waitForTimeout(1500);
+          await page.waitForTimeout(humanDelay(1200, 2500));
         }
       } catch {}
 
       // One scroll to load more
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(humanDelay(800, 1800));
 
       // Extract everything from search cards — no detail pages needed
       const listings = await page.evaluate(() => {

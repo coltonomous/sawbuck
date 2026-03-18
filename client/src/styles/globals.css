@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../shared";
 @import "leaflet/dist/leaflet.css";
 
 html {

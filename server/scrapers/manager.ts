@@ -34,6 +34,7 @@ export interface ScrapeResult {
   duplicate: number;
   newListingIds: number[];
   error?: string;
+  warning?: string;
 }
 
 export async function runScraper(
@@ -261,6 +262,34 @@ export async function runAllActiveScrapers(
 
   // Close browser after all scraping is done
   await closeBrowser();
+
+  // Health check: flag platforms that returned 0 results across ALL their configs.
+  // A single config returning 0 is normal (niche search term), but if every config
+  // for a platform returns 0 found, the selectors are almost certainly broken.
+  const perPlatform = new Map<string, { totalFound: number; configs: number; allFailed: boolean }>();
+  for (const r of results) {
+    const entry = perPlatform.get(r.platform) || { totalFound: 0, configs: 0, allFailed: true };
+    entry.configs++;
+    entry.totalFound += r.found;
+    if (!r.error) entry.allFailed = false;
+    perPlatform.set(r.platform, entry);
+  }
+  for (const [platform, stats] of perPlatform) {
+    if (stats.allFailed) {
+      const msg = `${platform}: all ${stats.configs} config(s) failed — scraper may be broken or platform is blocking`;
+      console.error(`[health] ${msg}`);
+      // Tag each result for this platform so the frontend can surface the warning
+      for (const r of results) {
+        if (r.platform === platform) r.warning = msg;
+      }
+    } else if (stats.totalFound === 0 && stats.configs > 0) {
+      const msg = `${platform}: 0 results across ${stats.configs} config(s) — selectors may be broken`;
+      console.warn(`[health] ${msg}`);
+      for (const r of results) {
+        if (r.platform === platform) r.warning = msg;
+      }
+    }
+  }
 
   // Update lastRunAt on all configs that were used
   const configIds = [...new Set(allConfigs.map(c => c.id))];

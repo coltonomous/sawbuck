@@ -1,5 +1,5 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
-import { withPage } from './browser-pool.js';
+import { withPage, humanDelay } from './browser-pool.js';
 
 export class FacebookScraper extends BaseScraper {
   platform = 'facebook' as const;
@@ -18,7 +18,7 @@ export class FacebookScraper extends BaseScraper {
     return withPage(async (page) => {
       // Facebook is heavy on JS — wait for network to settle
       await page.goto(searchUrl, { waitUntil: 'networkidle', timeout: 45000 });
-      await page.waitForTimeout(2000 + Math.random() * 1000);
+      await page.waitForTimeout(humanDelay(2000, 4000));
 
       // Dismiss login modal if it appears (FB nags non-logged-in users)
       await page.evaluate(() => {
@@ -28,11 +28,11 @@ export class FacebookScraper extends BaseScraper {
           (btn as HTMLElement).click();
         }
       });
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(humanDelay(400, 800));
 
       // Scroll once to trigger lazy-loading of more results
       await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(humanDelay(1200, 2500));
 
       const listings = await page.evaluate(() => {
         const items: {

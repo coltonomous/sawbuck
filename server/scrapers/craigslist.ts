@@ -1,5 +1,5 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
-import { withPage } from './browser-pool.js';
+import { withPage, humanDelay } from './browser-pool.js';
 import { stripKeywordSpam } from './detail-fetcher.js';
 import { resolveClSubdomain, clDisplayLocation } from '../../shared/constants.js';
 
@@ -18,7 +18,7 @@ export class CraigslistScraper extends BaseScraper {
 
     return withPage(async (page) => {
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(1500 + Math.random() * 1000);
+      await page.waitForTimeout(humanDelay(1500, 3000));
 
       // Extract listings with images directly from search page
       const searchResults = await page.evaluate(() => {
@@ -68,7 +68,7 @@ export class CraigslistScraper extends BaseScraper {
         if (i < 5) {
           try {
             await page.goto(result.url, { waitUntil: 'domcontentloaded', timeout: 10000 });
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(humanDelay(500, 1500));
 
             const detail = await page.evaluate(() => {
               const description = document.querySelector('#postingbody')?.textContent?.trim()

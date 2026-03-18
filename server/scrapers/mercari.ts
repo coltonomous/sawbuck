@@ -1,5 +1,5 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
-import { withPage } from './browser-pool.js';
+import { withPage, humanDelay } from './browser-pool.js';
 
 export class MercariScraper extends BaseScraper {
   platform = 'mercari' as const;
@@ -36,12 +36,12 @@ export class MercariScraper extends BaseScraper {
         }
       }
 
-      await page.waitForTimeout(2000 + Math.random() * 1000);
+      await page.waitForTimeout(humanDelay(2000, 3500));
 
       // Scroll to load more
       for (let i = 0; i < 2; i++) {
         await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await page.waitForTimeout(1500 + Math.random() * 500);
+        await page.waitForTimeout(humanDelay(1200, 2500));
       }
 
       // Extract listings
@@ -102,7 +102,7 @@ export class MercariScraper extends BaseScraper {
       for (const result of toVisit) {
         try {
           await page.goto(result.url, { waitUntil: 'networkidle', timeout: 20000 });
-          await page.waitForTimeout(1200 + Math.random() * 800);
+          await page.waitForTimeout(humanDelay(1200, 2500));
 
           const detail = await page.evaluate(() => {
             const description = document.querySelector(

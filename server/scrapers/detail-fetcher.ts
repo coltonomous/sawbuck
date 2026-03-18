@@ -1,7 +1,7 @@
 import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { withPage } from './browser-pool.js';
+import { withPage, humanDelay } from './browser-pool.js';
 import { CL_DISPLAY_NAMES } from '../../shared/constants.js';
 
 /**
@@ -41,7 +41,7 @@ export async function fetchListingDetails(listing: ListingRow): Promise<void> {
 
   await withPage(async (page) => {
     await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(humanDelay(1200, 2500));
 
     if (listing.platform === 'craigslist') {
       await fetchCraigslistDetail(page, listing);
@@ -64,6 +64,9 @@ function locationFromCraigslistUrl(url: string): string | null {
 
 async function fetchCraigslistDetail(page: any, listing: ListingRow) {
   const detail = await page.evaluate(() => {
+    const title = document.querySelector('#titletextonly')?.textContent?.trim() || '';
+    const priceText = document.querySelector('.price')?.textContent?.replace(/[^0-9.]/g, '') || '';
+
     const description = document.querySelector('#postingbody')?.textContent?.trim()
       ?.replace(/QR Code Link to This Post\s*/i, '')?.trim() || '';
 
@@ -100,6 +103,8 @@ async function fetchCraigslistDetail(page: any, listing: ListingRow) {
     const mapEl = document.querySelector('#map');
 
     return {
+      title,
+      price: priceText ? parseFloat(priceText) : null,
       description,
       images: [...new Set(images)],
       postedAt,
@@ -108,8 +113,10 @@ async function fetchCraigslistDetail(page: any, listing: ListingRow) {
     };
   });
 
-  // Update listing with description (strip keyword spam)
+  // Update listing with extracted detail fields
   const updates: Record<string, any> = {};
+  if (detail.title && (!listing.title || listing.title.startsWith('(imported'))) updates.title = detail.title;
+  if (detail.price != null && !listing.askingPrice) updates.askingPrice = detail.price;
   if (detail.description) updates.description = stripKeywordSpam(detail.description);
   if (detail.postedAt) updates.postedAt = detail.postedAt;
   if (detail.lat) updates.latitude = parseFloat(detail.lat);
@@ -143,6 +150,8 @@ async function fetchOfferUpDetail(page: any, listing: ListingRow) {
   await page.waitForSelector('img', { timeout: 5000 }).catch(() => {});
 
   const detail = await page.evaluate(() => {
+    let title = '';
+    let price: number | null = null;
     let desc = '';
     let location = '';
     const images: string[] = [];
@@ -151,6 +160,8 @@ async function fetchOfferUpDetail(page: any, listing: ListingRow) {
     for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
       try {
         const data = JSON.parse(script.textContent || '');
+        if (data.name) title = data.name;
+        if (data.offers?.price) price = parseFloat(data.offers.price);
         if (data.description) desc = data.description;
         if (data.image) {
           const imgs = Array.isArray(data.image) ? data.image : [data.image];
@@ -169,6 +180,10 @@ async function fetchOfferUpDetail(page: any, listing: ListingRow) {
     }
 
     // Strategy 2: Open Graph / meta tags
+    if (!title) {
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) title = ogTitle.getAttribute('content')?.replace(/\s*[-–|].*/,'') || '';
+    }
     if (!desc) {
       const ogDesc = document.querySelector('meta[property="og:description"]');
       if (ogDesc) desc = ogDesc.getAttribute('content') || '';
@@ -181,7 +196,17 @@ async function fetchOfferUpDetail(page: any, listing: ListingRow) {
       }
     }
 
-    // Strategy 3: DOM extraction for images (supplement with page images)
+    // Strategy 3: DOM extraction for price if still missing
+    if (price == null) {
+      document.querySelectorAll('span').forEach((el) => {
+        if (price != null) return;
+        const text = el.textContent?.trim() || '';
+        const m = text.match(/^\$([0-9,]+(?:\.\d{2})?)$/);
+        if (m) price = parseFloat(m[1].replace(/,/g, ''));
+      });
+    }
+
+    // Strategy 4: DOM extraction for images (supplement with page images)
     if (images.length < 2) {
       document.querySelectorAll('img').forEach((img: any) => {
         const src = img.src;
@@ -217,10 +242,12 @@ async function fetchOfferUpDetail(page: any, listing: ListingRow) {
       });
     }
 
-    return { description: desc, images: [...new Set(images)], location };
+    return { title, price, description: desc, images: [...new Set(images)], location };
   });
 
   const updates: Record<string, any> = {};
+  if (detail.title && (!listing.title || listing.title.startsWith('(imported'))) updates.title = detail.title;
+  if (detail.price != null && !listing.askingPrice) updates.askingPrice = detail.price;
   if (detail.description) updates.description = detail.description;
   if (detail.location) updates.location = detail.location;
 
@@ -246,6 +273,31 @@ async function fetchMercariDetail(page: any, listing: ListingRow) {
   await page.waitForSelector('img', { timeout: 5000 }).catch(() => {});
 
   const detail = await page.evaluate(() => {
+    let title = '';
+    let price: number | null = null;
+
+    // JSON-LD structured data
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      try {
+        const data = JSON.parse(script.textContent || '');
+        if (data.name) title = data.name;
+        if (data.offers?.price) price = parseFloat(data.offers.price);
+      } catch {}
+    }
+
+    // Fallback: OG title
+    if (!title) {
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) title = ogTitle.getAttribute('content')?.replace(/\s*[-–|].*/,'') || '';
+    }
+
+    // Fallback: price from DOM
+    if (price == null) {
+      const priceEl = document.querySelector('[data-testid*="price"], [class*="price"]');
+      const priceText = priceEl?.textContent?.replace(/[^0-9.]/g, '') || '';
+      if (priceText) price = parseFloat(priceText);
+    }
+
     const description = document.querySelector(
       '[data-testid*="description"], [class*="description"]'
     )?.textContent?.trim() || '';
@@ -258,10 +310,12 @@ async function fetchMercariDetail(page: any, listing: ListingRow) {
       }
     });
 
-    return { description, images: [...new Set(images)] };
+    return { title, price, description, images: [...new Set(images)] };
   });
 
   const updates: Record<string, any> = {};
+  if (detail.title && (!listing.title || listing.title.startsWith('(imported'))) updates.title = detail.title;
+  if (detail.price != null && !listing.askingPrice) updates.askingPrice = detail.price;
   if (detail.description) updates.description = detail.description;
 
   if (Object.keys(updates).length > 0) {
@@ -293,9 +347,11 @@ async function fetchFacebookDetail(page: any, listing: ListingRow) {
       (btn as HTMLElement).click();
     }
   });
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(humanDelay(400, 900));
 
   const detail = await page.evaluate(() => {
+    let title = '';
+    let price: number | null = null;
     let description = '';
     let location = '';
     const images: string[] = [];
@@ -304,6 +360,8 @@ async function fetchFacebookDetail(page: any, listing: ListingRow) {
     for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
       try {
         const data = JSON.parse(script.textContent || '');
+        if (data.name) title = data.name;
+        if (data.offers?.price) price = parseFloat(data.offers.price);
         if (data.description) description = data.description;
         if (data.image) {
           const imgs = Array.isArray(data.image) ? data.image : [data.image];
@@ -322,6 +380,10 @@ async function fetchFacebookDetail(page: any, listing: ListingRow) {
     }
 
     // Strategy 2: Open Graph meta tags
+    if (!title) {
+      const ogTitle = document.querySelector('meta[property="og:title"]');
+      if (ogTitle) title = ogTitle.getAttribute('content')?.replace(/\s*[-–|].*/,'') || '';
+    }
     if (!description) {
       const ogDesc = document.querySelector('meta[property="og:description"]');
       if (ogDesc) description = ogDesc.getAttribute('content') || '';
@@ -334,7 +396,17 @@ async function fetchFacebookDetail(page: any, listing: ListingRow) {
       }
     }
 
-    // Strategy 3: Extract from DOM — FB detail pages show images in a carousel
+    // Strategy 3: DOM price extraction — FB shows price in a prominent span
+    if (price == null) {
+      document.querySelectorAll('span').forEach((el) => {
+        if (price != null) return;
+        const text = el.textContent?.trim() || '';
+        const m = text.match(/^\$([0-9,]+(?:\.\d{2})?)$/);
+        if (m) price = parseFloat(m[1].replace(/,/g, ''));
+      });
+    }
+
+    // Strategy 4: Extract from DOM — FB detail pages show images in a carousel
     if (images.length < 2) {
       document.querySelectorAll('img').forEach((img) => {
         const src = img.src;
@@ -375,10 +447,12 @@ async function fetchFacebookDetail(page: any, listing: ListingRow) {
       }
     }
 
-    return { description, images: [...new Set(images)], location };
+    return { title, price, description, images: [...new Set(images)], location };
   });
 
   const updates: Record<string, any> = {};
+  if (detail.title && (!listing.title || listing.title.startsWith('(imported'))) updates.title = detail.title;
+  if (detail.price != null && !listing.askingPrice) updates.askingPrice = detail.price;
   if (detail.description) updates.description = detail.description;
   if (detail.location) updates.location = detail.location;
 
