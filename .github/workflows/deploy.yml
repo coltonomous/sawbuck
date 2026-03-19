@@ -1,0 +1,55 @@
+name: Deploy Sawbuck
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Get runner IP
+        id: ip
+        run: echo "addr=$(curl -s https://ifconfig.me)" >> "$GITHUB_OUTPUT"
+
+      - name: Open SSH for runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.addr }}/32
+
+      - name: Deploy to EC2
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 400 key.pem
+
+          rsync -avz --exclude node_modules --exclude .git --exclude .env \
+            -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
+            ./ ec2-user@${{ secrets.EC2_HOST }}:/opt/sawbuck/
+
+          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<'EOF'
+          cd /opt/sawbuck
+          docker compose down
+          docker compose up --build -d
+          sleep 15
+          docker compose ps
+          EOF
+
+          rm -f key.pem
+
+      - name: Close SSH for runner
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.addr }}/32 \
+            2>/dev/null || true
