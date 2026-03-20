@@ -38,6 +38,18 @@ jobs:
 
           ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<'EOF'
           set -e
+
+          # Grow filesystem if EBS was expanded (no-op if already full size)
+          ROOT_DEV=$(df / --output=source | tail -1)
+          DISK=$(echo "$ROOT_DEV" | sed 's/p\?[0-9]*$//')
+          PART=$(echo "$ROOT_DEV" | grep -o '[0-9]*$')
+          sudo growpart "$DISK" "$PART" 2>/dev/null || true
+          if command -v xfs_growfs &>/dev/null; then
+            sudo xfs_growfs / 2>/dev/null || true
+          else
+            sudo resize2fs "$ROOT_DEV" 2>/dev/null || true
+          fi
+
           cd /opt/sawbuck
           # Only prune dangling images, keep build cache for Playwright layer
           docker image prune -f
