@@ -24,7 +24,10 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm install drizzle-kit
 
 # Install Playwright Chromium + system dependencies
-RUN npx playwright install --with-deps chromium
+# Retry Playwright download — CDN can be flaky on EC2
+RUN npx playwright install --with-deps chromium || \
+    (sleep 5 && npx playwright install --with-deps chromium) || \
+    (sleep 10 && npx playwright install --with-deps chromium)
 
 # Copy server code
 COPY server/ ./server/

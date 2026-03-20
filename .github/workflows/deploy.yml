@@ -39,8 +39,8 @@ jobs:
           ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<'EOF'
           set -e
           cd /opt/sawbuck
-          docker builder prune -af
-          docker image prune -af
+          # Only prune dangling images, keep build cache for Playwright layer
+          docker image prune -f
           docker compose build
           docker compose down
           docker compose up -d
