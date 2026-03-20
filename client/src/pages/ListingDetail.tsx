@@ -31,13 +31,25 @@ export default function ListingDetail() {
     if (!listing) return;
     setAnalyzing(true);
     try {
-      const result = await api.analyzeListing(listing.id);
-      setListing({ ...listing, ...result });
-      toast('success', 'Analysis complete');
+      await api.analyzeListing(listing.id);
+      // Poll until analysis completes (furnitureType gets set)
+      const poll = setInterval(async () => {
+        try {
+          const updated = await api.getListing(listing.id);
+          if (updated.furnitureType) {
+            clearInterval(poll);
+            setListing(updated);
+            setAnalyzing(false);
+            toast('success', 'Analysis complete');
+          }
+        } catch {}
+      }, 3000);
+      // Stop polling after 5 minutes
+      setTimeout(() => { clearInterval(poll); setAnalyzing(false); }, 300_000);
     } catch (err) {
       toast('error', `Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      setAnalyzing(false);
     }
-    setAnalyzing(false);
   };
 
   const handleCreateProject = async () => {

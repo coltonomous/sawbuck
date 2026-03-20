@@ -221,45 +221,31 @@ listingsRouter.patch('/:id', async (c) => {
   return c.json(updated);
 });
 
-// POST /:id/analyze — download images, process, analyze with Claude, price
+// POST /:id/analyze — kick off analysis in background, return 202
+// The full pipeline (download → process → Claude → pricing) can exceed
+// Cloudflare's 100s proxy timeout, so we run it async and let the
+// frontend poll GET /:id until furnitureType is populated.
 listingsRouter.post('/:id/analyze', async (c) => {
   const id = parseInt(c.req.param('id'));
 
   const listing = await db.select().from(listings).where(eq(listings.id, id)).get();
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
-  try {
-    // Step 1: Download images if not done
-    await downloadListingImages(id);
+  const apiKey = c.req.header('X-Anthropic-Key');
 
-    // Step 2: Process images (resize + WebP)
-    await processListingImages(id);
-
-    // Step 3: Claude Vision analysis
-    const apiKey = c.req.header('X-Anthropic-Key');
-    const analysis = await analyzeListing(id, apiKey);
-    if (!analysis) {
-      // Fetch the specific error reason from the DB
-      const withError = await db.select({ analysisError: listings.analysisError })
-        .from(listings).where(eq(listings.id, id)).get();
-      return c.json({
-        error: withError?.analysisError || 'Analysis failed — no usable images or parse error',
-      }, 422);
+  // Fire and forget — results are persisted to DB
+  (async () => {
+    try {
+      await downloadListingImages(id);
+      await processListingImages(id);
+      const analysis = await analyzeListing(id, apiKey);
+      if (analysis) await calculatePricing(id);
+    } catch (err) {
+      console.error(`[analyze] Error analyzing listing ${id}:`, err);
     }
+  })();
 
-    // Step 4: Price estimation
-    const pricing = await calculatePricing(id);
-
-    // Return updated listing
-    const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
-    const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
-
-    return c.json({ ...updated, images, analysis, pricing });
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[analyze] Error analyzing listing ${id}:`, err);
-    return c.json({ error: message }, 500);
-  }
+  return c.json({ status: 'analyzing' }, 202);
 });
 
 // GET /:id/price — get or calculate pricing
