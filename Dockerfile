@@ -43,8 +43,7 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://localhost:3001/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
 
-RUN groupadd --system --force app && \
-    useradd --system --home /home/app --gid app --create-home app && \
+RUN addgroup --system app && adduser --system --home /home/app --ingroup app app && \
     chown -R app:app /app
 USER app
 
