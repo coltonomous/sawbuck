@@ -37,9 +37,11 @@ jobs:
             ./ ec2-user@${{ secrets.EC2_HOST }}:/opt/sawbuck/
 
           ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<'EOF'
+          set -e
           cd /opt/sawbuck
+          docker compose build
           docker compose down
-          docker compose up --build -d
+          docker compose up -d
           sleep 15
           docker compose ps
           EOF
