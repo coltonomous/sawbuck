@@ -114,7 +114,7 @@ export default function ProjectDetail() {
       <BackButton onClick={() => navigate(-1)} />
 
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">{project.name}</h2>
           <div className="flex items-center gap-2 mt-1.5">
@@ -128,7 +128,7 @@ export default function ProjectDetail() {
             )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {['refinishing', 'listed', 'sold'].includes(project.status) && (
             <button
               onClick={() => setShowExport(true)}
@@ -165,12 +165,12 @@ export default function ProjectDetail() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 mb-6">
+      <div className="flex overflow-x-auto border-b border-gray-200 mb-6 -mx-4 px-4 md:mx-0 md:px-0">
         {tabs.map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap ${
               tab === key
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-400 hover:text-gray-700 hover:border-gray-300'
@@ -183,7 +183,7 @@ export default function ProjectDetail() {
 
       {/* Tab content */}
       {tab === 'overview' && (
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card>
             <CardHeader>Details</CardHeader>
             <dl className="space-y-2 text-sm">
@@ -227,13 +227,13 @@ export default function ProjectDetail() {
           />
 
           {/* Timeline */}
-          <Card className="col-span-2">
+          <Card className="md:col-span-2">
             <CardHeader>Timeline</CardHeader>
             <ProjectTimeline project={project} />
           </Card>
 
           {!project.plan && (
-            <div className="col-span-2 text-center py-10 bg-white rounded-lg shadow-sm border border-gray-200">
+            <div className="md:col-span-2 text-center py-10 bg-white rounded-lg shadow-sm border border-gray-200">
               <p className="text-gray-500 mb-3 text-sm">No refinishing plan yet</p>
               <GeneratePlanButton />
             </div>
@@ -294,7 +294,7 @@ export default function ProjectDetail() {
 
           <Card>
             <CardHeader>Update Costs</CardHeader>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {[
                 { label: 'Hours invested', field: 'hoursInvested', step: '0.5', value: project.hoursInvested },
                 { label: 'Hourly rate ($)', field: 'hourlyRate', step: '1', value: project.hourlyRate || 25 },

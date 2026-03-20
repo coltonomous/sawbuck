@@ -180,7 +180,7 @@ export default function Dashboard() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Top Deals</h2>
           <p className="text-sm text-gray-500 mt-0.5">
@@ -192,7 +192,7 @@ export default function Dashboard() {
         </div>
         <div className="flex items-center gap-3">
           {scrapeResult && !scraping && (
-            <span className={`text-sm ${scrapeResult.startsWith('Error') || scrapeResult.includes('No search') || scrapeResult.includes('lost') ? 'text-amber-600' : 'text-green-600'}`}>
+            <span className={`text-sm ${scrapeResult.startsWith('Error') || scrapeResult.includes('No search') || scrapeResult.includes('lost') ? 'text-amber-600' : 'text-green-600'} hidden sm:inline`}>
               {scrapeResult}
             </span>
           )}

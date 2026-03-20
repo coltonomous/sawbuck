@@ -80,8 +80,8 @@ export default function ListingDetail() {
     <div className="max-w-4xl">
       <BackButton onClick={() => navigate(-1)} />
 
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex-1 min-w-0 mr-6">
+      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-6">
+        <div className="flex-1 min-w-0">
           <h2 className="text-2xl font-bold text-gray-900">{listing.title}</h2>
           <div className="flex items-center gap-2 mt-1.5">
             <PlatformBadge platform={listing.platform} />
@@ -142,7 +142,7 @@ export default function ListingDetail() {
               <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${recStyle}`}>{recLabel}</span>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Type</span>
               <span className="font-medium text-gray-900">{listing.furnitureType}</span>
@@ -194,7 +194,7 @@ export default function ListingDetail() {
       {listing.furnitureType && <ComparablesList listingId={listing.id} />}
 
       {/* Actions */}
-      <div className="flex gap-2.5 mb-6">
+      <div className="flex flex-wrap gap-2.5 mb-6">
         <a
           href={listing.url}
           target="_blank"

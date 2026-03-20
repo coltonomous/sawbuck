@@ -47,7 +47,7 @@ export default function Analytics() {
       <h2 className="text-2xl font-bold text-gray-900 mb-6">Analytics</h2>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Listings" value={summary?.total_listings ?? 0} />
         <StatCard label="Total Profit" value={`$${(projectSummary?.total_profit ?? 0).toFixed(0)}`} color="text-green-700" />
         <StatCard label="Avg ROI" value={projectSummary?.avg_roi != null ? `${projectSummary.avg_roi.toFixed(0)}%` : '-'} color="text-blue-700" />
@@ -70,7 +70,7 @@ export default function Analytics() {
       )}
 
       {/* Platform + Status row */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <ChartCard title="Deals by Platform">
           <ResponsiveContainer width="100%" height={240}>
             <PieChart>
@@ -113,7 +113,7 @@ export default function Analytics() {
       )}
 
       {/* Price + Deal score row */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
         <ChartCard title="Price Distribution">
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={priceDistribution}>

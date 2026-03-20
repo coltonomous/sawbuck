@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 
 const links = [
   {
@@ -50,43 +51,84 @@ const links = [
 ];
 
 export default function Sidebar() {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+
+  // Close sidebar on navigation
+  useEffect(() => { setOpen(false); }, [location.pathname]);
+
   return (
-    <nav className="w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0">
-      <div className="px-5 pt-6 pb-8">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+    <>
+      {/* Mobile header bar */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-gray-900 px-4 py-3 flex items-center gap-3">
+        <button onClick={() => setOpen(true)} className="text-gray-300 hover:text-white">
+          <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-amber-500 rounded flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
             </svg>
           </div>
-          <div>
-            <h1 className="text-amber-400 text-lg font-bold leading-tight">Sawbuck</h1>
-          </div>
+          <span className="text-amber-400 font-bold">Sawbuck</span>
         </div>
       </div>
-      <ul className="flex-1 px-3 space-y-0.5">
-        {links.map(({ to, label, icon }) => (
-          <li key={to}>
-            <NavLink
-              to={to}
-              end={to === '/'}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                  isActive
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-                }`
-              }
-            >
-              {icon}
-              {label}
-            </NavLink>
-          </li>
-        ))}
-      </ul>
-      <div className="px-5 py-4 border-t border-gray-800">
-        <p className="text-[11px] text-gray-600">Find deals. Flip furniture.</p>
-      </div>
-    </nav>
+
+      {/* Mobile overlay */}
+      {open && (
+        <div className="md:hidden fixed inset-0 z-50 bg-black/50" onClick={() => setOpen(false)} />
+      )}
+
+      {/* Sidebar */}
+      <nav className={`
+        fixed md:static inset-y-0 left-0 z-50
+        w-56 bg-gray-900 text-gray-300 flex flex-col shrink-0
+        transform transition-transform duration-200 ease-out
+        ${open ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0
+      `}>
+        <div className="px-5 pt-6 pb-8 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-amber-500 rounded-lg flex items-center justify-center">
+              <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-amber-400 text-lg font-bold leading-tight">Sawbuck</h1>
+            </div>
+          </div>
+          <button onClick={() => setOpen(false)} className="md:hidden text-gray-400 hover:text-white">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <ul className="flex-1 px-3 space-y-0.5">
+          {links.map(({ to, label, icon }) => (
+            <li key={to}>
+              <NavLink
+                to={to}
+                end={to === '/'}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'bg-gray-800 text-white'
+                      : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+                  }`
+                }
+              >
+                {icon}
+                {label}
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+        <div className="px-5 py-4 border-t border-gray-800">
+          <p className="text-[11px] text-gray-600">Find deals. Flip furniture.</p>
+        </div>
+      </nav>
+    </>
   );
 }

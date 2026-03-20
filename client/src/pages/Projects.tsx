@@ -48,7 +48,7 @@ export default function Projects() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Projects</h2>
           <p className="text-sm text-gray-500 mt-0.5">Track your furniture flips from purchase to sale.</p>
@@ -84,7 +84,7 @@ export default function Projects() {
           <p className="text-sm text-gray-500 mt-1">Start one from a listing detail page.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PROJECT_PIPELINE_STATUSES.map((status) => {
             const meta = PROJECT_STATUS_META[status];
             return (
