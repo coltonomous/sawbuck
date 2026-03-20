@@ -3,6 +3,7 @@ FROM node:22-slim AS client-build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY client/vite.config.ts client/tsconfig.json client/index.html ./client/
+COPY client/public/ ./client/public/
 COPY client/src/ ./client/src/
 COPY shared/ ./shared/
 RUN npm ci --ignore-scripts
@@ -45,7 +46,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 
 RUN addgroup --system app && adduser --system --home /home/app --ingroup app app && \
     chown -R app:app /app
-USER app
 
-# Run migrations then start server
-CMD ["sh", "-c", "npx drizzle-kit migrate && NODE_ENV=production npx tsx server/index.ts"]
+# Entrypoint: fix data dir permissions (bind mount may be root-owned), then drop to app user
+COPY --chmod=755 entrypoint.sh ./
+ENTRYPOINT ["./entrypoint.sh"]

@@ -71,10 +71,19 @@ scrapersRouter.get('/jobs/:id', async (c) => {
 // GET /run/stream — SSE stream of scrape progress
 scrapersRouter.get('/run/stream', (c) => {
   return streamSSE(c, async (stream) => {
-    await runAllActiveScrapers((progress) => {
-      stream.writeSSE({ data: JSON.stringify(progress), event: progress.type });
-    });
-    await stream.writeSSE({ data: '{}', event: 'close' });
+    // Send keepalive comments every 15s to prevent Cloudflare/proxy idle timeouts
+    const keepalive = setInterval(() => {
+      stream.writeSSE({ data: '', event: 'keepalive' }).catch(() => {});
+    }, 15_000);
+
+    try {
+      await runAllActiveScrapers((progress) => {
+        stream.writeSSE({ data: JSON.stringify(progress), event: progress.type });
+      });
+      await stream.writeSSE({ data: '{}', event: 'close' });
+    } finally {
+      clearInterval(keepalive);
+    }
   });
 });
 
