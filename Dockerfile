@@ -24,7 +24,8 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm install drizzle-kit
 
 # Install Playwright Chromium + system dependencies
-# Retry Playwright download — CDN can be flaky on EC2
+# Use shared path so the non-root app user can access the browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 RUN npx playwright install --with-deps chromium || \
     (sleep 5 && npx playwright install --with-deps chromium) || \
     (sleep 10 && npx playwright install --with-deps chromium)
