@@ -128,7 +128,7 @@ export default function ListingDetail() {
           {listing.images.map((img: ListingImage) => (
             <img
               key={img.id}
-              src={img.localPathResized ? resolveImageUrl(img.localPathResized, true) : img.sourceUrl}
+              src={img.localPathResized ? resolveImageUrl(img.localPathResized) : img.sourceUrl}
               alt={listing.title}
               loading="lazy"
               className="h-52 rounded-lg object-cover shrink-0 bg-gray-100"

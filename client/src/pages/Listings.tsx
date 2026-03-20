@@ -268,7 +268,7 @@ export default function Listings() {
                     <td className="px-2 py-2.5">
                       {listing.primaryImage ? (
                         <img
-                          src={resolveImageUrl(listing.primaryImage, true)}
+                          src={resolveImageUrl(listing.primaryImage)}
                           alt={listing.title}
                           loading="lazy"
                           className="w-10 h-10 rounded-md object-cover"

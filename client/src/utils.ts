@@ -1,4 +1,4 @@
-export function resolveImageUrl(path: string, resized?: boolean): string {
+export function resolveImageUrl(path: string): string {
   if (path.startsWith('http')) return path;
-  return `/images/${resized ? 'resized/' : ''}${path.replace('resized/', '')}`;
+  return `/images/${path}`;
 }
