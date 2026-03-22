@@ -1,5 +1,6 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
-import { withPage, humanDelay } from './browser-pool.js';
+import { withPage } from './browser-pool.js';
+import type { Page, Response } from 'playwright';
 
 export class MercariScraper extends BaseScraper {
   platform = 'mercari' as const;
@@ -7,7 +8,6 @@ export class MercariScraper extends BaseScraper {
   async scrape(config: ScraperConfig): Promise<ScrapedListing[]> {
     const params = new URLSearchParams({
       keyword: config.searchTerm,
-      categoryIds: '15', // Home > Furniture
       status: 'on_sale',
       sortBy: 'created_time',
       order: 'desc',
@@ -19,139 +19,88 @@ export class MercariScraper extends BaseScraper {
     console.log(`[mercari] Scraping: ${searchUrl}`);
 
     return withPage(async (page) => {
-      // Mercari uses Cloudflare — wait for challenge to pass
-      await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
+      // Cloudflare's challenge JS needs resources the default route handler blocks
+      await page.unrouteAll({ behavior: 'wait' });
 
-      // Wait for Cloudflare challenge to resolve (up to 15s)
-      try {
-        await page.waitForSelector('[data-testid="SearchResults"], [class*="SearchResults"], [class*="item"]', {
-          timeout: 15000,
-        });
-      } catch {
-        // Check if we hit a Cloudflare challenge page
-        const pageContent = await page.content();
-        if (pageContent.includes('challenge') || pageContent.includes('Cloudflare') || pageContent.includes('Just a moment')) {
-          console.warn('[mercari] Cloudflare challenge detected — Mercari is currently blocking automated access. Disable this platform in Settings if it keeps failing.');
-          return [];
-        }
+      const searchData = await this.waitForSearchApi(page, searchUrl);
+      if (!searchData) {
+        throw new Error('Timeout waiting for Mercari search data — Cloudflare may have blocked this session');
       }
 
-      await page.waitForTimeout(humanDelay(2000, 3500));
+      const items = searchData.data?.search?.itemsList ?? [];
+      console.log(`[mercari] ${items.length} items (${searchData.data?.search?.count ?? 0} total)`);
 
-      // Scroll to load more
-      for (let i = 0; i < 2; i++) {
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-        await page.waitForTimeout(humanDelay(1200, 2500));
-      }
-
-      // Extract listings
-      const results = await page.evaluate(() => {
-        const items: ScrapedListing[] = [];
-
-        // Try multiple selector strategies
-        const cards = document.querySelectorAll(
-          '[data-testid="ItemContainer"], [data-testid*="SearchResultItem"], a[href*="/item/"]'
-        );
-
-        const seen = new Set<string>();
-
-        cards.forEach((card) => {
-          const anchor = card.tagName === 'A' ? card : card.querySelector('a[href*="/item/"]');
-          if (!anchor) return;
-
-          const href = (anchor as HTMLAnchorElement).href;
-          const idMatch = href.match(/\/item\/([a-zA-Z0-9]+)/);
-          if (!idMatch || seen.has(idMatch[1])) return;
-          seen.add(idMatch[1]);
-
-          const title = card.querySelector(
-            '[data-testid="ItemName"], [data-testid*="name"], [class*="ItemName"], [class*="itemName"]'
-          )?.textContent?.trim()
-            || card.querySelector('span, p')?.textContent?.trim()
-            || '';
-
-          const priceEl = card.querySelector(
-            '[data-testid="ItemPrice"], [data-testid*="price"], [class*="ItemPrice"], [class*="price"]'
-          );
-          const priceText = priceEl?.textContent?.replace(/[^0-9.]/g, '') || '';
-
-          const img = card.querySelector('img');
-          const imageUrl = img?.src || '';
-
-          if (title && title.length > 2) {
-            items.push({
-              externalId: idMatch[1],
-              platform: 'mercari' as const,
-              url: href.startsWith('http') ? href : `https://www.mercari.com${href}`,
-              title,
-              askingPrice: priceText ? parseFloat(priceText) : undefined,
-              imageUrls: imageUrl ? [imageUrl] : [],
-            });
-          }
-        });
-
-        return items;
-      });
-
-      console.log(`[mercari] Found ${results.length} results from search page`);
-
-      // Visit detail pages for more images and description (limit to 12 — Mercari is slower)
       const listings: ScrapedListing[] = [];
-      const toVisit = results.slice(0, 12);
+      for (const item of items) {
+        if (!item.id || !item.name) continue;
 
-      for (const result of toVisit) {
-        try {
-          await page.goto(result.url, { waitUntil: 'networkidle', timeout: 20000 });
-          await page.waitForTimeout(humanDelay(1200, 2500));
-
-          const detail = await page.evaluate(() => {
-            const description = document.querySelector(
-              '[data-testid="ItemDescription"], [data-testid*="description"], [class*="ItemDescription"]'
-            )?.textContent?.trim() || '';
-
-            const images: string[] = [];
-            document.querySelectorAll(
-              '[data-testid*="ItemImage"] img, [class*="ItemPhotos"] img, [class*="gallery"] img, [class*="carousel"] img'
-            ).forEach((img) => {
-              const src = (img as HTMLImageElement).src;
-              if (src && !src.includes('placeholder')) images.push(src);
-            });
-
-            if (images.length === 0) {
-              document.querySelectorAll('img').forEach((img) => {
-                if (img.naturalWidth > 200 && img.src && !img.src.includes('avatar') && !img.src.includes('logo')) {
-                  images.push(img.src);
-                }
-              });
-            }
-
-            const seller = document.querySelector(
-              '[data-testid*="SellerName"], [class*="SellerName"], [class*="seller"]'
-            )?.textContent?.trim() || '';
-
-            const condition = document.querySelector(
-              '[data-testid*="Condition"], [class*="Condition"]'
-            )?.textContent?.trim() || '';
-
-            return { description, images, seller, condition };
-          });
-
-          listings.push({
-            ...result,
-            description: detail.description
-              ? `${detail.description}${detail.condition ? `\nCondition: ${detail.condition}` : ''}`
-              : undefined,
-            sellerName: detail.seller || undefined,
-            imageUrls: detail.images.length > 0 ? [...new Set(detail.images)] : result.imageUrls,
-          });
-        } catch (err) {
-          console.warn(`[mercari] Failed detail page: ${result.url}`, err);
-          listings.push(result);
+        const imageUrls: string[] = [];
+        for (const photo of item.photos ?? []) {
+          const url = photo.imageUrl || photo.thumbnail;
+          if (url) imageUrls.push(url);
         }
+
+        const descParts: string[] = [];
+        if (item.description) descParts.push(item.description);
+        if (item.itemCondition?.name) descParts.push(`Condition: ${item.itemCondition.name}`);
+        if (item.brand?.name) descParts.push(`Brand: ${item.brand.name}`);
+        if (item.color?.name) descParts.push(`Color: ${item.color.name}`);
+
+        listings.push({
+          externalId: item.id,
+          platform: 'mercari',
+          url: `https://www.mercari.com/us/item/${item.id}/`,
+          title: item.name,
+          description: descParts.length > 0 ? descParts.join('\n') : undefined,
+          askingPrice: typeof item.price === 'number' ? item.price / 100 : undefined, // cents → dollars
+          imageUrls: [...new Set(imageUrls)],
+        });
       }
 
-      console.log(`[mercari] Scraped ${listings.length} full listings`);
       return listings;
+    });
+  }
+
+  /**
+   * Navigate and intercept Mercari's searchFacetQuery GraphQL response.
+   * Cloudflare challenge takes 30-60s to clear, after which the Next.js app
+   * fires the real API request. Returns null if the data never arrives.
+   */
+  private waitForSearchApi(page: Page, url: string): Promise<any> {
+    let resolved = false;
+
+    return new Promise<any>((resolve) => {
+      const onResponse = async (response: Response) => {
+        if (resolved) return;
+        const reqUrl = response.url();
+        if (response.status() !== 200 || !reqUrl.includes('/v1/api')) return;
+
+        const isSearch = reqUrl.includes('searchFacetQuery') || response.request().method() === 'POST';
+        if (!isSearch) return;
+
+        try {
+          const json = await response.json();
+          if (json?.data?.search?.itemsList) {
+            resolved = true;
+            resolve(json);
+          }
+        } catch {}
+      };
+
+      page.on('response', onResponse);
+
+      // Kick off navigation then poll until the API data shows up or we time out.
+      // domcontentloaded is intentional — networkidle never fires because of tracking requests.
+      page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(() => {});
+
+      const poll = async () => {
+        const deadline = Date.now() + 60000;
+        while (!resolved && Date.now() < deadline) {
+          await page.waitForTimeout(2000);
+        }
+        if (!resolved) resolve(null);
+      };
+      poll();
     });
   }
 }

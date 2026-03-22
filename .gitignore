@@ -9,6 +9,7 @@ data/sawbuck.db-shm
 data/images/originals/
 data/images/resized/
 data/*.log
+data/fb-cookies.json
 .env
 .vite/
 .claude/settings.local.json
