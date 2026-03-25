@@ -6,7 +6,23 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Create data directory for SQLite
+        run: mkdir -p data
+      - name: Push schema to test DB
+        run: npx drizzle-kit push
+      - run: npx vitest run
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
