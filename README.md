@@ -100,12 +100,12 @@ Pricing logic, fingerprint hashing, scraper parsing, and API route smoke tests. 
 Production:
 
 ```bash
-DOMAIN=sawbuck.example.com docker compose up --build -d
+docker compose up --build -d
 ```
 
-Caddy automatically provisions TLS via Let's Encrypt for your domain. The app runs behind the reverse proxy on ports 80/443. Listing images and the SQLite database persist in `./data/`.
+The app container exposes port 3001. A shared Caddy reverse proxy (managed separately via [coltonomous/infra](https://github.com/coltonomous/infra)) routes `sawbuck.coltonomous.com` to the app. TLS is handled by Cloudflare + Cloudflare Origin CA cert.
 
-For local testing without a domain, `DOMAIN` defaults to `localhost` (self-signed cert).
+Listing images and the SQLite database persist in `./data/`.
 
 Development (hot reload):
 
