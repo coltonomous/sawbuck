@@ -51,13 +51,16 @@ jobs:
           fi
 
           cd /opt/sawbuck
-          # Only prune dangling images, keep build cache for Playwright layer
           docker image prune -f
           docker compose build
           docker compose down
           docker compose up -d
           sleep 15
           docker compose ps
+
+          # Restart shared reverse proxy so it picks up any upstream changes
+          cd /opt/caddy
+          docker compose restart
           EOF
 
           rm -f key.pem
