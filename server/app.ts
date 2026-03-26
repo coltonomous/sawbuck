@@ -23,7 +23,9 @@ app.use('*', pinoLogger({
 }));
 
 // ── Security headers ────────────────────────────────────────────────
-app.use('*', secureHeaders());
+app.use('*', secureHeaders({
+  referrerPolicy: 'strict-origin-when-cross-origin',
+}));
 
 // ── CORS ────────────────────────────────────────────────────────────
 // In production the SPA is served same-origin via Caddy, so CORS is
