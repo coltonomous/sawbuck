@@ -10,6 +10,7 @@ import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
+import logger from '../lib/logger.js';
 
 export const projectsRouter = new Hono();
 
@@ -149,7 +150,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[projects] Error generating plan for project ${id}:`, err);
+    logger.error({ err, projectId: id }, 'Error generating refinishing plan');
     return c.json({ error: message }, 500);
   }
 });
@@ -213,7 +214,7 @@ Rules:
     return c.json({ text });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[projects] Error generating listing text for project ${id}:`, err);
+    logger.error({ err, projectId: id }, 'Error generating listing text');
     return c.json({ error: message }, 500);
   }
 });

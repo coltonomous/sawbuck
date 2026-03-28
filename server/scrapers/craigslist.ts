@@ -2,6 +2,7 @@ import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scr
 import { withPage, humanDelay } from './browser-pool.js';
 import { stripKeywordSpam } from './detail-fetcher.js';
 import { resolveClSubdomain, clDisplayLocation } from '../../shared/constants.js';
+import logger from '../lib/logger.js';
 
 export class CraigslistScraper extends BaseScraper {
   platform = 'craigslist' as const;
@@ -14,7 +15,7 @@ export class CraigslistScraper extends BaseScraper {
 
     const cityName = clDisplayLocation(location);
     const searchUrl = `https://${location}.craigslist.org/search/fua?${params}`;
-    console.log(`[craigslist] Scraping: ${searchUrl}`);
+    logger.info({ searchUrl }, 'Scraping Craigslist');
 
     return withPage(async (page) => {
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -56,7 +57,7 @@ export class CraigslistScraper extends BaseScraper {
         return items;
       });
 
-      console.log(`[craigslist] Found ${searchResults.length} results on search page`);
+      logger.info({ count: searchResults.length }, 'Craigslist search results found');
 
       // Only visit a few detail pages for descriptions (limit 5 for speed)
       const listings: ScrapedListing[] = [];
@@ -99,7 +100,7 @@ export class CraigslistScraper extends BaseScraper {
             });
             continue;
           } catch (err) {
-            console.warn(`[craigslist] Detail page failed: ${result.url}`);
+            logger.warn({ url: result.url }, 'Craigslist detail page failed');
           }
         }
 
@@ -115,7 +116,7 @@ export class CraigslistScraper extends BaseScraper {
         });
       }
 
-      console.log(`[craigslist] Scraped ${listings.length} listings (${Math.min(5, listings.length)} with details)`);
+      logger.info({ total: listings.length, withDetails: Math.min(5, listings.length) }, 'Craigslist scrape complete');
       return listings;
     });
   }

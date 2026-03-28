@@ -1,4 +1,5 @@
 import { withRetry as _withRetry } from './retry.js';
+import logger from './logger.js';
 
 const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID;
 const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET;
@@ -67,7 +68,7 @@ export interface BrowseSearchOptions {
 
 export async function searchEbayBrowse(options: BrowseSearchOptions): Promise<EbayBrowseItem[]> {
   if (!hasCredentials()) {
-    console.warn('[ebay] EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set — Browse API disabled');
+    logger.warn('EBAY_CLIENT_ID / EBAY_CLIENT_SECRET not set — Browse API disabled');
     return [];
   }
 
@@ -126,7 +127,7 @@ export async function searchEbayBrowse(options: BrowseSearchOptions): Promise<Eb
       });
     }
 
-    console.log(`[ebay] Browse API: ${items.length} results for "${options.query}"`);
+    logger.info({ query: options.query, count: items.length }, 'eBay Browse API results');
     return items;
   });
 }

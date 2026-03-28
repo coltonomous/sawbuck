@@ -1,5 +1,6 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
 import { withPage, humanDelay } from './browser-pool.js';
+import logger from '../lib/logger.js';
 
 export class OfferUpScraper extends BaseScraper {
   platform = 'offerup' as const;
@@ -12,7 +13,7 @@ export class OfferUpScraper extends BaseScraper {
     params.set('radius', '30');
 
     const searchUrl = `https://offerup.com/search?${params}`;
-    console.log(`[offerup] Scraping: ${searchUrl}`);
+    logger.info({ searchUrl }, 'Scraping OfferUp');
 
     return withPage(async (page) => {
       await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
@@ -33,7 +34,7 @@ export class OfferUpScraper extends BaseScraper {
           return null;
         });
         if (filterClicked) {
-          console.log(`[offerup] Clicked category filter: ${filterClicked}`);
+          logger.debug({ filter: filterClicked }, 'OfferUp category filter clicked');
           await page.waitForTimeout(humanDelay(1200, 2500));
         }
       } catch {}
@@ -96,7 +97,7 @@ export class OfferUpScraper extends BaseScraper {
         return items;
       });
 
-      console.log(`[offerup] Found ${listings.length} listings`);
+      logger.info({ count: listings.length }, 'OfferUp listings found');
       return listings;
     });
   }

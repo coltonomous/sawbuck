@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
 import { getImageBase64 } from '../images/processor.js';
 import { config } from '../lib/config.js';
+import logger from '../lib/logger.js';
 
 const FurnitureAnalysisSchema = z.object({
   furniture_type: z.string(),
@@ -83,7 +84,7 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
 
   if (images.length === 0) {
     const err = 'No downloaded images available for analysis';
-    console.warn(`[vision] ${err} (listing ${listingId})`);
+    logger.warn({ listingId }, err);
     await db.update(listings).set({ analysisError: err }).where(eq(listings.id, listingId));
     return null;
   }
@@ -100,18 +101,18 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
       const { base64, mediaType } = await getImageBase64(imagePath);
       imageInputs.push({ base64, mediaType: mediaType as ImageInput['mediaType'] });
     } catch (err: any) {
-      console.warn(`[vision] Failed to read image ${imagePath}: ${err.message}`);
+      logger.warn({ imagePath, err: err.message }, 'Failed to read image');
     }
   }
 
   if (imageInputs.length === 0) {
     const err = 'All images failed to load — files may be corrupted or missing';
-    console.warn(`[vision] ${err} (listing ${listingId})`);
+    logger.warn({ listingId }, err);
     await db.update(listings).set({ analysisError: err }).where(eq(listings.id, listingId));
     return null;
   }
 
-  console.log(`[vision] Analyzing listing ${listingId} with ${imageInputs.length} images`);
+  logger.info({ listingId, imageCount: imageInputs.length }, 'Analyzing listing');
 
   let prompt = ANALYSIS_PROMPT;
   if (listing.askingPrice) {
@@ -132,7 +133,7 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
     );
   } catch (err: any) {
     const errorMsg = `Claude analysis failed: ${err.message}`;
-    console.error(`[vision] ${errorMsg} (listing ${listingId})`);
+    logger.error({ listingId, err: err.message }, 'Claude analysis failed');
     await db.update(listings).set({ analysisError: errorMsg }).where(eq(listings.id, listingId));
     return null;
   }
@@ -158,6 +159,12 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
     }).where(eq(listingImages.id, img.id));
   }
 
-  console.log(`[vision] Listing ${listingId}: ${analysis.furniture_type} (${analysis.furniture_style}), condition ${analysis.condition_score}/10, ${analysis.flip_recommendation}`);
+  logger.info({
+    listingId,
+    type: analysis.furniture_type,
+    style: analysis.furniture_style,
+    condition: analysis.condition_score,
+    recommendation: analysis.flip_recommendation,
+  }, 'Listing analyzed');
   return analysis;
 }

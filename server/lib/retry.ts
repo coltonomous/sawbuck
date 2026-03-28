@@ -1,3 +1,5 @@
+import logger from './logger.js';
+
 export interface WithRetryOptions {
   maxRetries: number;
   baseDelayMs: number;
@@ -18,7 +20,7 @@ export async function withRetry<T>(
       if (!isRetryable || attempt === maxRetries - 1) throw err;
 
       const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 1000;
-      console.warn(`[${label}] Retry ${attempt + 1}/${maxRetries} after ${Math.round(delay)}ms (${status || err?.message})`);
+      logger.warn({ label, attempt: attempt + 1, maxRetries, delayMs: Math.round(delay), status: status || err?.message }, 'Retrying after error');
       await new Promise((r) => setTimeout(r, delay));
     }
   }

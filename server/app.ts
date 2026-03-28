@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { pinoLogger } from 'hono-pino';
-import pino from 'pino';
+import logger from './lib/logger.js';
 import { listingsRouter } from './routes/listings.js';
 import { projectsRouter } from './routes/projects.js';
 import { scrapersRouter } from './routes/scrapers.js';
@@ -15,12 +15,7 @@ const isProd = process.env.NODE_ENV === 'production';
 const app = new Hono();
 
 // ── Structured logging ──────────────────────────────────────────────
-app.use('*', pinoLogger({
-  pino: pino({
-    level: process.env.LOG_LEVEL || (isProd ? 'info' : 'debug'),
-    ...(!isProd && { transport: { target: 'pino-pretty', options: { colorize: true } } }),
-  }),
-}));
+app.use('*', pinoLogger({ pino: logger }));
 
 // ── Security headers ────────────────────────────────────────────────
 app.use('*', secureHeaders({
@@ -87,7 +82,7 @@ app.onError((err, c) => {
   if (logger) {
     logger.error({ err, path: c.req.path, method: c.req.method }, 'Unhandled error');
   } else {
-    console.error('Unhandled error:', err);
+    logger.error({ err }, 'Unhandled error');
   }
   return c.json({ error: 'Internal server error' }, 500);
 });

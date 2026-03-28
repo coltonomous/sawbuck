@@ -3,6 +3,7 @@ import { listings, listingImages } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { withPage, humanDelay } from './browser-pool.js';
 import { CL_DISPLAY_NAMES } from '../../shared/constants.js';
+import logger from '../lib/logger.js';
 
 /**
  * Strip SEO keyword spam from Craigslist descriptions.
@@ -37,7 +38,7 @@ interface ListingRow {
 }
 
 export async function fetchListingDetails(listing: ListingRow): Promise<void> {
-  console.log(`[detail-fetcher] Fetching details for listing ${listing.id}: ${listing.url}`);
+  logger.info({ listingId: listing.id, url: listing.url }, 'Fetching listing details');
 
   await withPage(async (page) => {
     await page.goto(listing.url, { waitUntil: 'domcontentloaded', timeout: 15000 });
@@ -142,7 +143,7 @@ async function fetchCraigslistDetail(page: any, listing: ListingRow) {
     }
   }
 
-  console.log(`[detail-fetcher] CL listing ${listing.id}: ${detail.description?.length || 0} chars, ${detail.images.length} images`);
+  logger.info({ listingId: listing.id, platform: 'craigslist', descLength: detail.description?.length || 0, imageCount: detail.images.length }, 'Detail fetched');
 }
 
 async function fetchOfferUpDetail(page: any, listing: ListingRow) {
@@ -266,7 +267,7 @@ async function fetchOfferUpDetail(page: any, listing: ListingRow) {
     }
   }
 
-  console.log(`[detail-fetcher] OU listing ${listing.id}: ${detail.description?.length || 0} chars, ${detail.images.length} images`);
+  logger.info({ listingId: listing.id, platform: 'offerup', descLength: detail.description?.length || 0, imageCount: detail.images.length }, 'Detail fetched');
 }
 
 async function fetchMercariDetail(page: any, listing: ListingRow) {
@@ -333,7 +334,7 @@ async function fetchMercariDetail(page: any, listing: ListingRow) {
     }
   }
 
-  console.log(`[detail-fetcher] Mercari listing ${listing.id}: ${detail.description?.length || 0} chars, ${detail.images.length} images`);
+  logger.info({ listingId: listing.id, platform: 'mercari', descLength: detail.description?.length || 0, imageCount: detail.images.length }, 'Detail fetched');
 }
 
 async function fetchFacebookDetail(page: any, listing: ListingRow) {
@@ -471,5 +472,5 @@ async function fetchFacebookDetail(page: any, listing: ListingRow) {
     }
   }
 
-  console.log(`[detail-fetcher] FB listing ${listing.id}: ${detail.description?.length || 0} chars, ${detail.images.length} images`);
+  logger.info({ listingId: listing.id, platform: 'facebook', descLength: detail.description?.length || 0, imageCount: detail.images.length }, 'Detail fetched');
 }

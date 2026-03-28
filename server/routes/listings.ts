@@ -10,6 +10,7 @@ import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema } from '../lib/validation.js';
 import { fingerprint } from '../scrapers/manager.js';
+import logger from '../lib/logger.js';
 import type { Platform } from '../../shared/constants.js';
 
 export const listingsRouter = new Hono();
@@ -136,7 +137,7 @@ listingsRouter.post('/import', async (c) => {
   try {
     await fetchListingDetails(inserted);
   } catch (err) {
-    console.warn(`[import] Detail fetch failed for ${url}:`, err);
+    logger.warn({ err, url }, 'Detail fetch failed on import');
   }
 
   // Re-fetch the listing with updated data + images
@@ -182,7 +183,7 @@ listingsRouter.get('/:id', async (c) => {
       const updatedImages = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
       return c.json({ ...listing, images: updatedImages });
     } catch (err) {
-      console.warn(`[listings] Auto-enrich failed for ${id}:`, err);
+      logger.warn({ err, listingId: id }, 'Auto-enrich failed');
     }
   }
 
@@ -241,7 +242,7 @@ listingsRouter.post('/:id/analyze', async (c) => {
       const analysis = await analyzeListing(id, apiKey);
       if (analysis) await calculatePricing(id);
     } catch (err) {
-      console.error(`[analyze] Error analyzing listing ${id}:`, err);
+      logger.error({ err, listingId: id }, 'Error analyzing listing');
     }
   })();
 

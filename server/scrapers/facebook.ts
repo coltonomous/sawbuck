@@ -3,6 +3,7 @@ import { join } from 'path';
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
 import { withPage, humanDelay } from './browser-pool.js';
 import { getSystemBrowserCookies, type BrowserCookie } from '../lib/browser-cookies.js';
+import logger from '../lib/logger.js';
 
 const COOKIES_PATH = join(process.cwd(), 'data', 'fb-cookies.json');
 
@@ -30,7 +31,7 @@ function loadCookies(): BrowserCookie[] | null {
     }));
 
     if (!hasRequiredCookies(normalized)) {
-      console.warn('[facebook] fb-cookies.json missing c_user or xs cookies');
+      logger.warn('fb-cookies.json missing c_user or xs cookies');
       return null;
     }
     return normalized;
@@ -45,7 +46,7 @@ export class FacebookScraper extends BaseScraper {
   async scrape(config: ScraperConfig): Promise<ScrapedListing[]> {
     const cookies = loadCookies();
     if (!cookies) {
-      console.warn('[facebook] No session found — log into Facebook in Chrome/Firefox, or export cookies to data/fb-cookies.json');
+      logger.warn('No Facebook session found — log into Facebook in Chrome/Firefox, or export cookies to data/fb-cookies.json');
       return [];
     }
 
@@ -54,7 +55,7 @@ export class FacebookScraper extends BaseScraper {
     if (config.minPrice) searchUrl += `&minPrice=${config.minPrice}`;
     if (config.maxPrice) searchUrl += `&maxPrice=${config.maxPrice}`;
 
-    console.log(`[facebook] Scraping: ${searchUrl}`);
+    logger.info({ searchUrl }, 'Scraping Facebook Marketplace');
 
     return withPage(async (page) => {
       await page.context().addCookies(cookies);
@@ -62,7 +63,7 @@ export class FacebookScraper extends BaseScraper {
       await page.waitForTimeout(humanDelay(2000, 4000));
 
       if (page.url().includes('/login')) {
-        console.warn('[facebook] Session expired — log into Facebook again and retry');
+        logger.warn('Facebook session expired — log into Facebook again and retry');
         return [];
       }
 
@@ -143,7 +144,7 @@ export class FacebookScraper extends BaseScraper {
         location: item.location || config.location,
       }));
 
-      console.log(`[facebook] Found ${results.length} listings`);
+      logger.info({ count: results.length }, 'Facebook listings found');
       return results;
     });
   }

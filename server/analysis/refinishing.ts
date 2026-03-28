@@ -3,6 +3,7 @@ import { db } from '../db/index.js';
 import { listings, refinishingPlans } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { generateText } from '../lib/claude.js';
+import logger from '../lib/logger.js';
 
 const ProductSchema = z.object({
   name: z.string(),
@@ -98,7 +99,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
-  console.log(`[refinishing] Generating plan for listing ${listingId}: ${listing.title}`);
+  logger.info({ listingId, title: listing.title }, 'Generating refinishing plan');
 
   const prompt = buildPrompt(listing);
   const response = await generateText(prompt, SYSTEM_PROMPT, 3000, undefined, apiKey);
@@ -113,8 +114,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     const parsed = JSON.parse(jsonStr);
     plan = RefinishingPlanSchema.parse(parsed);
   } catch (err: any) {
-    console.error(`[refinishing] Failed to parse plan for listing ${listingId}:`, err.message);
-    console.error('[refinishing] Raw response:', response.slice(0, 500));
+    logger.error({ listingId, err: err.message, rawResponse: response.slice(0, 500) }, 'Failed to parse refinishing plan');
     return null;
   }
 
@@ -134,7 +134,13 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     rawResponse: response,
   }).returning();
 
-  console.log(`[refinishing] Plan ${stored.id} created: ${plan.style_recommendation} (${plan.difficulty_level}), ~$${plan.estimated_material_cost} materials, ~${plan.estimated_total_hours}h`);
+  logger.info({
+    planId: stored.id,
+    style: plan.style_recommendation,
+    difficulty: plan.difficulty_level,
+    materialCost: plan.estimated_material_cost,
+    hours: plan.estimated_total_hours,
+  }, 'Refinishing plan created');
 
   return plan;
 }

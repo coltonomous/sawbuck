@@ -10,6 +10,7 @@ import { MercariScraper } from './mercari.js';
 import { EbayScraper } from './ebay.js';
 import { FacebookScraper } from './facebook.js';
 import { closeBrowser } from './browser-pool.js';
+import logger from '../lib/logger.js';
 import type { BaseScraper, ScrapedListing, ScraperConfig } from './base-scraper.js';
 
 const scraperMap: Record<string, () => BaseScraper> = {
@@ -61,11 +62,11 @@ export async function runScraper(
 
     // Validate scraper output — warn if selectors may be broken
     if (scraped.length === 0) {
-      console.warn(`[manager] ${platform} returned 0 results — selectors may be broken`);
+      logger.warn({ platform }, 'Returned 0 results — selectors may be broken');
     }
     for (const item of scraped) {
       if (!item.title || !item.externalId) {
-        console.warn(`[manager] ${platform} returned item with missing title/id — selectors likely broken`);
+        logger.warn({ platform }, 'Returned item with missing title/id — selectors likely broken');
         break;
       }
     }
@@ -76,7 +77,7 @@ export async function runScraper(
     result.relevant = filtered.length;
     result.filtered = dropped;
     if (dropped > 0) {
-      console.log(`[manager] ${platform}: filtered out ${dropped} irrelevant results (${filtered.length} relevant of ${scraped.length})`);
+      logger.info({ platform, dropped, relevant: filtered.length, total: scraped.length }, 'Filtered irrelevant results');
     }
 
     for (const item of filtered) {
@@ -133,7 +134,7 @@ export async function runScraper(
         if (err?.message?.includes('UNIQUE')) {
           result.duplicate++;
         } else {
-          console.error(`[manager] Insert error for ${item.url}:`, err);
+          logger.error({ err, url: item.url }, 'Insert error');
         }
       }
     }
@@ -154,7 +155,7 @@ export async function runScraper(
       }).where(eq(searchConfigs.id, searchConfigId));
     }
 
-    console.log(`[manager] ${platform}: ${result.found} found, ${result.filtered} filtered, ${result.relevant} relevant, ${result.new} new, ${result.duplicate} duplicate`);
+    logger.info({ platform, found: result.found, filtered: result.filtered, relevant: result.relevant, new: result.new, duplicate: result.duplicate }, 'Scrape completed');
   } catch (err: any) {
     result.error = err.message;
     await db.update(scrapeRuns).set({
@@ -162,7 +163,7 @@ export async function runScraper(
       completedAt: new Date().toISOString(),
       error: err.message,
     }).where(eq(scrapeRuns.id, run.id));
-    console.error(`[manager] ${platform} scraper failed:`, err.message);
+    logger.error({ platform, err: err.message }, 'Scraper failed');
   }
 
   return result;
@@ -202,7 +203,7 @@ export async function runAllActiveScrapers(
   const allConfigs = await db.select().from(searchConfigs).where(eq(searchConfigs.isActive, true));
 
   if (allConfigs.length === 0) {
-    console.log('[manager] No active search configs found');
+    logger.info('No active search configs found');
     return [];
   }
 
@@ -221,7 +222,7 @@ export async function runAllActiveScrapers(
   }
 
   if (jobs.length === 0) {
-    console.log('[manager] All platforms disabled or no matching configs');
+    logger.info('All platforms disabled or no matching configs');
     return [];
   }
 
@@ -277,14 +278,14 @@ export async function runAllActiveScrapers(
   for (const [platform, stats] of perPlatform) {
     if (stats.allFailed) {
       const msg = `${platform}: all ${stats.configs} config(s) failed — scraper may be broken or platform is blocking`;
-      console.error(`[health] ${msg}`);
+      logger.error({ platform, configs: stats.configs }, msg);
       // Tag each result for this platform so the frontend can surface the warning
       for (const r of results) {
         if (r.platform === platform) r.warning = msg;
       }
     } else if (stats.totalFound === 0 && stats.configs > 0) {
       const msg = `${platform}: 0 results across ${stats.configs} config(s) — selectors may be broken`;
-      console.warn(`[health] ${msg}`);
+      logger.warn({ platform, configs: stats.configs }, msg);
       for (const r of results) {
         if (r.platform === platform) r.warning = msg;
       }

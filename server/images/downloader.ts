@@ -5,6 +5,7 @@ import { listingImages, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
+import logger from '../lib/logger.js';
 
 const REFERERS: Record<string, string> = {
   craigslist: 'https://craigslist.org/',
@@ -46,7 +47,7 @@ export async function downloadListingImages(listingId: number): Promise<number> 
     const img = pendingImages[i];
     try {
       if (!validateImageUrl(img.sourceUrl)) {
-        console.warn(`[downloader] Invalid image URL: ${img.sourceUrl}`);
+        logger.warn({ url: img.sourceUrl }, 'Invalid image URL');
         await db.update(listingImages).set({
           downloadStatus: 'failed',
         }).where(eq(listingImages.id, img.id));
@@ -91,7 +92,7 @@ export async function downloadListingImages(listingId: number): Promise<number> 
 
       downloaded++;
     } catch (err: any) {
-      console.warn(`[downloader] Failed to download image ${img.sourceUrl}: ${err.message}`);
+      logger.warn({ url: img.sourceUrl, err: err.message }, 'Failed to download image');
       await db.update(listingImages).set({
         downloadStatus: 'failed',
       }).where(eq(listingImages.id, img.id));
@@ -108,9 +109,9 @@ export async function downloadImagesForNewListings(listingIds: number[]): Promis
       const count = await downloadListingImages(id);
       total += count;
     } catch (err: any) {
-      console.error(`[downloader] Error downloading images for listing ${id}:`, err.message);
+      logger.error({ listingId: id, err: err.message }, 'Error downloading images for listing');
     }
   }
-  console.log(`[downloader] Downloaded ${total} images for ${listingIds.length} listings`);
+  logger.info({ total, listingCount: listingIds.length }, 'Image downloads complete');
   return total;
 }

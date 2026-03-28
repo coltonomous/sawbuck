@@ -4,6 +4,7 @@ import { copyFileSync, existsSync, readdirSync, unlinkSync } from 'fs';
 import { homedir, platform, tmpdir } from 'os';
 import { join } from 'path';
 import Database from 'better-sqlite3';
+import logger from './logger.js';
 
 export interface BrowserCookie {
   name: string;
@@ -117,7 +118,7 @@ function readChromeCookies(domain: string): BrowserCookie[] | null {
 
     return cookies.length > 0 ? cookies : null;
   } catch (err: any) {
-    console.warn(`[browser-cookies] Chrome: ${err.message}`);
+    logger.warn({ err: err.message }, 'Failed to read Chrome cookies');
     return null;
   } finally {
     cleanupTemp(tmpPath);
@@ -171,7 +172,7 @@ function readFirefoxCookies(domain: string): BrowserCookie[] | null {
 
     return cookies.length > 0 ? cookies : null;
   } catch (err: any) {
-    console.warn(`[browser-cookies] Firefox: ${err.message}`);
+    logger.warn({ err: err.message }, 'Failed to read Firefox cookies');
     return null;
   } finally {
     cleanupTemp(tmpPath);
@@ -183,13 +184,13 @@ function readFirefoxCookies(domain: string): BrowserCookie[] | null {
 export function getSystemBrowserCookies(domain: string): BrowserCookie[] | null {
   const chrome = readChromeCookies(domain);
   if (chrome) {
-    console.log(`[browser-cookies] ${chrome.length} cookies for ${domain} from Chrome`);
+    logger.debug({ domain, count: chrome.length, source: 'chrome' }, 'Loaded browser cookies');
     return chrome;
   }
 
   const firefox = readFirefoxCookies(domain);
   if (firefox) {
-    console.log(`[browser-cookies] ${firefox.length} cookies for ${domain} from Firefox`);
+    logger.debug({ domain, count: firefox.length, source: 'firefox' }, 'Loaded browser cookies');
     return firefox;
   }
 

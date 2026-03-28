@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
+import logger from '../lib/logger.js';
 
 // Pricing algorithm tuning — these are domain constants, not runtime config
 const SOLD_WEIGHT = 0.7;
@@ -86,7 +87,7 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
   }
 
   if (comps.length === 0) {
-    console.log(`[pricing] No comparables found for listing ${listingId}`);
+    logger.info({ listingId }, 'No comparables found for listing');
     return null;
   }
 
