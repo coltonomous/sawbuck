@@ -66,11 +66,21 @@ jobs:
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
               echo "Health check passed"
-              exit 0
+              break
             fi
             sleep 2
           done
-          echo "Health check failed" && docker compose logs --tail 20 && exit 1
+
+          if ! curl -sf http://localhost:3001/health > /dev/null 2>&1; then
+            echo "Health check failed" && docker compose logs --tail 20 && exit 1
+          fi
+
+          # Re-ingest RAG knowledge base (products + guides from sources.json)
+          echo "Ingesting RAG knowledge base..."
+          docker compose exec -T app npx tsx scripts/ingest.ts --only products || echo "Product ingestion failed (non-fatal)"
+          docker compose exec -T app npx tsx scripts/ingest.ts --only guides || echo "Guide ingestion failed (non-fatal)"
+          docker compose exec -T app npx tsx scripts/ingest.ts --stats
+          echo "Deploy complete"
           EOF
 
           rm -f key.pem
