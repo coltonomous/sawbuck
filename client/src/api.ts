@@ -122,6 +122,8 @@ export interface RefinishingPlan {
   beforeDescription: string | null;
   afterDescription: string | null;
   rawResponse: string | null;
+  ragSourcesUsed: number | null;
+  ragSourceTitles: string | null;
   createdAt: string;
 }
 

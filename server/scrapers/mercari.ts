@@ -1,5 +1,6 @@
 import { BaseScraper, type ScrapedListing, type ScraperConfig } from './base-scraper.js';
 import { withPage } from './browser-pool.js';
+import logger from '../lib/logger.js';
 import type { Page, Response } from 'playwright';
 
 export class MercariScraper extends BaseScraper {
@@ -16,7 +17,7 @@ export class MercariScraper extends BaseScraper {
     if (config.maxPrice) params.set('maxPrice', config.maxPrice.toString());
 
     const searchUrl = `https://www.mercari.com/search/?${params}`;
-    console.log(`[mercari] Scraping: ${searchUrl}`);
+    logger.info({ searchUrl }, 'Scraping Mercari');
 
     return withPage(async (page) => {
       // Cloudflare's challenge JS needs resources the default route handler blocks
@@ -28,7 +29,7 @@ export class MercariScraper extends BaseScraper {
       }
 
       const items = searchData.data?.search?.itemsList ?? [];
-      console.log(`[mercari] ${items.length} items (${searchData.data?.search?.count ?? 0} total)`);
+      logger.info({ count: items.length, total: searchData.data?.search?.count ?? 0 }, 'Mercari items found');
 
       const listings: ScrapedListing[] = [];
       for (const item of items) {

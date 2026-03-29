@@ -3,6 +3,8 @@ import { db } from '../db/index.js';
 import { listings, refinishingPlans } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { generateText } from '../lib/claude.js';
+import { getFullContext } from '../rag/retrieval.js';
+import logger from '../lib/logger.js';
 
 const ProductSchema = z.object({
   name: z.string(),
@@ -94,13 +96,40 @@ function buildPrompt(listing: typeof listings.$inferSelect): string {
   return parts.filter(Boolean).join('\n');
 }
 
-export async function generateRefinishingPlan(listingId: number, projectId?: number, apiKey?: string): Promise<RefinishingPlan | null> {
+export interface RefinishingResult {
+  plan: RefinishingPlan;
+  ragSourcesUsed: number;
+  ragSourceTitles: string[];
+}
+
+export async function generateRefinishingPlan(listingId: number, projectId?: number, apiKey?: string): Promise<RefinishingResult | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
-  console.log(`[refinishing] Generating plan for listing ${listingId}: ${listing.title}`);
+  logger.info({ listingId, title: listing.title }, 'Generating refinishing plan');
 
-  const prompt = buildPrompt(listing);
+  let prompt = buildPrompt(listing);
+
+  // Augment prompt with RAG context (past flips, product specs, technique guides)
+  let ragChunksUsed = 0;
+  const ragSourceTitles: string[] = [];
+  try {
+    const ragContext = await getFullContext({
+      furnitureType: listing.furnitureType || 'furniture',
+      woodSpecies: listing.woodSpecies,
+      style: listing.furnitureStyle,
+      conditionNotes: listing.conditionNotes,
+    });
+    if (ragContext.chunkCount > 0) {
+      prompt += `\n\n${ragContext.text}\n\nUse the reference knowledge above to inform your product recommendations, time estimates, and resale price. Prefer products and techniques that have worked in documented past flips. If past flip data shows actual costs or hours, use those as calibration.`;
+      ragChunksUsed = ragContext.chunkCount;
+      ragSourceTitles.push(...ragContext.results.map((r) => r.title));
+      logger.debug({ listingId, ragChunks: ragContext.chunkCount }, 'RAG context injected into refinishing prompt');
+    }
+  } catch {
+    // RAG not available — continue without it
+  }
+
   const response = await generateText(prompt, SYSTEM_PROMPT, 3000, undefined, apiKey);
 
   // Parse JSON — handle markdown wrapping
@@ -113,8 +142,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     const parsed = JSON.parse(jsonStr);
     plan = RefinishingPlanSchema.parse(parsed);
   } catch (err: any) {
-    console.error(`[refinishing] Failed to parse plan for listing ${listingId}:`, err.message);
-    console.error('[refinishing] Raw response:', response.slice(0, 500));
+    logger.error({ listingId, err: err.message, rawResponse: response.slice(0, 500) }, 'Failed to parse refinishing plan');
     return null;
   }
 
@@ -132,11 +160,19 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     beforeDescription: plan.before_description,
     afterDescription: plan.after_description,
     rawResponse: response,
+    ragSourcesUsed: ragChunksUsed,
+    ragSourceTitles: ragSourceTitles.length > 0 ? JSON.stringify(ragSourceTitles) : null,
   }).returning();
 
-  console.log(`[refinishing] Plan ${stored.id} created: ${plan.style_recommendation} (${plan.difficulty_level}), ~$${plan.estimated_material_cost} materials, ~${plan.estimated_total_hours}h`);
+  logger.info({
+    planId: stored.id,
+    style: plan.style_recommendation,
+    difficulty: plan.difficulty_level,
+    materialCost: plan.estimated_material_cost,
+    hours: plan.estimated_total_hours,
+  }, 'Refinishing plan created');
 
-  return plan;
+  return { plan, ragSourcesUsed: ragChunksUsed, ragSourceTitles };
 }
 
 export function parsePlanSteps(stepsJson: string): RefinishingStep[] {

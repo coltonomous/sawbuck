@@ -3,6 +3,7 @@ import { materials, refinishingPlans } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { parsePlanSteps, type RefinishingProduct } from './refinishing.js';
 import { generateAllSearchUrls } from '../lib/search-urls.js';
+import logger from '../lib/logger.js';
 
 export async function generateMaterialsFromPlan(planId: number, projectId?: number): Promise<number> {
   const plan = await db.select().from(refinishingPlans).where(eq(refinishingPlans.id, planId)).get();
@@ -10,7 +11,7 @@ export async function generateMaterialsFromPlan(planId: number, projectId?: numb
 
   const steps = parsePlanSteps(plan.steps);
   if (steps.length === 0) {
-    console.warn(`[sourcing] No steps found in plan ${planId}`);
+    logger.warn({ planId }, 'No steps found in plan');
     return 0;
   }
 
@@ -51,7 +52,7 @@ export async function generateMaterialsFromPlan(planId: number, projectId?: numb
     inserted++;
   }
 
-  console.log(`[sourcing] Generated ${inserted} materials from plan ${planId}`);
+  logger.info({ planId, materialCount: inserted }, 'Generated materials from plan');
   return inserted;
 }
 

@@ -140,6 +140,8 @@ export const refinishingPlans = sqliteTable('refinishing_plans', {
   beforeDescription: text('before_description'),
   afterDescription: text('after_description'),
   rawResponse: text('raw_response'),
+  ragSourcesUsed: integer('rag_sources_used').default(0),
+  ragSourceTitles: text('rag_source_titles'), // JSON array
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 }, (table) => [
   index('idx_refinishing_plans_listing_id').on(table.listingId),

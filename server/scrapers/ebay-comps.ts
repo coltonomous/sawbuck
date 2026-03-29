@@ -2,6 +2,7 @@ import { withPage } from './browser-pool.js';
 import { db } from '../db/index.js';
 import { comparables } from '../db/schema.js';
 import { searchEbayBrowse } from '../lib/ebay.js';
+import logger from '../lib/logger.js';
 
 export interface CompSearchParams {
   furnitureType?: string | null;
@@ -63,7 +64,7 @@ async function scrapeSoldListings(query: string): Promise<ScrapedSoldResult> {
   });
 
   const searchUrl = `https://www.ebay.com/sch/i.html?${params}`;
-  console.log(`[ebay-comps] Searching sold: ${searchUrl}`);
+  logger.info({ searchUrl }, 'Searching eBay sold listings');
 
   return withPage(async (page) => {
     await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
@@ -90,7 +91,7 @@ async function scrapeSoldListings(query: string): Promise<ScrapedSoldResult> {
     });
 
     if (blocked) {
-      console.warn(`[ebay-comps] Detected block/CAPTCHA for query "${query}"`);
+      logger.warn({ query }, 'Detected eBay block/CAPTCHA');
       return { comps: [], blocked: true };
     }
 
@@ -144,14 +145,14 @@ export async function searchEbayComps(params: CompSearchParams, listingId?: numb
       blocked = result.blocked;
 
       if (result.blocked) {
-        console.warn(`[ebay-comps] Blocked on query "${query}", will try Browse API fallback`);
+        logger.warn({ query }, 'Blocked on eBay query, will try Browse API fallback');
         break;
       }
 
       if (result.comps.length >= 3) {
         soldComps = result.comps;
         usedQuery = query;
-        console.log(`[ebay-comps] Found ${result.comps.length} sold results with query: "${query}"`);
+        logger.info({ query, count: result.comps.length }, 'Found eBay sold results');
         break;
       }
 
@@ -161,7 +162,7 @@ export async function searchEbayComps(params: CompSearchParams, listingId?: numb
         usedQuery = query;
       }
     } catch (err: any) {
-      console.error(`[ebay-comps] Scraper error for "${query}":`, err.message);
+      logger.error({ query, err: err.message }, 'eBay comps scraper error');
     }
   }
 
@@ -196,7 +197,7 @@ export async function searchEbayComps(params: CompSearchParams, listingId?: numb
 
   // Browse API fallback: when blocked or 0 sold results
   if (blocked || soldComps.length === 0) {
-    console.log(`[ebay-comps] Falling back to Browse API active listings (blocked=${blocked}, soldCount=${soldComps.length})`);
+    logger.info({ blocked, soldCount: soldComps.length }, 'Falling back to Browse API active listings');
     const browseQuery = queries[0]; // Use most specific query
 
     try {
@@ -226,7 +227,7 @@ export async function searchEbayComps(params: CompSearchParams, listingId?: numb
         results.push(ebayComp);
       }
     } catch (err: any) {
-      console.error(`[ebay-comps] Browse API fallback failed:`, err.message);
+      logger.error({ err: err.message }, 'Browse API fallback failed');
     }
   }
 

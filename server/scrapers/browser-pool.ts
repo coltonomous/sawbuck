@@ -1,5 +1,6 @@
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { config } from '../lib/config.js';
+import logger from '../lib/logger.js';
 
 const { maxConcurrent: MAX_CONCURRENT, pageTimeoutMs: PAGE_TIMEOUT_MS, poolSlotTimeoutMs: POOL_SLOT_TIMEOUT_MS } = config.browser;
 
@@ -220,7 +221,7 @@ export async function withPage<T>(fn: (page: Page) => Promise<T>): Promise<T> {
         msg.includes('Target closed') || msg.includes('frame was detached');
 
       if (attempt === 0 && isRetryable) {
-        console.warn(`[browser-pool] Retrying after transient failure: ${msg.slice(0, 120)}`);
+        logger.warn({ err: msg.slice(0, 120) }, 'Retrying after transient browser failure');
         // Brief backoff before retry
         await new Promise((r) => setTimeout(r, 2000 + Math.random() * 2000));
         continue;

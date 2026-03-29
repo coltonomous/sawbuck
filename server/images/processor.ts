@@ -6,6 +6,7 @@ import { listingImages, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
+import logger from '../lib/logger.js';
 
 const MAX_EDGE = config.images.maxEdge;
 const WEBP_QUALITY = config.images.webpQuality;
@@ -67,7 +68,7 @@ export async function processListingImages(listingId: number): Promise<number> {
 
       processed++;
     } catch (err: any) {
-      console.warn(`[processor] Failed to process image ${img.localPathOriginal}: ${err.message}`);
+      logger.warn({ imagePath: img.localPathOriginal, err: err.message }, 'Failed to process image');
     }
   }
 

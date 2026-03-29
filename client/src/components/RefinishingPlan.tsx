@@ -30,9 +30,16 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
             <h3 className="text-lg font-semibold text-gray-900">{plan.styleRecommendation}</h3>
             <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
           </div>
-          <span className={`px-2 py-0.5 rounded text-xs font-medium ${difficultyColor}`}>
-            {plan.difficultyLevel}
-          </span>
+          <div className="flex items-center gap-2 shrink-0">
+            {plan.ragSourcesUsed ? (
+              <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700" title={plan.ragSourceTitles ? `Sources: ${JSON.parse(plan.ragSourceTitles).join(', ')}` : undefined}>
+                RAG-enhanced
+              </span>
+            ) : null}
+            <span className={`px-2 py-0.5 rounded text-xs font-medium ${difficultyColor}`}>
+              {plan.difficultyLevel}
+            </span>
+          </div>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t text-center">

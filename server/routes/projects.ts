@@ -10,6 +10,8 @@ import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
+import { tryIngestProject } from '../rag/ingest/projects.js';
+import logger from '../lib/logger.js';
 
 export const projectsRouter = new Hono();
 
@@ -90,6 +92,12 @@ projectsRouter.patch('/:id', async (c) => {
 
   const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!updated) return c.json({ error: 'Not found' }, 404);
+
+  // Auto-ingest into RAG knowledge base when project is sold
+  if (updated.status === 'sold' && updated.soldPrice) {
+    tryIngestProject(id).catch(() => {});
+  }
+
   return c.json(updated);
 });
 
@@ -126,8 +134,8 @@ projectsRouter.post('/:id/refinish', async (c) => {
 
   try {
     const apiKey = c.req.header('X-Anthropic-Key');
-    const plan = await generateRefinishingPlan(project.listingId, id, apiKey);
-    if (!plan) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+    const result = await generateRefinishingPlan(project.listingId, id, apiKey);
+    if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
     const storedPlans = await db.select()
       .from(refinishingPlans)
@@ -144,12 +152,14 @@ projectsRouter.post('/:id/refinish', async (c) => {
     }).where(eq(projects.id, id));
 
     return c.json({
-      plan,
+      plan: result.plan,
+      ragSourcesUsed: result.ragSourcesUsed,
+      ragSourceTitles: result.ragSourceTitles,
       materials: storedPlan ? await getMaterialsForProject(id) : [],
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[projects] Error generating plan for project ${id}:`, err);
+    logger.error({ err, projectId: id }, 'Error generating refinishing plan');
     return c.json({ error: message }, 500);
   }
 });
@@ -213,7 +223,7 @@ Rules:
     return c.json({ text });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[projects] Error generating listing text for project ${id}:`, err);
+    logger.error({ err, projectId: id }, 'Error generating listing text');
     return c.json({ error: message }, 500);
   }
 });
@@ -275,6 +285,12 @@ projectsRouter.patch('/:id/costs', async (c) => {
   }
 
   const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
+
+  // Auto-ingest when sold price is set and project is marked sold
+  if (updated?.status === 'sold' && updated.soldPrice) {
+    tryIngestProject(id).catch(() => {});
+  }
+
   return c.json(updated);
 });
 

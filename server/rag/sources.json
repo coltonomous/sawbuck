@@ -1,0 +1,115 @@
+{
+  "$schema": "./sources.schema.json",
+  "_comment": "Curated source manifest for RAG knowledge base. Add URLs here, then run: npm run ingest",
+
+  "products": [
+    {
+      "name": "Citristrip Paint & Varnish Stripping Gel",
+      "brand": "Citristrip",
+      "url": "https://www.citristrip.com/product/paint-varnish-stripping-gel/",
+      "category": "stripper"
+    },
+    {
+      "name": "Gel Stain",
+      "brand": "General Finishes",
+      "url": "https://generalfinishes.com/wood-finishes-702/gel-stains",
+      "category": "stain"
+    },
+    {
+      "name": "High Performance Topcoat",
+      "brand": "General Finishes",
+      "url": "https://generalfinishes.com/wood-finishes-702/water-based-topcoats/high-performance-polyurethane-topcoat",
+      "category": "finish"
+    },
+    {
+      "name": "Wood Finish Penetrating Stain",
+      "brand": "Minwax",
+      "url": "https://www.minwax.com/en/products/stains/wood-finish-penetrating-stain",
+      "category": "stain"
+    },
+    {
+      "name": "Polycrylic Protective Finish",
+      "brand": "Minwax",
+      "url": "https://www.minwax.com/en/products/clear-protective-finishes/polycrylic-protective-finish",
+      "category": "finish"
+    },
+    {
+      "name": "Pre-Stain Wood Conditioner",
+      "brand": "Minwax",
+      "url": "https://www.minwax.com/en/products/preparation/pre-stain-wood-conditioner",
+      "category": "prep"
+    },
+    {
+      "name": "Chalk Style Paint",
+      "brand": "Rust-Oleum",
+      "url": "https://www.rustoleum.com/product-catalog/consumer-brands/chalked",
+      "category": "paint"
+    },
+    {
+      "name": "Varathane Premium Wood Stain",
+      "brand": "Varathane",
+      "url": "https://www.rustoleum.com/product-catalog/consumer-brands/varathane/interior-wood-stains/premium-fast-dry-wood-stain",
+      "category": "stain"
+    },
+    {
+      "name": "Bondo Wood Filler",
+      "brand": "3M",
+      "url": "https://www.bondo.com/products/wood-fillers",
+      "category": "repair"
+    },
+    {
+      "name": "Danish Oil",
+      "brand": "Watco",
+      "url": "https://www.rustoleum.com/product-catalog/consumer-brands/watco/interior-wood-care/danish-oil",
+      "category": "finish"
+    }
+  ],
+
+  "guides": [
+    {
+      "title": "How to Strip Furniture",
+      "url": "https://www.minwax.com/en/how-to-guides/furniture/how-to-strip-furniture",
+      "tags": ["stripping", "prep", "beginner"]
+    },
+    {
+      "title": "How to Stain Wood",
+      "url": "https://www.minwax.com/en/how-to-guides/wood-staining-101/how-to-stain-wood",
+      "tags": ["staining", "technique", "beginner"]
+    },
+    {
+      "title": "How to Apply Polyurethane",
+      "url": "https://www.minwax.com/en/how-to-guides/clear-protective-finishes/how-to-apply-polyurethane",
+      "tags": ["finishing", "topcoat", "technique"]
+    },
+    {
+      "title": "How to Refinish Furniture Without Stripping",
+      "url": "https://www.minwax.com/en/how-to-guides/furniture/how-to-refinish-furniture-without-stripping",
+      "tags": ["refinishing", "shortcut", "beginner"]
+    },
+    {
+      "title": "Sanding Basics for Furniture",
+      "url": "https://www.minwax.com/en/how-to-guides/wood-staining-101/how-to-sand-wood",
+      "tags": ["sanding", "prep", "technique"]
+    },
+    {
+      "title": "General Finishes Application Guide",
+      "url": "https://generalfinishes.com/faq/application-tips",
+      "tags": ["finishing", "technique", "product-specific"]
+    },
+    {
+      "title": "How to Paint Furniture with Chalk Paint",
+      "url": "https://www.rustoleum.com/en/the-project-center/furniture-and-decor/how-to-chalk-paint-furniture",
+      "tags": ["painting", "chalk-paint", "technique"]
+    },
+    {
+      "title": "How to Fix Furniture Veneer",
+      "url": "https://www.bobvila.com/articles/how-to-repair-veneer/",
+      "tags": ["repair", "veneer", "technique"]
+    },
+    {
+      "title": "Wood Identification Guide",
+      "url": "https://www.wood-database.com/wood-articles/hardwood-anatomy/",
+      "tags": ["wood-id", "species", "reference"]
+    }
+  ]
+}
