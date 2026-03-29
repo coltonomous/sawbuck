@@ -10,6 +10,7 @@ import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
+import { tryIngestProject } from '../rag/ingest/projects.js';
 import logger from '../lib/logger.js';
 
 export const projectsRouter = new Hono();
@@ -91,6 +92,12 @@ projectsRouter.patch('/:id', async (c) => {
 
   const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!updated) return c.json({ error: 'Not found' }, 404);
+
+  // Auto-ingest into RAG knowledge base when project is sold
+  if (updated.status === 'sold' && updated.soldPrice) {
+    tryIngestProject(id).catch(() => {});
+  }
+
   return c.json(updated);
 });
 
@@ -276,6 +283,12 @@ projectsRouter.patch('/:id/costs', async (c) => {
   }
 
   const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
+
+  // Auto-ingest when sold price is set and project is marked sold
+  if (updated?.status === 'sold' && updated.soldPrice) {
+    tryIngestProject(id).catch(() => {});
+  }
+
   return c.json(updated);
 });
 

@@ -5,6 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
 import { getImageBase64 } from '../images/processor.js';
 import { config } from '../lib/config.js';
+import { getProjectContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
 
 const FurnitureAnalysisSchema = z.object({
@@ -117,6 +118,23 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
   let prompt = ANALYSIS_PROMPT;
   if (listing.askingPrice) {
     prompt += `\n\nThe seller is asking $${listing.askingPrice} for this piece. Factor this into your refinishing_profit_verdict.`;
+  }
+
+  // Augment prompt with RAG context from past flips (if knowledge base is populated)
+  if (listing.furnitureType || listing.title) {
+    try {
+      const ragContext = await getProjectContext(
+        listing.furnitureType || listing.title,
+        listing.woodSpecies,
+        listing.furnitureStyle,
+      );
+      if (ragContext.chunkCount > 0) {
+        prompt += `\n\n--- PAST FLIP DATA (from completed projects) ---\n${ragContext.text}\n--- END PAST FLIP DATA ---\n\nUse the past flip data above to ground your price estimates and profit verdict in real outcomes. If similar pieces have sold, reference those numbers.`;
+        logger.debug({ listingId, ragChunks: ragContext.chunkCount }, 'RAG context injected into vision prompt');
+      }
+    } catch {
+      // RAG not available — continue without it
+    }
   }
 
   let analysis: FurnitureAnalysis;

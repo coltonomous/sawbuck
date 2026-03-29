@@ -101,7 +101,7 @@ export function upsertChunk(
 
   if (result.changes === 0) return null; // duplicate, skipped
 
-  const chunkId = Number(result.lastInsertRowid);
+  const chunkId = BigInt(result.lastInsertRowid);
 
   const insertVec = conn.prepare(`
     INSERT INTO knowledge_vec (chunk_id, embedding)
@@ -109,7 +109,7 @@ export function upsertChunk(
   `);
   insertVec.run(chunkId, Buffer.from(embedding.buffer));
 
-  return chunkId;
+  return Number(chunkId);
 }
 
 /**
@@ -148,7 +148,7 @@ export function upsertChunks(
         JSON.stringify(chunk.metadata),
       );
       if (result.changes > 0) {
-        const chunkId = Number(result.lastInsertRowid);
+        const chunkId = BigInt(result.lastInsertRowid);
         insertVec.run(chunkId, Buffer.from(embeddings[i].buffer));
         inserted++;
       }

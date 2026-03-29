@@ -11,7 +11,7 @@ import { db } from '../../db/index.js';
 import { projects, listings, refinishingPlans, materials } from '../../db/schema.js';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { embed, embedBatch } from '../embeddings.js';
-import { upsertChunks, clearChunks } from '../store.js';
+import { upsertChunk, upsertChunks, clearChunks } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
 import logger from '../../lib/logger.js';
 
@@ -150,6 +150,52 @@ function flipToChunk(flip: CompletedFlip, materialsUsed: string[]): Omit<Knowled
 }
 
 /**
+ * Ingest a single project into the knowledge base. Called automatically
+ * when a project transitions to 'sold'. Fire-and-forget — errors are
+ * logged but don't propagate.
+ */
+export async function tryIngestProject(projectId: number): Promise<void> {
+  try {
+    const flip = db
+      .select({
+        projectId: projects.id,
+        projectName: projects.name,
+        purchasePrice: projects.purchasePrice,
+        totalMaterialCost: projects.totalMaterialCost,
+        hoursInvested: projects.hoursInvested,
+        soldPrice: projects.soldPrice,
+        profit: projects.profit,
+        roiPercentage: projects.roiPercentage,
+        purchaseDate: projects.purchaseDate,
+        soldDate: projects.soldDate,
+        furnitureType: listings.furnitureType,
+        furnitureStyle: listings.furnitureStyle,
+        woodSpecies: listings.woodSpecies,
+        conditionScore: listings.conditionScore,
+        conditionNotes: listings.conditionNotes,
+        askingPrice: listings.askingPrice,
+      })
+      .from(projects)
+      .innerJoin(listings, eq(projects.listingId, listings.id))
+      .where(eq(projects.id, projectId))
+      .get();
+
+    if (!flip || !flip.soldPrice) return;
+
+    const mats = getProjectMaterials(projectId);
+    const chunk = flipToChunk(flip, mats);
+    const embedding = await embed(chunk.content);
+    const id = upsertChunk(chunk, embedding);
+
+    if (id) {
+      logger.info({ projectId, chunkId: id }, 'Project ingested into knowledge base');
+    }
+  } catch (err) {
+    logger.warn({ projectId, err: (err as Error).message }, 'Failed to ingest project into RAG (non-fatal)');
+  }
+}
+
+/**
  * Ingest all completed flips into the knowledge base.
  * Clears existing project chunks first to avoid stale data, then
  * re-ingests everything. Safe to call repeatedly.
@@ -178,3 +224,6 @@ export async function ingestProjects(): Promise<{ ingested: number; skipped: num
   logger.info({ inserted, total: flips.length }, 'Project ingestion complete');
   return { ingested: inserted, skipped: flips.length - inserted };
 }
+
+// Exported for testing
+export { flipToChunk, getProjectMaterials, type CompletedFlip };
