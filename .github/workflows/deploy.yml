@@ -56,7 +56,8 @@ jobs:
           set -e
 
           cd /opt/sawbuck
-          docker image prune -f
+          docker compose down --rmi all --volumes --remove-orphans 2>/dev/null || true
+          docker builder prune -af
           docker compose build
           docker compose down
           docker compose up -d

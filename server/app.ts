@@ -78,9 +78,9 @@ app.use('/api/projects/:id/listing-text', rateLimit(RATE_LIMIT_CLAUDE));
 
 // ── Global error handler ────────────────────────────────────────────
 app.onError((err, c) => {
-  const logger = c.get?.('logger');
-  if (logger) {
-    logger.error({ err, path: c.req.path, method: c.req.method }, 'Unhandled error');
+  const ctxLogger = c.get?.('logger');
+  if (ctxLogger) {
+    ctxLogger.error({ err, path: c.req.path, method: c.req.method }, 'Unhandled error');
   } else {
     logger.error({ err }, 'Unhandled error');
   }
