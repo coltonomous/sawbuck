@@ -56,7 +56,7 @@ jobs:
           set -e
 
           cd /opt/sawbuck
-          docker image prune -f
+          docker system prune -af --volumes --filter "label!=keep"
           docker compose build
           docker compose down
           docker compose up -d
