@@ -96,7 +96,13 @@ function buildPrompt(listing: typeof listings.$inferSelect): string {
   return parts.filter(Boolean).join('\n');
 }
 
-export async function generateRefinishingPlan(listingId: number, projectId?: number, apiKey?: string): Promise<RefinishingPlan | null> {
+export interface RefinishingResult {
+  plan: RefinishingPlan;
+  ragSourcesUsed: number;
+  ragSourceTitles: string[];
+}
+
+export async function generateRefinishingPlan(listingId: number, projectId?: number, apiKey?: string): Promise<RefinishingResult | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
@@ -105,6 +111,8 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
   let prompt = buildPrompt(listing);
 
   // Augment prompt with RAG context (past flips, product specs, technique guides)
+  let ragChunksUsed = 0;
+  const ragSourceTitles: string[] = [];
   try {
     const ragContext = await getFullContext({
       furnitureType: listing.furnitureType || 'furniture',
@@ -114,6 +122,8 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     });
     if (ragContext.chunkCount > 0) {
       prompt += `\n\n${ragContext.text}\n\nUse the reference knowledge above to inform your product recommendations, time estimates, and resale price. Prefer products and techniques that have worked in documented past flips. If past flip data shows actual costs or hours, use those as calibration.`;
+      ragChunksUsed = ragContext.chunkCount;
+      ragSourceTitles.push(...ragContext.results.map((r) => r.title));
       logger.debug({ listingId, ragChunks: ragContext.chunkCount }, 'RAG context injected into refinishing prompt');
     }
   } catch {
@@ -150,6 +160,8 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     beforeDescription: plan.before_description,
     afterDescription: plan.after_description,
     rawResponse: response,
+    ragSourcesUsed: ragChunksUsed,
+    ragSourceTitles: ragSourceTitles.length > 0 ? JSON.stringify(ragSourceTitles) : null,
   }).returning();
 
   logger.info({
@@ -160,7 +172,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     hours: plan.estimated_total_hours,
   }, 'Refinishing plan created');
 
-  return plan;
+  return { plan, ragSourcesUsed: ragChunksUsed, ragSourceTitles };
 }
 
 export function parsePlanSteps(stepsJson: string): RefinishingStep[] {

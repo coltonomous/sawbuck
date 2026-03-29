@@ -150,9 +150,16 @@ export default function ListingDetail() {
         <Card className="mb-4">
           <div className="flex items-center justify-between mb-4">
             <CardHeader>Analysis</CardHeader>
-            {recLabel && (
-              <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${recStyle}`}>{recLabel}</span>
-            )}
+            <div className="flex items-center gap-2">
+              {analysisData?.rag_sources_used ? (
+                <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700" title={`Grounded with ${analysisData.rag_sources_used} knowledge base sources`}>
+                  RAG-enhanced
+                </span>
+              ) : null}
+              {recLabel && (
+                <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${recStyle}`}>{recLabel}</span>
+              )}
+            </div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3 text-sm">
             <div className="flex justify-between">

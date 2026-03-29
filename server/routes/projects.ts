@@ -134,8 +134,8 @@ projectsRouter.post('/:id/refinish', async (c) => {
 
   try {
     const apiKey = c.req.header('X-Anthropic-Key');
-    const plan = await generateRefinishingPlan(project.listingId, id, apiKey);
-    if (!plan) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+    const result = await generateRefinishingPlan(project.listingId, id, apiKey);
+    if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
     const storedPlans = await db.select()
       .from(refinishingPlans)
@@ -152,7 +152,9 @@ projectsRouter.post('/:id/refinish', async (c) => {
     }).where(eq(projects.id, id));
 
     return c.json({
-      plan,
+      plan: result.plan,
+      ragSourcesUsed: result.ragSourcesUsed,
+      ragSourceTitles: result.ragSourceTitles,
       materials: storedPlan ? await getMaterialsForProject(id) : [],
     });
   } catch (err: unknown) {
