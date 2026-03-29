@@ -79,7 +79,7 @@ jobs:
           echo "Ingesting RAG knowledge base..."
           docker compose exec -T app npx tsx scripts/ingest.ts --only products || echo "Product ingestion failed (non-fatal)"
           docker compose exec -T app npx tsx scripts/ingest.ts --only guides || echo "Guide ingestion failed (non-fatal)"
-          docker compose exec -T app npx tsx scripts/ingest.ts --stats
+          docker compose exec -T app npx tsx scripts/ingest.ts --stats || echo "Stats check failed (non-fatal)"
           echo "Deploy complete"
           EOF
 
