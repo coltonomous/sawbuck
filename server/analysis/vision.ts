@@ -123,6 +123,7 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
   // Augment prompt with RAG context from past flips (if knowledge base is populated)
   let ragChunksUsed = 0;
   const ragSourceTitles: string[] = [];
+  let ragSources: Array<{ title: string; source: string; type: string }> = [];
   if (listing.furnitureType || listing.title) {
     try {
       const ragContext = await getProjectContext(
@@ -134,6 +135,7 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
         prompt += `\n\n--- PAST FLIP DATA (from completed projects) ---\n${ragContext.text}\n--- END PAST FLIP DATA ---\n\nUse the past flip data above to ground your price estimates and profit verdict in real outcomes. If similar pieces have sold, reference those numbers.`;
         ragChunksUsed = ragContext.chunkCount;
         ragSourceTitles.push(...ragContext.results.map((r) => r.title));
+        ragSources = ragContext.sources.map(({ title, source, type }) => ({ title, source, type }));
         logger.debug({ listingId, ragChunks: ragContext.chunkCount }, 'RAG context injected into vision prompt');
       }
     } catch {
@@ -172,6 +174,7 @@ export async function analyzeListing(listingId: number, apiKey?: string): Promis
       ...analysis,
       rag_sources_used: ragChunksUsed,
       rag_source_titles: ragSourceTitles,
+      rag_sources: ragSources,
     }),
     analyzedAt: new Date().toISOString(),
     status: 'analyzed',

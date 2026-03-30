@@ -108,6 +108,12 @@ export interface RefinishingStep {
   tips: string[];
 }
 
+export interface RagSource {
+  title: string;
+  source: string;
+  type: 'project' | 'product' | 'guide';
+}
+
 export interface RefinishingPlan {
   id: number;
   listingId: number;
@@ -124,6 +130,7 @@ export interface RefinishingPlan {
   rawResponse: string | null;
   ragSourcesUsed: number | null;
   ragSourceTitles: string | null;
+  ragSources: string | null;
   createdAt: string;
 }
 

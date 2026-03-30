@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type ListingDetail as ListingDetailType, type ListingImage } from '../api';
+import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource } from '../api';
 import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
@@ -15,6 +15,7 @@ export default function ListingDetail() {
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
+  const [showRagSources, setShowRagSources] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
   const projectFormRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -152,9 +153,12 @@ export default function ListingDetail() {
             <CardHeader>Analysis</CardHeader>
             <div className="flex items-center gap-2">
               {analysisData?.rag_sources_used ? (
-                <span className="px-2 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700" title={`Grounded with ${analysisData.rag_sources_used} knowledge base sources`}>
-                  RAG-enhanced
-                </span>
+                <button
+                  onClick={() => setShowRagSources((v) => !v)}
+                  className="px-2 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors cursor-pointer"
+                >
+                  {String(analysisData.rag_sources_used)} sources {showRagSources ? '▼' : '▶'}
+                </button>
               ) : null}
               {recLabel && (
                 <span className={`px-2.5 py-1 rounded-lg text-xs font-semibold ${recStyle}`}>{recLabel}</span>
@@ -191,6 +195,9 @@ export default function ListingDetail() {
               </div>
             )}
           </div>
+          {showRagSources && Array.isArray(analysisData?.rag_sources) ? (
+            <AnalysisRagSources sources={analysisData.rag_sources as RagSource[]} />
+          ) : null}
           {listing.conditionNotes && (
             <p className="mt-4 pt-3 border-t text-sm text-gray-600 leading-relaxed">{listing.conditionNotes}</p>
           )}
@@ -282,6 +289,46 @@ export default function ListingDetail() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const SOURCE_TYPE_LABELS: Record<string, string> = {
+  project: 'Past Flip',
+  product: 'Product Spec',
+  guide: 'Guide',
+};
+const SOURCE_TYPE_COLORS: Record<string, string> = {
+  project: 'bg-blue-50 text-blue-700',
+  product: 'bg-amber-50 text-amber-700',
+  guide: 'bg-green-50 text-green-700',
+};
+
+function AnalysisRagSources({ sources }: { sources: RagSource[] }) {
+  if (!Array.isArray(sources) || sources.length === 0) return null;
+
+  return (
+    <div className="mt-3 pt-3 border-t border-purple-100">
+      <h4 className="text-xs font-medium text-purple-600 uppercase mb-2">Knowledge base sources</h4>
+      <div className="space-y-1">
+        {sources.map((s, i) => {
+          const isLink = s.source?.startsWith('http');
+          return (
+            <div key={i} className="flex items-center gap-2 text-xs text-gray-600">
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SOURCE_TYPE_COLORS[s.type] || 'bg-gray-100 text-gray-600'}`}>
+                {SOURCE_TYPE_LABELS[s.type] || s.type}
+              </span>
+              {isLink ? (
+                <a href={s.source} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline truncate">
+                  {s.title}
+                </a>
+              ) : (
+                <span className="truncate">{s.title}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -62,6 +62,30 @@
       "brand": "Watco",
       "url": "https://www.rustoleum.com/product-catalog/consumer-brands/watco/interior-wood-care/danish-oil",
       "category": "finish"
+    },
+    {
+      "name": "Bulls Eye 1-2-3 Water-Base Primer",
+      "brand": "Zinsser",
+      "url": "https://www.rustoleum.com/product-catalog/consumer-brands/zinsser/multi-purpose-water-base-primer/bulls-eye-1-2-3-water-base-primer",
+      "category": "primer"
+    },
+    {
+      "name": "Advance Interior Paint",
+      "brand": "Benjamin Moore",
+      "url": "https://www.benjaminmoore.com/en-us/interior-exterior-paints-stains/product-catalog/awiap/advance-interior-paint",
+      "category": "paint"
+    },
+    {
+      "name": "Odorless Mineral Spirits",
+      "brand": "Klean-Strip",
+      "url": "https://kleanstrip.com/solvents-and-thinners/odorless-mineral-spirits/",
+      "category": "solvent"
+    },
+    {
+      "name": "Fast-Drying Polyurethane",
+      "brand": "Minwax",
+      "url": "https://www.minwax.com/en/products/protective-finishes/fast-drying-polyurethane",
+      "category": "finish"
     }
   ],
 
@@ -110,6 +134,21 @@
       "title": "Wood Identification Guide",
       "url": "https://www.wood-database.com/wood-articles/hardwood-anatomy/",
       "tags": ["wood-id", "species", "reference"]
+    },
+    {
+      "title": "How to Paint Furniture Like a Pro",
+      "url": "https://www.bobvila.com/articles/how-to-paint-furniture-for-beginners/",
+      "tags": ["painting", "priming", "prep", "technique"]
+    },
+    {
+      "title": "How to Apply Polyurethane (Oil-Based)",
+      "url": "https://www.familyhandyman.com/project/how-to-apply-polyurethane/",
+      "tags": ["finishing", "polyurethane", "oil-based", "technique"]
+    },
+    {
+      "title": "How to Install Cabinet Hardware",
+      "url": "https://www.familyhandyman.com/list/install-cabinet-handles-pulls-hardware/",
+      "tags": ["hardware", "pulls", "knobs", "installation"]
     }
   ]
 }

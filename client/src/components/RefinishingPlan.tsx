@@ -1,8 +1,20 @@
 import { useState } from 'react';
-import { type RefinishingPlan as RefinishingPlanType } from '../api';
+import { type RefinishingPlan as RefinishingPlanType, type RagSource } from '../api';
+
+function parseRagSources(raw: string | null | undefined): RagSource[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s: unknown) => s && typeof s === 'object' && 'title' in (s as object));
+  } catch {
+    return [];
+  }
+}
 
 export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType }) {
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(new Set([0]));
+  const [showSources, setShowSources] = useState(false);
 
   const toggleStep = (index: number) => {
     setExpandedSteps((prev) => {
@@ -32,15 +44,20 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
           </div>
           <div className="flex items-center gap-2 shrink-0">
             {plan.ragSourcesUsed ? (
-              <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700" title={plan.ragSourceTitles ? `Sources: ${JSON.parse(plan.ragSourceTitles).join(', ')}` : undefined}>
-                RAG-enhanced
-              </span>
+              <button
+                onClick={() => setShowSources((v) => !v)}
+                className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors cursor-pointer"
+              >
+                {plan.ragSourcesUsed} sources {showSources ? '▼' : '▶'}
+              </button>
             ) : null}
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${difficultyColor}`}>
               {plan.difficultyLevel}
             </span>
           </div>
         </div>
+
+        {showSources && <RagSourceList sources={parseRagSources(plan.ragSources)} />}
 
         <div className="grid grid-cols-3 gap-4 mt-4 pt-4 border-t text-center">
           <div>
@@ -128,6 +145,46 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
             )}
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function RagSourceList({ sources }: { sources: RagSource[] }) {
+  if (sources.length === 0) return null;
+
+  const typeLabels: Record<string, string> = {
+    project: 'Past Flip',
+    product: 'Product Spec',
+    guide: 'Guide',
+  };
+  const typeColors: Record<string, string> = {
+    project: 'bg-blue-50 text-blue-700',
+    product: 'bg-amber-50 text-amber-700',
+    guide: 'bg-green-50 text-green-700',
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-purple-100">
+      <h4 className="text-xs font-medium text-purple-600 uppercase mb-2">Knowledge base sources</h4>
+      <div className="space-y-1">
+        {sources.map((s, i) => {
+          const isLink = s.source.startsWith('http');
+          return (
+            <div key={i} className="flex items-center gap-2 text-xs text-gray-600">
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${typeColors[s.type] || 'bg-gray-100 text-gray-600'}`}>
+                {typeLabels[s.type] || s.type}
+              </span>
+              {isLink ? (
+                <a href={s.source} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline truncate">
+                  {s.title}
+                </a>
+              ) : (
+                <span className="truncate">{s.title}</span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

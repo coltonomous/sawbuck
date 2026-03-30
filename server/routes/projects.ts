@@ -155,6 +155,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
       plan: result.plan,
       ragSourcesUsed: result.ragSourcesUsed,
       ragSourceTitles: result.ragSourceTitles,
+      ragSources: result.ragSources,
       materials: storedPlan ? await getMaterialsForProject(id) : [],
     });
   } catch (err: unknown) {

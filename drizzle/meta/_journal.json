@@ -36,6 +36,13 @@
       "when": 1774818904903,
       "tag": "0004_mute_korvac",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1774897247152,
+      "tag": "0005_smart_gertrude_yorkes",
+      "breakpoints": true
     }
   ]
 }

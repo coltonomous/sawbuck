@@ -10,6 +10,13 @@ import { embed } from './embeddings.js';
 import { search, chunkCount, type ChunkType, type SearchResult } from './store.js';
 import logger from '../lib/logger.js';
 
+export interface RagSource {
+  title: string;
+  source: string;
+  type: ChunkType;
+  distance: number;
+}
+
 export interface RetrievalContext {
   /** Formatted text block ready to inject into a prompt. */
   text: string;
@@ -17,6 +24,8 @@ export interface RetrievalContext {
   chunkCount: number;
   /** The raw search results, in case the caller wants to inspect them. */
   results: SearchResult[];
+  /** Structured source references for surfacing in the UI. */
+  sources: RagSource[];
 }
 
 /**
@@ -111,18 +120,22 @@ export async function getFullContext(params: {
 
   const sections: string[] = [];
   const allResults: SearchResult[] = [];
+  const allSources: RagSource[] = [];
 
   if (projects.chunkCount > 0) {
     sections.push(`## Past Flip Outcomes\n${projects.text}`);
     allResults.push(...projects.results);
+    allSources.push(...projects.sources);
   }
   if (products.chunkCount > 0) {
     sections.push(`## Relevant Product Specs\n${products.text}`);
     allResults.push(...products.results);
+    allSources.push(...products.sources);
   }
   if (guides.chunkCount > 0) {
     sections.push(`## Refinishing Techniques\n${guides.text}`);
     allResults.push(...guides.results);
+    allSources.push(...guides.sources);
   }
 
   const text = sections.length > 0
@@ -139,6 +152,7 @@ export async function getFullContext(params: {
     text,
     chunkCount: allResults.length,
     results: allResults,
+    sources: allSources,
   };
 }
 
@@ -167,9 +181,26 @@ async function retrieveFormatted(
   // Filter out low-relevance results (distance > 1.2 for normalized cosine)
   const relevant = results.filter((r) => r.distance < 1.2);
 
-  const text = relevant.map(formatter).join('\n\n');
+  // Log misses — when query finds nothing useful
+  if (relevant.length === 0) {
+    const bestDistance = results.length > 0
+      ? Math.min(...results.map((r) => r.distance))
+      : null;
+    logger.info(
+      { query, type, rawResults: results.length, bestDistance },
+      'RAG miss: no relevant results for query',
+    );
+  }
 
-  return { text, chunkCount: relevant.length, results: relevant };
+  const text = relevant.map(formatter).join('\n\n');
+  const sources: RagSource[] = relevant.map((r) => ({
+    title: r.title,
+    source: r.source,
+    type: r.type,
+    distance: r.distance,
+  }));
+
+  return { text, chunkCount: relevant.length, results: relevant, sources };
 }
 
 function formatProjectChunk(r: SearchResult): string {
