@@ -83,10 +83,19 @@ projectsRouter.patch('/:id', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  await db.update(projects).set({
+  // Auto-set soldDate when marking as sold (if not already set)
+  const updates: Record<string, unknown> = {
     ...parsed.data,
     updatedAt: new Date().toISOString(),
-  }).where(eq(projects.id, id));
+  };
+  if (parsed.data.status === 'sold') {
+    const existing = await db.select().from(projects).where(eq(projects.id, id)).get();
+    if (existing && !existing.soldDate) {
+      updates.soldDate = new Date().toISOString().split('T')[0];
+    }
+  }
+
+  await db.update(projects).set(updates).where(eq(projects.id, id));
 
   await recalculateFinancials(id);
 
@@ -276,7 +285,14 @@ projectsRouter.patch('/:id/costs', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const updates = parsed.data;
+  const updates: Record<string, unknown> = { ...parsed.data };
+  // Auto-set soldDate when soldPrice is provided (if not already set)
+  if (updates.soldPrice && !updates.soldDate) {
+    const existing = await db.select().from(projects).where(eq(projects.id, id)).get();
+    if (existing && !existing.soldDate) {
+      updates.soldDate = new Date().toISOString().split('T')[0];
+    }
+  }
   if (Object.keys(updates).length > 0) {
     await db.update(projects).set({
       ...updates,
