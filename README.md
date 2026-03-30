@@ -10,6 +10,7 @@ Find underpriced furniture on Craigslist, OfferUp, Mercari, eBay, and Facebook M
 - **Refinishing Plans** — generates step-by-step refinishing instructions with specific product recommendations, realistic time/cost estimates, and expected resale prices
 - **Materials Sourcing** — builds shopping lists with links to Amazon, Home Depot, and Lowe's
 - **Project Tracking** — tracks the full lifecycle from acquisition through refinishing to sale, with before/during/after photos and ROI calculations
+- **Knowledge Base (RAG)** — on-device retrieval-augmented generation using local embeddings (all-MiniLM-L6-v2) and sqlite-vec. Completed flips, product specs, and refinishing guides are chunked, embedded, and stored in the same SQLite database. Vision analysis and refinishing plans are grounded in real outcomes and manufacturer data instead of relying solely on Claude's training data
 - **Analytics** — dashboard with deal flow metrics, profit tracking, and platform performance
 
 ## Tech Stack
@@ -20,6 +21,8 @@ Find underpriced furniture on Craigslist, OfferUp, Mercari, eBay, and Facebook M
 | Database | SQLite via Drizzle ORM |
 | Scraping | Playwright (browser pool with stealth + request interception) |
 | AI | Claude Sonnet (vision + text) |
+| Embeddings | all-MiniLM-L6-v2 via @xenova/transformers (on-device, 384-dim) |
+| Vector Search | sqlite-vec (KNN on the same SQLite database) |
 | eBay API | Browse API v1 (OAuth client credentials) |
 | Client | React 19, Vite, Tailwind CSS v4 |
 | Maps | Leaflet / react-leaflet |
@@ -94,6 +97,10 @@ Pricing logic, fingerprint hashing, scraper parsing, and API route smoke tests. 
 | `npm run db:generate` | Generate a new migration from schema changes |
 | `npm run db:migrate` | Apply migrations |
 | `npm run db:studio` | Open Drizzle Studio |
+| `npm run ingest` | Seed RAG knowledge base (products + guides + projects) |
+| `npm run ingest -- --only products` | Ingest product specs only |
+| `npm run ingest -- --only guides` | Ingest technique guides only |
+| `npm run ingest -- --stats` | Show knowledge base chunk counts |
 
 ## Docker
 
@@ -105,7 +112,7 @@ docker compose up --build -d
 
 The app container exposes port 3001. A shared Caddy reverse proxy (managed separately via [coltonomous/infra](https://github.com/coltonomous/infra)) routes `sawbuck.coltonomous.com` to the app. TLS is handled by Cloudflare + Cloudflare Origin CA cert.
 
-Listing images and the SQLite database persist in `./data/`.
+Listing images, the SQLite database, and the HuggingFace model cache persist in `./data/`. On first startup, the server automatically downloads the embedding model (~80 MB) and seeds the knowledge base from [sources.json](server/rag/sources.json). Subsequent restarts skip ingestion if data already exists.
 
 Development (hot reload):
 
@@ -155,6 +162,7 @@ server/
   routes/               # API route handlers
   scrapers/             # Platform scrapers + manager
   analysis/             # Vision, pricing, refinishing, sourcing
+  rag/                  # Knowledge base: embeddings, vector store, retrieval, ingestion
   lib/                  # Claude client, eBay API client
   images/               # Download + resize pipeline
 client/

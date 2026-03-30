@@ -1,12 +1,16 @@
 import { serve } from '@hono/node-server';
 import app from './app.js';
 import { closeBrowser } from './scrapers/browser-pool.js';
+import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import logger from './lib/logger.js';
 
 const port = parseInt(process.env.PORT || '3001');
 logger.info(`Server running on http://localhost:${port}`);
 
 const server = serve({ fetch: app.fetch, port });
+
+// Background: load embedding model + seed knowledge base if empty
+bootstrapKnowledgeBase();
 
 // Graceful shutdown
 async function shutdown() {

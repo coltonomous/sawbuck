@@ -8,7 +8,7 @@
  */
 
 import { db } from '../../db/index.js';
-import { projects, listings, refinishingPlans, materials } from '../../db/schema.js';
+import { projects, listings, materials } from '../../db/schema.js';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { embed, embedBatch } from '../embeddings.js';
 import { upsertChunk, upsertChunks, clearChunks } from '../store.js';
