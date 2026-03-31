@@ -9,6 +9,7 @@ export const config = {
     maxEdge: 1500,
     webpQuality: 85,
     downloadTimeoutMs: 15_000,
+    retentionDays: 30, // delete images for unproject'd listings older than this
   },
   claude: {
     maxRetries: 3,

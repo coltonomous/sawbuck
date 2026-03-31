@@ -19,6 +19,7 @@
     "test:scraper": "tsx scripts/test-scraper.ts",
     "test:vision": "tsx scripts/test-vision.ts",
     "ingest": "tsx scripts/ingest.ts",
+    "cleanup:images": "tsx scripts/cleanup-images.ts",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up"
   },

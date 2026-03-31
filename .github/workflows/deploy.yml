@@ -81,6 +81,10 @@ jobs:
           docker compose exec -T app npx tsx scripts/ingest.ts --only products || echo "Product ingestion failed (non-fatal)"
           docker compose exec -T app npx tsx scripts/ingest.ts --only guides || echo "Guide ingestion failed (non-fatal)"
           docker compose exec -T app npx tsx scripts/ingest.ts --stats || echo "Stats check failed (non-fatal)"
+
+          # Clean up orphaned images (old listings never promoted to projects)
+          echo "Running image cleanup..."
+          docker compose exec -T app npx tsx scripts/cleanup-images.ts || echo "Image cleanup failed (non-fatal)"
           echo "Deploy complete"
           EOF
 

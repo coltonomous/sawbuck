@@ -1,6 +1,7 @@
 import { runAllActiveScrapers } from '../server/scrapers/manager.js';
 import { downloadImagesForNewListings } from '../server/images/downloader.js';
 import { processListingImages } from '../server/images/processor.js';
+import { cleanupOrphanedImages } from '../server/images/cleanup.js';
 import { analyzeListing } from '../server/analysis/vision.js';
 import { calculatePricing } from '../server/analysis/pricing.js';
 import { closeBrowser } from '../server/scrapers/browser-pool.js';
@@ -77,6 +78,13 @@ async function main() {
       console.log(`[cron] Priced ${priced} listings`);
     } else {
       console.log('[cron] Step 4: Skipping analysis (ANTHROPIC_API_KEY not set)');
+    }
+
+    // Step 6: Clean up orphaned images
+    console.log('[cron] Step 6: Cleaning up orphaned images...');
+    const cleanup = await cleanupOrphanedImages();
+    if (cleanup.filesDeleted > 0) {
+      console.log(`[cron] Cleaned ${cleanup.filesDeleted} files (${(cleanup.bytesFreed / 1024 / 1024).toFixed(1)} MB) from ${cleanup.listingsCleaned} listings`);
     }
   } catch (err: any) {
     console.error('[cron] Fatal error:', err);
