@@ -149,6 +149,244 @@
       "title": "How to Install Cabinet Hardware",
       "url": "https://www.familyhandyman.com/list/install-cabinet-handles-pulls-hardware/",
       "tags": ["hardware", "pulls", "knobs", "installation"]
+    },
+
+    {
+      "title": "White Oak — Wood Species Profile",
+      "url": "https://www.wood-database.com/white-oak/",
+      "tags": ["wood-id", "species", "oak", "hardwood", "reference"]
+    },
+    {
+      "title": "Red Oak — Wood Species Profile",
+      "url": "https://www.wood-database.com/red-oak/",
+      "tags": ["wood-id", "species", "oak", "hardwood", "reference"]
+    },
+    {
+      "title": "Black Walnut — Wood Species Profile",
+      "url": "https://www.wood-database.com/black-walnut/",
+      "tags": ["wood-id", "species", "walnut", "hardwood", "reference"]
+    },
+    {
+      "title": "Black Cherry — Wood Species Profile",
+      "url": "https://www.wood-database.com/black-cherry/",
+      "tags": ["wood-id", "species", "cherry", "hardwood", "reference"]
+    },
+    {
+      "title": "Hard Maple — Wood Species Profile",
+      "url": "https://www.wood-database.com/hard-maple/",
+      "tags": ["wood-id", "species", "maple", "hardwood", "reference"]
+    },
+    {
+      "title": "Soft Maple — Wood Species Profile",
+      "url": "https://www.wood-database.com/soft-maple/",
+      "tags": ["wood-id", "species", "maple", "hardwood", "reference"]
+    },
+    {
+      "title": "Teak — Wood Species Profile",
+      "url": "https://www.wood-database.com/teak/",
+      "tags": ["wood-id", "species", "teak", "hardwood", "reference"]
+    },
+    {
+      "title": "Genuine Mahogany — Wood Species Profile",
+      "url": "https://www.wood-database.com/genuine-mahogany/",
+      "tags": ["wood-id", "species", "mahogany", "hardwood", "reference"]
+    },
+    {
+      "title": "Eastern White Pine — Wood Species Profile",
+      "url": "https://www.wood-database.com/eastern-white-pine/",
+      "tags": ["wood-id", "species", "pine", "softwood", "reference"]
+    },
+    {
+      "title": "Southern Yellow Pine — Wood Species Profile",
+      "url": "https://www.wood-database.com/southern-yellow-pine/",
+      "tags": ["wood-id", "species", "pine", "softwood", "reference"]
+    },
+    {
+      "title": "Yellow Birch — Wood Species Profile",
+      "url": "https://www.wood-database.com/yellow-birch/",
+      "tags": ["wood-id", "species", "birch", "hardwood", "reference"]
+    },
+    {
+      "title": "Tulip Poplar — Wood Species Profile",
+      "url": "https://www.wood-database.com/tulipwood/",
+      "tags": ["wood-id", "species", "poplar", "hardwood", "reference"]
+    },
+    {
+      "title": "Eastern Red Cedar — Wood Species Profile",
+      "url": "https://www.wood-database.com/eastern-red-cedar/",
+      "tags": ["wood-id", "species", "cedar", "softwood", "reference"]
+    },
+    {
+      "title": "Western Red Cedar — Wood Species Profile",
+      "url": "https://www.wood-database.com/western-red-cedar/",
+      "tags": ["wood-id", "species", "cedar", "softwood", "reference"]
+    },
+    {
+      "title": "White Ash — Wood Species Profile",
+      "url": "https://www.wood-database.com/white-ash/",
+      "tags": ["wood-id", "species", "ash", "hardwood", "reference"]
+    },
+    {
+      "title": "American Beech — Wood Species Profile",
+      "url": "https://www.wood-database.com/american-beech/",
+      "tags": ["wood-id", "species", "beech", "hardwood", "reference"]
+    },
+    {
+      "title": "Hickory — Wood Species Profile",
+      "url": "https://www.wood-database.com/shagbark-hickory/",
+      "tags": ["wood-id", "species", "hickory", "hardwood", "reference"]
+    },
+    {
+      "title": "Douglas Fir — Wood Species Profile",
+      "url": "https://www.wood-database.com/douglas-fir/",
+      "tags": ["wood-id", "species", "fir", "softwood", "reference"]
+    },
+    {
+      "title": "Rosewood (East Indian) — Wood Species Profile",
+      "url": "https://www.wood-database.com/east-indian-rosewood/",
+      "tags": ["wood-id", "species", "rosewood", "hardwood", "reference"]
+    },
+    {
+      "title": "White Oak Identification — Wood Database",
+      "url": "https://www.wood-database.com/wood-articles/wood-identification-guide/",
+      "tags": ["wood-id", "identification", "technique", "reference"]
+    },
+
+    {
+      "title": "How to Repair Wooden Furniture Joints",
+      "url": "https://home.howstuffworks.com/home-improvement/home-diy/projects/how-to-repair-wooden-furniture-joints.htm",
+      "tags": ["repair", "joints", "glue", "technique"]
+    },
+    {
+      "title": "How to Repair Loose or Broken Chair Parts",
+      "url": "https://home.howstuffworks.com/home-improvement/home-diy/projects/how-to-repair-wooden-furniture2.htm",
+      "tags": ["repair", "joints", "chair", "structural"]
+    },
+    {
+      "title": "7 Approaches to Wood Joint Repair",
+      "url": "https://www.journeymanhq.com/85718/7-approaches-to-wood-joint-repair/",
+      "tags": ["repair", "joints", "dowel", "tenon", "technique"]
+    },
+    {
+      "title": "Furniture Repair Tips",
+      "url": "https://www.woodcraft.com/blog_entries/furniture-repair-tips",
+      "tags": ["repair", "structural", "technique", "intermediate"]
+    },
+    {
+      "title": "Reinforcing Loose Joints with Glue, Screws, or Dowels",
+      "url": "https://woodnbits.com/repairs/reinforcing-loose-joints-with-glue-screws-or-dowels/",
+      "tags": ["repair", "joints", "dowel", "glue", "technique"]
+    },
+
+    {
+      "title": "How to Repair Wooden Furniture Veneer",
+      "url": "https://home.howstuffworks.com/home-improvement/home-diy/projects/how-to-repair-wooden-furniture-veneer.htm",
+      "tags": ["repair", "veneer", "patching", "technique"]
+    },
+    {
+      "title": "Repairing Veneer on Antique Furniture",
+      "url": "https://www.popularwoodworking.com/finishing/veneer-repair-antique-furniture/",
+      "tags": ["repair", "veneer", "antique", "technique", "intermediate"]
+    },
+    {
+      "title": "Stop Peeling Veneer: Ultimate Repair & Maintenance Guide",
+      "url": "https://oakwoodveneer.com/wood-veneer-blog.html/stop-peeling-veneer-the-ultimate-guide-to-repair-maintenance-for-cabinets-and-furniture/",
+      "tags": ["repair", "veneer", "maintenance", "technique"]
+    },
+
+    {
+      "title": "Upholstery 101: Beginner's Guide to Reupholstering a Chair",
+      "url": "https://blog.spoonflower.com/2025/08/25/upholstery-101/",
+      "tags": ["upholstery", "reupholster", "chair", "beginner"]
+    },
+    {
+      "title": "How to Reupholster a Chair for Total Beginners",
+      "url": "https://www.apartmenttherapy.com/how-to-reupholster-chair-37388958",
+      "tags": ["upholstery", "reupholster", "chair", "beginner"]
+    },
+    {
+      "title": "How to Reupholster a Chair Seat",
+      "url": "https://www.lowes.com/n/how-to/reupholster-a-chair",
+      "tags": ["upholstery", "reupholster", "seat-cushion", "technique"]
+    },
+    {
+      "title": "Reupholstering Dining Chairs: A How-To Guide",
+      "url": "https://kimsupholstery.com/upholstery/reupholstering-your-dining-chairs-a-how-to-guide/",
+      "tags": ["upholstery", "reupholster", "dining-chair", "technique"]
+    },
+    {
+      "title": "Understanding Upholstery Fabrics: Durability and Usage",
+      "url": "https://www.onlinefabricstore.com/makersmill/understanding-upholstery-fabrics-a-guide-to-durability-and-usage/",
+      "tags": ["upholstery", "fabric", "durability", "reference"]
+    },
+    {
+      "title": "Upholstery Fabric Double Rub Count: A Durability Test",
+      "url": "https://www.btod.com/blog/upholstery-double-rub-count/",
+      "tags": ["upholstery", "fabric", "durability", "reference"]
+    },
+
+    {
+      "title": "Cheat Sheet for Identifying Antique Furniture Styles",
+      "url": "https://www.americasantiquemall.com/post/embrace-your-vintage-era-with-our-cheat-sheet-for-identifying-antique-furniture-styles",
+      "tags": ["style-id", "antique", "period", "reference"]
+    },
+    {
+      "title": "Collector's Guide to Antique Furniture Styles & Periods",
+      "url": "https://rauantiques.com/blogs/canvases-carats-and-curiosities/a-guide-to-antique-furniture",
+      "tags": ["style-id", "antique", "period", "reference"]
+    },
+    {
+      "title": "How to Identify Antique Furniture Styles",
+      "url": "https://www.antiquetrader.com/antiques/a-primer-on-furniture-styles",
+      "tags": ["style-id", "antique", "period", "construction", "reference"]
+    },
+    {
+      "title": "How to Spot Authentic Vintage Furniture",
+      "url": "https://coastconsignment.com/2025/09/08/how-to-spot-authentic-vintage-furniture-a-bargain-hunters-guide/",
+      "tags": ["style-id", "vintage", "authenticity", "reference"]
+    },
+
+    {
+      "title": "Appropriate Cabinet Hardware for Your Period Home",
+      "url": "https://www.preservationartisans.org/2013/08/19/appropriate-cabinet-hardware-for-your-period-home/",
+      "tags": ["hardware", "period", "style-matching", "reference"]
+    },
+
+    {
+      "title": "Milk Paint 101: Surface Prep",
+      "url": "https://missmustardseed.com/milk-paint-101-surface-prep/",
+      "tags": ["painting", "milk-paint", "prep", "technique"]
+    },
+    {
+      "title": "Milk Paint 101: Mixing Milk Paint",
+      "url": "https://missmustardseed.com/milk-paint-101-mixing-milk-paint/",
+      "tags": ["painting", "milk-paint", "technique", "beginner"]
+    },
+    {
+      "title": "Basic Furniture Refinishing Vocabulary",
+      "url": "https://www.mmsmilkpaint.com/blog/basic-furniture-refinishing-vocabulary",
+      "tags": ["reference", "terminology", "beginner"]
+    },
+
+    {
+      "title": "How to Spray Finish Furniture Using HVLP Spray Guns",
+      "url": "https://www.briansbenham.com/how-to-spray-finish-your-furniture-using-hvlp-spray-guns/",
+      "tags": ["finishing", "spray", "hvlp", "technique", "intermediate"]
+    },
+    {
+      "title": "Spraying Lacquer with HVLP",
+      "url": "https://paintsprayerjudge.com/spraying-lacquer-with-hvlp/",
+      "tags": ["finishing", "spray", "hvlp", "lacquer", "technique"]
+    },
+    {
+      "title": "How to Spray Water-Based Finishes",
+      "url": "https://generalfinishes.com/faq/how-do-i-spray-water-based-finishes",
+      "tags": ["finishing", "spray", "water-based", "technique", "product-specific"]
+    },
+    {
+      "title": "How to Spray Lacquer Finishes",
+      "url": "https://kmtools.com/blogs/news/how-to-lacquer-finish",
+      "tags": ["finishing", "spray", "lacquer", "technique", "intermediate"]
     }
   ]
 }
