@@ -22,6 +22,19 @@ async function main() {
     const allNewIds = scrapeResults.flatMap((r) => r.newListingIds);
     console.log(`[cron] Scraped: ${scrapeResults.map((r) => `${r.platform}=${r.new} new`).join(', ')}`);
 
+    // Surface selector warnings prominently
+    const warnings = scrapeResults.filter((r) => r.warning);
+    if (warnings.length > 0) {
+      console.error('');
+      console.error('='.repeat(60));
+      console.error('[cron] SCRAPER HEALTH WARNINGS:');
+      for (const r of warnings) {
+        console.error(`  ${r.platform}: ${r.warning}`);
+      }
+      console.error('='.repeat(60));
+      console.error('');
+    }
+
     // Step 2: Download images for new listings
     if (allNewIds.length > 0) {
       console.log(`[cron] Step 2: Downloading images for ${allNewIds.length} new listings...`);

@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
-import { api, type SearchConfig, type ScrapeRun, getStoredApiKey, setStoredApiKey, clearStoredApiKey } from '../api';
+import { api, type SearchConfig, type ScrapeRun, type PlatformHealth, getStoredApiKey, setStoredApiKey, clearStoredApiKey } from '../api';
 import { useToast } from '../components/Toast';
 import { platformLabel, platformColor, Card, CardHeader, SearchIcon } from '../components/ui';
 
 export default function Settings() {
-  const [status, setStatus] = useState<{ recentRuns: ScrapeRun[]; configs: SearchConfig[] } | null>(null);
+  const [status, setStatus] = useState<{ recentRuns: ScrapeRun[]; configs: SearchConfig[]; health: Record<string, PlatformHealth> } | null>(null);
   const [platforms, setPlatforms] = useState<{ platform: string; enabled: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({
@@ -183,6 +183,36 @@ export default function Settings() {
         </div>
       </Card>
 
+      {/* Scraper health warnings */}
+      {status?.health && Object.entries(status.health).some(([, h]) => h.status !== 'ok') && (
+        <Card className="mb-5">
+          <CardHeader>Scraper Health</CardHeader>
+          <div className="space-y-2">
+            {Object.entries(status.health)
+              .filter(([, h]) => h.status !== 'ok')
+              .map(([platform, h]) => (
+                <div
+                  key={platform}
+                  className={`flex items-start gap-2.5 rounded-lg border px-3 py-2.5 text-sm ${
+                    h.status === 'error'
+                      ? 'border-red-200 bg-red-50 text-red-800'
+                      : 'border-yellow-200 bg-yellow-50 text-yellow-800'
+                  }`}
+                >
+                  <span className={`mt-0.5 flex-shrink-0 w-2 h-2 rounded-full ${
+                    h.status === 'error' ? 'bg-red-500' : 'bg-yellow-500'
+                  }`} />
+                  <div>
+                    <span className="font-medium">{platformLabel(platform)}</span>
+                    <span className="mx-1.5">&mdash;</span>
+                    <span>{h.message}</span>
+                  </div>
+                </div>
+              ))}
+          </div>
+        </Card>
+      )}
+
       {/* Add search config */}
       <Card className="mb-5">
         <CardHeader>Add Search</CardHeader>
@@ -319,10 +349,16 @@ export default function Settings() {
                   <span className={`inline-block w-2 h-2 rounded-full ${platformColor(run.platform)}`} />
                   <span className="text-gray-700">{platformLabel(run.platform)}</span>
                   <span className="text-gray-400">{run.listingsNew} new / {run.listingsFound} total</span>
+                  {run.status === 'completed' && (run.listingsFound ?? 0) === 0 && (
+                    <span className="text-xs text-yellow-600 font-medium">0 found</span>
+                  )}
                 </span>
                 <span className="flex items-center gap-2">
                   <span className={`inline-block w-1.5 h-1.5 rounded-full ${
-                    run.status === 'failed' ? 'bg-red-500' : run.status === 'completed' ? 'bg-green-500' : 'bg-yellow-500'
+                    run.status === 'failed' ? 'bg-red-500'
+                      : run.status === 'completed' && (run.listingsFound ?? 0) === 0 ? 'bg-yellow-500'
+                      : run.status === 'completed' ? 'bg-green-500'
+                      : 'bg-yellow-500'
                   }`} />
                   <span className="text-xs text-gray-400">
                     {new Date(run.startedAt).toLocaleDateString()}

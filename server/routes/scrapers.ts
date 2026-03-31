@@ -87,16 +87,78 @@ scrapersRouter.get('/run/stream', (c) => {
   });
 });
 
-// GET /status — last run times and health
+// GET /status — last run times, configs, and per-platform health
 scrapersRouter.get('/status', async (c) => {
   const recentRuns = await db.select()
     .from(scrapeRuns)
     .orderBy(desc(scrapeRuns.startedAt))
-    .limit(10);
+    .limit(20);
 
   const configs = await db.select().from(searchConfigs);
 
-  return c.json({ recentRuns, configs });
+  // Compute per-platform health from recent completed runs.
+  // If the last 3+ completed runs for a platform all found 0 listings,
+  // that's almost certainly a broken selector, not "no furniture for sale."
+  const healthByPlatform: Record<string, {
+    status: 'ok' | 'warning' | 'error';
+    message: string | null;
+    lastRun: string | null;
+    consecutiveZeros: number;
+  }> = {};
+
+  const platformRuns = new Map<string, typeof recentRuns>();
+  for (const run of recentRuns) {
+    if (!platformRuns.has(run.platform)) platformRuns.set(run.platform, []);
+    platformRuns.get(run.platform)!.push(run);
+  }
+
+  for (const [platform, runs] of platformRuns) {
+    const completed = runs.filter(r => r.status === 'completed');
+    const failed = runs.filter(r => r.status === 'failed');
+    const lastRun = runs[0]?.startedAt ?? null;
+
+    // Count consecutive zero-result completed runs (most recent first)
+    let consecutiveZeros = 0;
+    for (const run of completed) {
+      if ((run.listingsFound ?? 0) === 0) {
+        consecutiveZeros++;
+      } else {
+        break;
+      }
+    }
+
+    if (failed.length > 0 && failed.length === runs.length) {
+      healthByPlatform[platform] = {
+        status: 'error',
+        message: `All recent runs failed — scraper is broken or platform is blocking. Last error: ${failed[0].error ?? 'unknown'}`,
+        lastRun,
+        consecutiveZeros,
+      };
+    } else if (consecutiveZeros >= 3) {
+      healthByPlatform[platform] = {
+        status: 'error',
+        message: `${consecutiveZeros} consecutive runs found 0 listings — selectors are likely broken`,
+        lastRun,
+        consecutiveZeros,
+      };
+    } else if (consecutiveZeros >= 1 && completed.length >= 1) {
+      healthByPlatform[platform] = {
+        status: 'warning',
+        message: `Last ${consecutiveZeros} run(s) found 0 listings — may indicate selector issues`,
+        lastRun,
+        consecutiveZeros,
+      };
+    } else {
+      healthByPlatform[platform] = {
+        status: 'ok',
+        message: null,
+        lastRun,
+        consecutiveZeros: 0,
+      };
+    }
+  }
+
+  return c.json({ recentRuns, configs, health: healthByPlatform });
 });
 
 // POST /configs — add search config

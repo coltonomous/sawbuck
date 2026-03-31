@@ -301,6 +301,13 @@ export interface SearchConfigInput {
   maxPrice?: number;
 }
 
+export interface PlatformHealth {
+  status: 'ok' | 'warning' | 'error';
+  message: string | null;
+  lastRun: string | null;
+  consecutiveZeros: number;
+}
+
 //API client
 
 
@@ -335,7 +342,7 @@ export const api = {
 
   // Scrapers
   runScraper: () => request<Record<string, unknown>>('/scrapers/run', { method: 'POST' }),
-  getScraperStatus: () => request<{ recentRuns: ScrapeRun[]; configs: SearchConfig[] }>('/scrapers/status'),
+  getScraperStatus: () => request<{ recentRuns: ScrapeRun[]; configs: SearchConfig[]; health: Record<string, PlatformHealth> }>('/scrapers/status'),
   addSearchConfig: (data: SearchConfigInput) =>
     request<SearchConfig>('/scrapers/configs', { method: 'POST', body: JSON.stringify(data) }),
   deleteSearchConfig: (id: number) =>
