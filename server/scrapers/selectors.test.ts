@@ -212,8 +212,17 @@ describe('OfferUp search selectors', () => {
   it('falls back to span/h2/h3 for title when title attribute empty', () => {
     const cards = document.querySelectorAll('a[href*="/item/detail/"]');
     const second = cards[1];
-    const title = second.getAttribute('title')?.trim()
-      || second.querySelector('span, h2, h3')?.textContent?.trim();
+
+    // Verify the title attribute is actually empty (the fallback condition)
+    const titleAttr = second.getAttribute('title')?.trim();
+    expect(titleAttr).toBe('');
+
+    // The scraper uses: anchor.getAttribute('title')?.trim() || anchor.querySelector('span, h2, h3')?.textContent?.trim()
+    // querySelector returns first match in document order — the h3 appears before spans in the DOM
+    const fallbackEl = second.querySelector('span, h2, h3');
+    expect(fallbackEl?.tagName).toBe('H3');
+
+    const title = titleAttr || fallbackEl?.textContent?.trim();
     expect(title).toBe('Vintage Bookshelf Unit');
   });
 
@@ -344,30 +353,25 @@ describe('eBay sold listing selectors', () => {
     expect(condition).toBe('Pre-Owned');
   });
 
-  it('does not flag as blocked when results exist', () => {
-    const blocked = (() => {
-      if (document.querySelector('#captcha, .captcha, #g-recaptcha')) return true;
-      const container = document.querySelector('.srp-results');
-      if (container) {
-        const items = container.querySelectorAll('.s-item');
-        const realItems = Array.from(items).filter((el) => {
-          const title = el.querySelector('.s-item__title')?.textContent?.trim();
-          return title && title !== 'Shop on eBay';
-        });
-        if (realItems.length === 0) return false;
-      }
-      return false;
-    })();
-    expect(blocked).toBe(false);
+  it('CAPTCHA selectors detect all three block indicators', () => {
+    // The scraper checks: #captcha, .captcha, #g-recaptcha
+    for (const html of [
+      '<div id="captcha"><p>Verify</p></div>',
+      '<div class="captcha"><p>Verify</p></div>',
+      '<div id="g-recaptcha" class="g-recaptcha"></div>',
+    ]) {
+      document.body.innerHTML = html;
+      expect(document.querySelector('#captcha, .captcha, #g-recaptcha')).not.toBeNull();
+    }
   });
 
-  it('detects CAPTCHA page', () => {
-    document.body.innerHTML = '<div id="captcha"><p>Please verify</p></div>';
-    const hasCaptcha = !!document.querySelector('#captcha, .captcha, #g-recaptcha');
-    expect(hasCaptcha).toBe(true);
+  it('CAPTCHA selectors do not false-positive on normal results', () => {
+    // Using the beforeEach fixture (normal results page)
+    expect(document.querySelector('#captcha, .captcha, #g-recaptcha')).toBeNull();
   });
 
-  it('handles empty results page gracefully', () => {
+  it('correctly distinguishes placeholder from real items', () => {
+    // Page with only the "Shop on eBay" placeholder — zero real results
     document.body.innerHTML = `
       <div class="srp-results">
         <div class="s-item">
@@ -381,6 +385,26 @@ describe('eBay sold listing selectors', () => {
       return title && title !== 'Shop on eBay';
     });
     expect(realItems.length).toBe(0);
+
+    // Page with real items — should find 2 (from beforeEach fixture would have 2,
+    // but we replaced innerHTML, so rebuild with one real + one placeholder)
+    document.body.innerHTML = `
+      <div class="srp-results">
+        <div class="s-item">
+          <div class="s-item__title"><span>Shop on eBay</span></div>
+        </div>
+        <div class="s-item">
+          <div class="s-item__title"><span>Real Dresser Listing</span></div>
+        </div>
+      </div>
+    `;
+    const items2 = document.querySelectorAll('.s-item');
+    const realItems2 = Array.from(items2).filter((el) => {
+      const title = el.querySelector('.s-item__title')?.textContent?.trim();
+      return title && title !== 'Shop on eBay';
+    });
+    expect(realItems2.length).toBe(1);
+    expect(realItems2[0].querySelector('.s-item__title')?.textContent?.trim()).toBe('Real Dresser Listing');
   });
 });
 
@@ -503,88 +527,10 @@ describe('Facebook Marketplace selectors', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Mercari API response contract
+// Mercari — no DOM selector tests.
+//
+// Mercari's search scraper intercepts a GraphQL API response, not DOM.
+// The extraction logic operates on structured JSON, so there are no
+// CSS selectors to regress against. The API contract is implicitly
+// tested by the scraper succeeding or failing in production.
 // ---------------------------------------------------------------------------
-
-describe('Mercari API response contract', () => {
-  it('matches expected searchFacetQuery response shape', () => {
-    // Mercari scraper intercepts GraphQL API, not DOM selectors.
-    // This test documents the expected response structure.
-    const mockResponse = {
-      data: {
-        search: {
-          itemsList: [
-            {
-              id: 'm12345',
-              name: 'Vintage Walnut Side Table',
-              price: 8500, // cents
-              description: 'Beautiful walnut side table',
-              photos: [
-                { imageUrl: 'https://static.mercdn.net/item/detail/orig/photos/m12345_1.jpg', thumbnail: null },
-              ],
-              itemCondition: { name: 'Good' },
-              brand: { name: 'Unknown' },
-              color: { name: 'Brown' },
-            },
-          ],
-          count: 1,
-        },
-      },
-    };
-
-    const items = mockResponse.data?.search?.itemsList ?? [];
-    expect(items.length).toBe(1);
-    expect(items[0].id).toBe('m12345');
-    expect(items[0].name).toBe('Vintage Walnut Side Table');
-    expect(typeof items[0].price).toBe('number');
-    expect(items[0].price / 100).toBe(85); // cents to dollars
-    expect(items[0].photos[0].imageUrl).toContain('mercdn.net');
-  });
-
-  it('handles missing optional fields', () => {
-    const mockResponse = {
-      data: {
-        search: {
-          itemsList: [
-            {
-              id: 'm99999',
-              name: 'Plain Chair',
-              price: 2000,
-              photos: [],
-              // no description, itemCondition, brand, color
-            },
-          ],
-          count: 1,
-        },
-      },
-    };
-
-    const item = mockResponse.data.search.itemsList[0];
-    expect(item.id).toBe('m99999');
-    expect(item.photos).toEqual([]);
-
-    // Scraper checks these with optional chaining
-    const descParts: string[] = [];
-    if ((item as any).description) descParts.push((item as any).description);
-    if ((item as any).itemCondition?.name) descParts.push(`Condition: ${(item as any).itemCondition.name}`);
-    expect(descParts).toEqual([]);
-  });
-
-  it('validates API URL pattern matching', () => {
-    const apiUrls = [
-      'https://www.mercari.com/v1/api/searchFacetQuery',
-      'https://www.mercari.com/v1/api/items',
-    ];
-    const nonApiUrls = [
-      'https://www.mercari.com/us/item/m12345/',
-      'https://www.mercari.com/search/',
-    ];
-
-    for (const url of apiUrls) {
-      expect(url.includes('/v1/api')).toBe(true);
-    }
-    for (const url of nonApiUrls) {
-      expect(url.includes('/v1/api')).toBe(false);
-    }
-  });
-});
