@@ -1,28 +1,19 @@
 const BASE = '/api';
 
-const ANTHROPIC_KEY_STORAGE = 'sawbuck_anthropic_key';
-
-export function getStoredApiKey(): string | null {
-  return localStorage.getItem(ANTHROPIC_KEY_STORAGE);
-}
-
-export function setStoredApiKey(key: string): void {
-  localStorage.setItem(ANTHROPIC_KEY_STORAGE, key);
-}
-
-export function clearStoredApiKey(): void {
-  localStorage.removeItem(ANTHROPIC_KEY_STORAGE);
-}
-
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const apiKey = getStoredApiKey();
-  if (apiKey) headers['X-Anthropic-Key'] = apiKey;
 
   const res = await fetch(`${BASE}${path}`, {
     ...options,
+    credentials: 'include',
     headers: { ...headers, ...(options?.headers as Record<string, string>) },
   });
+
+  if (res.status === 401) {
+    window.location.href = '/login';
+    throw new Error('Unauthorized');
+  }
+
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(error.error || error.message || `HTTP ${res.status}`);
@@ -378,15 +369,16 @@ export const api = {
     formData.append('photo', file);
     formData.append('type', type);
     if (caption) formData.append('caption', caption);
-    const uploadHeaders: Record<string, string> = {};
-    const key = getStoredApiKey();
-    if (key) uploadHeaders['X-Anthropic-Key'] = key;
 
     const res = await fetch(`${BASE}/projects/${projectId}/photos`, {
       method: 'POST',
-      headers: uploadHeaders,
+      credentials: 'include',
       body: formData,
     });
+    if (res.status === 401) {
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
     if (!res.ok) {
       const error = await res.json().catch(() => ({ error: res.statusText }));
       throw new Error(error.error || `HTTP ${res.status}`);
@@ -410,4 +402,7 @@ export const api = {
   searchComparables: (listingId: number) =>
     request<{ comps: Comparable[]; blocked: boolean }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
   getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
+
+  // Usage
+  getClaudeUsage: () => request<{ used: number; limit: number; date: string }>('/usage/claude'),
 };

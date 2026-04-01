@@ -17,9 +17,10 @@ export const listingsRouter = new Hono();
 
 // GET / — list listings with filters
 listingsRouter.get('/', async (c) => {
+  const user = c.get('user');
   const { type, style, minScore, maxPrice, platform, status, page = '1', limit = '50', sort, sort_dir } = c.req.query();
 
-  const conditions = [];
+  const conditions = [eq(listings.userId, user.id)];
   if (type) conditions.push(eq(listings.furnitureType, type));
   if (style) conditions.push(eq(listings.furnitureStyle, style));
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
@@ -29,7 +30,7 @@ listingsRouter.get('/', async (c) => {
 
   const pageNum = parseInt(page);
   const limitNum = parseInt(limit);
-  const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+  const whereClause = and(...conditions);
 
   // Map sort key + direction to Drizzle order clause
   const dirFn = sort_dir === 'asc' ? asc : desc;
@@ -67,6 +68,7 @@ listingsRouter.get('/', async (c) => {
 
 // POST /import — import a listing by pasting its URL
 listingsRouter.post('/import', async (c) => {
+  const user = c.get('user');
   const raw = await c.req.json();
   const parsed = importListingSchema.safeParse(raw);
   if (!parsed.success) {
@@ -114,10 +116,10 @@ listingsRouter.post('/import', async (c) => {
     return c.json({ error: 'Could not extract listing ID from URL. Make sure this is a direct link to a listing.' }, 400);
   }
 
-  // Check if already imported
+  // Check if already imported by this user
   const existing = await db.select()
     .from(listings)
-    .where(and(eq(listings.platform, match.platform), eq(listings.externalId, externalId)))
+    .where(and(eq(listings.platform, match.platform), eq(listings.externalId, externalId), eq(listings.userId, user.id)))
     .get();
   if (existing) {
     return c.json({ listing: existing, alreadyExists: true });
@@ -131,6 +133,7 @@ listingsRouter.post('/import', async (c) => {
     title: '(imported — loading details…)',
     matchedSearchTerms: JSON.stringify(['manual-import']),
     fingerprint: fingerprint({ externalId, platform: match.platform, url, title: '', imageUrls: [] }),
+    userId: user.id,
   }).returning();
 
   // Scrape the detail page to populate title, description, images, etc.
@@ -149,9 +152,10 @@ listingsRouter.post('/import', async (c) => {
 
 // GET /:id — single listing with images (auto-enriches if missing details)
 listingsRouter.get('/:id', async (c) => {
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  let listing = await db.select().from(listings).where(eq(listings.id, id)).get();
+  let listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-fetch details if missing description, images, or description looks like a page dump
@@ -192,6 +196,7 @@ listingsRouter.get('/:id', async (c) => {
 
 // PATCH /bulk — bulk update listings
 listingsRouter.patch('/bulk', async (c) => {
+  const user = c.get('user');
   const raw = await c.req.json();
   const parsed = bulkUpdateListingsSchema.safeParse(raw);
   if (!parsed.success) {
@@ -200,7 +205,7 @@ listingsRouter.patch('/bulk', async (c) => {
   const { ids, updates } = parsed.data;
 
   for (const id of ids) {
-    await db.update(listings).set(updates).where(eq(listings.id, id));
+    await db.update(listings).set(updates).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
   }
 
   return c.json({ updated: ids.length });
@@ -208,6 +213,7 @@ listingsRouter.patch('/bulk', async (c) => {
 
 // PATCH /:id — update listing
 listingsRouter.patch('/:id', async (c) => {
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
   const raw = await c.req.json();
   const parsed = updateListingSchema.safeParse(raw);
@@ -215,31 +221,29 @@ listingsRouter.patch('/:id', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
+  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  if (!existing) return c.json({ error: 'Not found' }, 404);
+
   await db.update(listings).set(parsed.data).where(eq(listings.id, id));
   const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
-  if (!updated) return c.json({ error: 'Not found' }, 404);
 
   return c.json(updated);
 });
 
 // POST /:id/analyze — kick off analysis in background, return 202
-// The full pipeline (download → process → Claude → pricing) can exceed
-// Cloudflare's 100s proxy timeout, so we run it async and let the
-// frontend poll GET /:id until furnitureType is populated.
 listingsRouter.post('/:id/analyze', async (c) => {
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const listing = await db.select().from(listings).where(eq(listings.id, id)).get();
+  const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
   if (!listing) return c.json({ error: 'Not found' }, 404);
-
-  const apiKey = c.req.header('X-Anthropic-Key');
 
   // Fire and forget — results are persisted to DB
   (async () => {
     try {
       await downloadListingImages(id);
       await processListingImages(id);
-      const analysis = await analyzeListing(id, apiKey);
+      const analysis = await analyzeListing(id);
       if (analysis) await calculatePricing(id);
     } catch (err) {
       logger.error({ err, listingId: id }, 'Error analyzing listing');
@@ -251,7 +255,12 @@ listingsRouter.post('/:id/analyze', async (c) => {
 
 // GET /:id/price — get or calculate pricing
 listingsRouter.get('/:id/price', async (c) => {
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
+
+  const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  if (!listing) return c.json({ error: 'Not found' }, 404);
+
   const pricing = await calculatePricing(id);
   if (!pricing) return c.json({ error: 'Could not calculate pricing' }, 422);
   return c.json(pricing);

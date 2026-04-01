@@ -3,13 +3,12 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { withRetry as _withRetry } from './retry.js';
 
-// Singleton for server-side env key (null if ANTHROPIC_API_KEY not set)
+// Singleton for server-side env key
 const envClient = process.env.ANTHROPIC_API_KEY ? new Anthropic() : null;
 
-function getClient(apiKey?: string): Anthropic {
-  if (apiKey) return new Anthropic({ apiKey });
+function getClient(): Anthropic {
   if (envClient) return envClient;
-  throw new Error('No Anthropic API key configured. Provide one in Settings or set ANTHROPIC_API_KEY.');
+  throw new Error('No Anthropic API key configured. Set ANTHROPIC_API_KEY in .env.');
 }
 
 function withRetry<T>(fn: () => Promise<T>): Promise<T> {
@@ -29,9 +28,8 @@ export async function analyzeWithVision(
   images: ImageInput[],
   prompt: string,
   systemPrompt?: string,
-  apiKey?: string,
 ): Promise<string> {
-  const claude = getClient(apiKey);
+  const claude = getClient();
   return withRetry(async () => {
     const content: Anthropic.Messages.ContentBlockParam[] = [];
 
@@ -68,9 +66,8 @@ export async function analyzeWithVisionStructured<T>(
   toolName: string,
   toolDescription: string,
   systemPrompt?: string,
-  apiKey?: string,
 ): Promise<T> {
-  const claude = getClient(apiKey);
+  const claude = getClient();
   return withRetry(async () => {
     const content: Anthropic.Messages.ContentBlockParam[] = [];
 
@@ -111,9 +108,8 @@ export async function generateText(
   systemPrompt?: string,
   maxTokens = 2000,
   model: 'claude-sonnet-4-20250514' | 'claude-haiku-4-5-20251001' = 'claude-sonnet-4-20250514',
-  apiKey?: string,
 ): Promise<string> {
-  const claude = getClient(apiKey);
+  const claude = getClient();
   return withRetry(async () => {
     const response = await claude.messages.create({
       model,

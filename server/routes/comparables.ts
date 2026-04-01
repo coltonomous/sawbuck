@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
 import { closeBrowser } from '../scrapers/browser-pool.js';
 import { searchComparablesSchema } from '../lib/validation.js';
@@ -10,6 +10,7 @@ export const comparablesRouter = new Hono();
 
 // POST /search — search for comparables
 comparablesRouter.post('/search', async (c) => {
+  const user = c.get('user');
   const raw = await c.req.json();
   const parsed = searchComparablesSchema.safeParse(raw);
   if (!parsed.success) {
@@ -20,7 +21,7 @@ comparablesRouter.post('/search', async (c) => {
   let params: CompSearchParams | null = null;
 
   if (listingId) {
-    const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+    const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
     if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
     params = {
@@ -53,7 +54,13 @@ comparablesRouter.post('/search', async (c) => {
 
 // GET /:listingId — get stored comparables for a listing
 comparablesRouter.get('/:listingId', async (c) => {
+  const user = c.get('user');
   const listingId = parseInt(c.req.param('listingId'));
+
+  // Verify listing ownership
+  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
+  if (!listing) return c.json({ error: 'Not found' }, 404);
+
   const results = await db.select()
     .from(comparables)
     .where(eq(comparables.listingId, listingId));

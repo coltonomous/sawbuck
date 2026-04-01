@@ -28,6 +28,9 @@ interface ProfitRow { month: string; total_profit: number; count: number }
 export const statsRouter = new Hono();
 
 statsRouter.get('/', (c) => {
+  const user = c.get('user');
+  const userId = user.id;
+
   const summary = sqlite.prepare(`
     SELECT
       COUNT(*) as total_listings,
@@ -37,7 +40,8 @@ statsRouter.get('/', (c) => {
       MIN(scraped_at) as first_scraped,
       MAX(scraped_at) as last_scraped
     FROM listings
-  `).get() as SummaryRow;
+    WHERE user_id = ?
+  `).get(userId) as SummaryRow;
 
   const projectSummary = sqlite.prepare(`
     SELECT
@@ -46,7 +50,8 @@ statsRouter.get('/', (c) => {
       AVG(CASE WHEN status = 'sold' THEN roi_percentage END) as avg_roi,
       AVG(CASE WHEN status = 'sold' THEN julianday(sold_date) - julianday(purchase_date) END) as avg_flip_days
     FROM projects
-  `).get() as ProjectSummaryRow;
+    WHERE user_id = ?
+  `).get(userId) as ProjectSummaryRow;
 
   const profitOverTime = sqlite.prepare(`
     SELECT
@@ -54,38 +59,40 @@ statsRouter.get('/', (c) => {
       SUM(profit) as total_profit,
       COUNT(*) as count
     FROM projects
-    WHERE status = 'sold' AND sold_date IS NOT NULL
+    WHERE status = 'sold' AND sold_date IS NOT NULL AND user_id = ?
     GROUP BY strftime('%Y-%m', sold_date)
     ORDER BY month
-  `).all() as ProfitRow[];
+  `).all(userId) as ProfitRow[];
 
   const dealsByPlatform = sqlite.prepare(`
     SELECT
       platform,
       COUNT(*) as count
     FROM listings
+    WHERE user_id = ?
     GROUP BY platform
     ORDER BY count DESC
-  `).all() as PlatformRow[];
+  `).all(userId) as PlatformRow[];
 
   const flipTimes = sqlite.prepare(`
     SELECT
       name,
       CAST(julianday(sold_date) - julianday(purchase_date) AS INTEGER) as days
     FROM projects
-    WHERE status = 'sold' AND sold_date IS NOT NULL AND purchase_date IS NOT NULL
+    WHERE status = 'sold' AND sold_date IS NOT NULL AND purchase_date IS NOT NULL AND user_id = ?
     ORDER BY sold_date DESC
     LIMIT 20
-  `).all() as FlipTimeRow[];
+  `).all(userId) as FlipTimeRow[];
 
   const scrapedOverTime = sqlite.prepare(`
     SELECT
       strftime('%Y-%m-%d', scraped_at, 'weekday 0', '-6 days') as week,
       COUNT(*) as count
     FROM listings
+    WHERE user_id = ?
     GROUP BY week
     ORDER BY week
-  `).all() as WeekRow[];
+  `).all(userId) as WeekRow[];
 
   const priceDistribution = sqlite.prepare(`
     SELECT
@@ -99,10 +106,10 @@ statsRouter.get('/', (c) => {
       END as bucket,
       COUNT(*) as count
     FROM listings
-    WHERE asking_price IS NOT NULL
+    WHERE asking_price IS NOT NULL AND user_id = ?
     GROUP BY bucket
     ORDER BY MIN(asking_price)
-  `).all() as BucketRow[];
+  `).all(userId) as BucketRow[];
 
   const dealScoreDistribution = sqlite.prepare(`
     SELECT
@@ -116,26 +123,27 @@ statsRouter.get('/', (c) => {
       END as bucket,
       COUNT(*) as count
     FROM listings
-    WHERE deal_score IS NOT NULL
+    WHERE deal_score IS NOT NULL AND user_id = ?
     GROUP BY bucket
     ORDER BY MIN(deal_score)
-  `).all() as BucketRow[];
+  `).all(userId) as BucketRow[];
 
   const statusBreakdown = sqlite.prepare(`
     SELECT status, COUNT(*) as count
     FROM listings
+    WHERE user_id = ?
     GROUP BY status
     ORDER BY count DESC
-  `).all() as StatusRow[];
+  `).all(userId) as StatusRow[];
 
   const topFurnitureTypes = sqlite.prepare(`
     SELECT furniture_type as type, COUNT(*) as count
     FROM listings
-    WHERE furniture_type IS NOT NULL
+    WHERE furniture_type IS NOT NULL AND user_id = ?
     GROUP BY furniture_type
     ORDER BY count DESC
     LIMIT 10
-  `).all() as FurnitureTypeRow[];
+  `).all(userId) as FurnitureTypeRow[];
 
   return c.json({
     summary,

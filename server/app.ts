@@ -4,6 +4,9 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { pinoLogger } from 'hono-pino';
 import logger from './lib/logger.js';
+import { auth } from './auth.js';
+import { requireAuth, requireAdmin } from './middleware/auth.js';
+import { checkClaudeLimit } from './middleware/claude-limit.js';
 import { listingsRouter } from './routes/listings.js';
 import { projectsRouter } from './routes/projects.js';
 import { scrapersRouter } from './routes/scrapers.js';
@@ -27,6 +30,7 @@ app.use('*', secureHeaders({
 // only needed if a custom origin is explicitly configured.
 app.use('*', cors({
   origin: process.env.CORS_ORIGIN || (isProd ? 'self' : 'http://localhost:5173'),
+  credentials: true,
 }));
 
 // ── Rate limiting ───────────────────────────────────────────────────
@@ -34,7 +38,6 @@ app.use('*', cors({
 // fine for a single-instance deployment.
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT_API = 60;       // general API: 60 req/min
-const RATE_LIMIT_CLAUDE = 10;    // Claude-calling routes: 10 req/min
 
 const hits = new Map<string, { count: number; resetAt: number }>();
 
@@ -71,11 +74,6 @@ function rateLimit(limit: number) {
 // Apply general rate limit to all API routes
 app.use('/api/*', rateLimit(RATE_LIMIT_API));
 
-// Tighter limit on routes that call Claude (cost money)
-app.use('/api/listings/:id/analyze', rateLimit(RATE_LIMIT_CLAUDE));
-app.use('/api/projects/:id/refinish', rateLimit(RATE_LIMIT_CLAUDE));
-app.use('/api/projects/:id/listing-text', rateLimit(RATE_LIMIT_CLAUDE));
-
 // ── Global error handler ────────────────────────────────────────────
 app.onError((err, c) => {
   const ctxLogger = c.get?.('logger');
@@ -90,12 +88,47 @@ app.onError((err, c) => {
 // ── Health check (outside auth for Docker HEALTHCHECK) ──────────────
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
+// ── Auth routes (handled by better-auth, no requireAuth) ────────────
+app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
+
+// ── Require auth for all other API routes ───────────────────────────
+app.use('/api/*', requireAuth);
+
+// ── Claude usage limit on AI-calling routes ─────────────────────────
+app.use('/api/listings/:id/analyze', checkClaudeLimit);
+app.use('/api/projects/:id/refinish', checkClaudeLimit);
+app.use('/api/projects/:id/listing-text', checkClaudeLimit);
+
+// ── Admin-only routes ───────────────────────────────────────────────
+app.use('/api/scrapers/platforms/:platform', requireAdmin);
+
 // ── API routes ──────────────────────────────────────────────────────
 app.route('/api/listings', listingsRouter);
 app.route('/api/projects', projectsRouter);
 app.route('/api/scrapers', scrapersRouter);
 app.route('/api/comparables', comparablesRouter);
 app.route('/api/stats', statsRouter);
+
+// ── Claude usage endpoint ───────────────────────────────────────────
+app.get('/api/usage/claude', async (c) => {
+  const { eq, and } = await import('drizzle-orm');
+  const { db } = await import('./db/index.js');
+  const { claudeUsage } = await import('./db/schema.js');
+
+  const user = c.get('user');
+  const today = new Date().toISOString().split('T')[0];
+
+  const usage = db.select()
+    .from(claudeUsage)
+    .where(and(eq(claudeUsage.userId, user.id), eq(claudeUsage.date, today)))
+    .get();
+
+  return c.json({
+    used: usage?.callCount ?? 0,
+    limit: user.dailyClaudeLimit ?? 20,
+    date: today,
+  });
+});
 
 // ── Serve listing images with cache headers ─────────────────────────
 app.use('/images/*', async (c, next) => {

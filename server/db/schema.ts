@@ -1,5 +1,66 @@
-import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex, index, unique } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
+
+// ============================================================
+// Auth (better-auth)
+// ============================================================
+
+export const users = sqliteTable('users', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  image: text('image'),
+  role: text('role', { enum: ['user', 'admin'] }).notNull().default('user'),
+  dailyClaudeLimit: integer('daily_claude_limit').notNull().default(20),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const sessions = sqliteTable('sessions', {
+  id: text('id').primaryKey(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  token: text('token').notNull().unique(),
+  ipAddress: text('ip_address'),
+  userAgent: text('user_agent'),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const accounts = sqliteTable('accounts', {
+  id: text('id').primaryKey(),
+  accountId: text('account_id').notNull(),
+  providerId: text('provider_id').notNull(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  accessToken: text('access_token'),
+  refreshToken: text('refresh_token'),
+  idToken: text('id_token'),
+  accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp' }),
+  refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp' }),
+  scope: text('scope'),
+  password: text('password'),
+  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+export const verifications = sqliteTable('verifications', {
+  id: text('id').primaryKey(),
+  identifier: text('identifier').notNull(),
+  value: text('value').notNull(),
+  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp' }),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+});
+
+export const claudeUsage = sqliteTable('claude_usage', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  date: text('date').notNull(), // 'YYYY-MM-DD'
+  callCount: integer('call_count').notNull().default(0),
+}, (table) => [
+  unique('idx_claude_usage_user_date').on(table.userId, table.date),
+]);
 
 // ============================================================
 // Phase 1: Deal Finder
@@ -44,6 +105,9 @@ export const listings = sqliteTable('listings', {
 
   // Analysis error tracking
   analysisError: text('analysis_error'),
+
+  // Multi-user
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   uniqueIndex('idx_listings_platform_external').on(table.platform, table.externalId),
   index('idx_listings_status').on(table.status),
@@ -84,6 +148,7 @@ export const searchConfigs = sqliteTable('search_configs', {
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
   lastRunAt: text('last_run_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 });
 
 export const platformSettings = sqliteTable('platform_settings', {
@@ -102,6 +167,7 @@ export const scrapeRuns = sqliteTable('scrape_runs', {
   listingsDuplicate: integer('listings_duplicate').default(0),
   error: text('error'),
   status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 });
 
 export const comparables = sqliteTable('comparables', {
@@ -117,6 +183,7 @@ export const comparables = sqliteTable('comparables', {
   furnitureStyle: text('furniture_style'),
   searchQuery: text('search_query'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_comparables_listing_id').on(table.listingId),
   index('idx_comparables_furniture_type').on(table.furnitureType),
@@ -144,6 +211,7 @@ export const refinishingPlans = sqliteTable('refinishing_plans', {
   ragSourceTitles: text('rag_source_titles'), // JSON array of title strings
   ragSources: text('rag_sources'), // JSON array of {title, source, type}
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_refinishing_plans_listing_id').on(table.listingId),
 ]);
@@ -210,6 +278,7 @@ export const projects = sqliteTable('projects', {
   listingText: text('listing_text'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_projects_status').on(table.status),
   index('idx_projects_listing_id').on(table.listingId),
@@ -227,6 +296,7 @@ export const backgroundJobs = sqliteTable('background_jobs', {
   error: text('error'),
   startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
   completedAt: text('completed_at'),
+  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_background_jobs_status').on(table.status),
 ]);

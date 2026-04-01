@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { db } from '../db/index.js';
 import { scrapeRuns, searchConfigs, platformSettings, backgroundJobs } from '../db/schema.js';
-import { desc, eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { runScraper, runAllActiveScrapers } from '../scrapers/manager.js';
 import type { Platform } from '../../shared/constants.js';
 import { runScraperSchema, addSearchConfigSchema, togglePlatformSchema } from '../lib/validation.js';
@@ -12,13 +12,14 @@ export const scrapersRouter = new Hono();
 
 // POST /run — trigger scrape in background. Returns job ID immediately.
 // Body: { platform?, searchTerm?, location? }
-// If no body, runs all active search configs
+// If no body, runs all active search configs for the current user
 scrapersRouter.post('/run', async (c) => {
+  const user = c.get('user');
   const body = await c.req.json().catch(() => ({}));
   const parsed = runScraperSchema.safeParse(body);
 
   const jobId = crypto.randomUUID();
-  await db.insert(backgroundJobs).values({ id: jobId, type: 'scrape' });
+  await db.insert(backgroundJobs).values({ id: jobId, type: 'scrape', userId: user.id });
 
   if (parsed.success && parsed.data.platform && parsed.data.searchTerm) {
     runScraper(parsed.data.platform, {
@@ -26,7 +27,7 @@ scrapersRouter.post('/run', async (c) => {
       location: parsed.data.location,
       minPrice: parsed.data.minPrice,
       maxPrice: parsed.data.maxPrice,
-    }).then(async (result) => {
+    }, user.id).then(async (result) => {
       await db.update(backgroundJobs).set({
         status: 'completed',
         completedAt: new Date().toISOString(),
@@ -40,7 +41,7 @@ scrapersRouter.post('/run', async (c) => {
       }).where(eq(backgroundJobs.id, jobId));
     });
   } else {
-    runAllActiveScrapers().then(async (results) => {
+    runAllActiveScrapers(undefined, user.id).then(async (results) => {
       await db.update(backgroundJobs).set({
         status: 'completed',
         completedAt: new Date().toISOString(),
@@ -60,7 +61,8 @@ scrapersRouter.post('/run', async (c) => {
 
 // GET /jobs/:id — poll job status (persisted in DB, survives restarts)
 scrapersRouter.get('/jobs/:id', async (c) => {
-  const job = await db.select().from(backgroundJobs).where(eq(backgroundJobs.id, c.req.param('id'))).get();
+  const user = c.get('user');
+  const job = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.id, c.req.param('id')), eq(backgroundJobs.userId, user.id))).get();
   if (!job) return c.json({ error: 'Job not found' }, 404);
   return c.json({
     ...job,
@@ -70,6 +72,7 @@ scrapersRouter.get('/jobs/:id', async (c) => {
 
 // GET /run/stream — SSE stream of scrape progress
 scrapersRouter.get('/run/stream', (c) => {
+  const user = c.get('user');
   return streamSSE(c, async (stream) => {
     // Send keepalive comments every 15s to prevent Cloudflare/proxy idle timeouts
     const keepalive = setInterval(() => {
@@ -79,7 +82,7 @@ scrapersRouter.get('/run/stream', (c) => {
     try {
       await runAllActiveScrapers((progress) => {
         stream.writeSSE({ data: JSON.stringify(progress), event: progress.type });
-      });
+      }, user.id);
       await stream.writeSSE({ data: '{}', event: 'close' });
     } finally {
       clearInterval(keepalive);
@@ -89,16 +92,19 @@ scrapersRouter.get('/run/stream', (c) => {
 
 // GET /status — last run times, configs, and per-platform health
 scrapersRouter.get('/status', async (c) => {
+  const user = c.get('user');
+
   const recentRuns = await db.select()
     .from(scrapeRuns)
+    .where(eq(scrapeRuns.userId, user.id))
     .orderBy(desc(scrapeRuns.startedAt))
     .limit(20);
 
-  const configs = await db.select().from(searchConfigs);
+  const configs = await db.select()
+    .from(searchConfigs)
+    .where(eq(searchConfigs.userId, user.id));
 
   // Compute per-platform health from recent completed runs.
-  // If the last 3+ completed runs for a platform all found 0 listings,
-  // that's almost certainly a broken selector, not "no furniture for sale."
   const healthByPlatform: Record<string, {
     status: 'ok' | 'warning' | 'error';
     message: string | null;
@@ -117,7 +123,6 @@ scrapersRouter.get('/status', async (c) => {
     const failed = runs.filter(r => r.status === 'failed');
     const lastRun = runs[0]?.startedAt ?? null;
 
-    // Count consecutive zero-result completed runs (most recent first)
     let consecutiveZeros = 0;
     for (const run of completed) {
       if ((run.listingsFound ?? 0) === 0) {
@@ -163,6 +168,7 @@ scrapersRouter.get('/status', async (c) => {
 
 // POST /configs — add search config
 scrapersRouter.post('/configs', async (c) => {
+  const user = c.get('user');
   const raw = await c.req.json();
   const parsed = addSearchConfigSchema.safeParse(raw);
   if (!parsed.success) {
@@ -176,14 +182,20 @@ scrapersRouter.post('/configs', async (c) => {
     location: parsed.data.location ?? null,
     minPrice: parsed.data.minPrice ?? null,
     maxPrice: parsed.data.maxPrice ?? null,
+    userId: user.id,
   }).returning();
   return c.json(result, 201);
 });
 
-// DELETE /configs/all — remove all search configs
+// DELETE /configs/all — remove all search configs for the current user
 scrapersRouter.delete('/configs/all', async (c) => {
-  await db.delete(scrapeRuns);
-  await db.delete(searchConfigs);
+  const user = c.get('user');
+  // Delete scrape runs tied to user's configs
+  const userConfigs = await db.select({ id: searchConfigs.id }).from(searchConfigs).where(eq(searchConfigs.userId, user.id));
+  for (const config of userConfigs) {
+    await db.delete(scrapeRuns).where(eq(scrapeRuns.searchConfigId, config.id));
+  }
+  await db.delete(searchConfigs).where(eq(searchConfigs.userId, user.id));
   return c.json({ ok: true });
 });
 
@@ -204,7 +216,7 @@ scrapersRouter.get('/platforms', async (c) => {
   return c.json(platforms);
 });
 
-// PATCH /platforms/:platform — toggle platform enabled
+// PATCH /platforms/:platform — toggle platform enabled (admin only — enforced in app.ts middleware)
 scrapersRouter.patch('/platforms/:platform', async (c) => {
   const platform = c.req.param('platform');
   const raw = await c.req.json();
@@ -221,7 +233,12 @@ scrapersRouter.patch('/platforms/:platform', async (c) => {
 
 // DELETE /configs/:id — remove search config
 scrapersRouter.delete('/configs/:id', async (c) => {
+  const user = c.get('user');
   const id = parseInt(c.req.param('id'));
+
+  const config = await db.select().from(searchConfigs).where(and(eq(searchConfigs.id, id), eq(searchConfigs.userId, user.id))).get();
+  if (!config) return c.json({ error: 'Not found' }, 404);
+
   await db.delete(scrapeRuns).where(eq(scrapeRuns.searchConfigId, id));
   await db.delete(searchConfigs).where(eq(searchConfigs.id, id));
   return c.json({ ok: true });

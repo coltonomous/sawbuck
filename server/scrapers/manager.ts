@@ -41,6 +41,7 @@ export interface ScrapeResult {
 export async function runScraper(
   platform: string,
   config: ScraperConfig,
+  userId?: string | number,
   searchConfigId?: number,
 ): Promise<ScrapeResult> {
   const scraperFactory = scraperMap[platform];
@@ -54,6 +55,7 @@ export async function runScraper(
   const [run] = await db.insert(scrapeRuns).values({
     platform,
     searchConfigId: searchConfigId ?? null,
+    userId: userId ? String(userId) : null,
   }).returning();
 
   try {
@@ -99,6 +101,7 @@ export async function runScraper(
           postedAt: item.postedAt,
           fingerprint: fp,
           matchedSearchTerms: JSON.stringify([searchTerm]),
+          userId: userId ? String(userId) : null,
         }).onConflictDoNothing()
           .returning();
 
@@ -181,6 +184,7 @@ export interface ScrapeProgress {
 
 export async function runAllActiveScrapers(
   onProgress?: (progress: ScrapeProgress) => void,
+  userId?: string,
 ): Promise<ScrapeResult[]> {
   // Get enabled platforms from platform_settings
   const allPlatformSettings = await db.select().from(platformSettings);
@@ -200,7 +204,9 @@ export async function runAllActiveScrapers(
     }
   }
 
-  const allConfigs = await db.select().from(searchConfigs).where(eq(searchConfigs.isActive, true));
+  const configConditions = [eq(searchConfigs.isActive, true)];
+  if (userId) configConditions.push(eq(searchConfigs.userId, userId));
+  const allConfigs = await db.select().from(searchConfigs).where(and(...configConditions));
 
   if (allConfigs.length === 0) {
     logger.info('No active search configs found');
@@ -248,7 +254,7 @@ export async function runAllActiveScrapers(
       searchTerm: config.searchTerm,
     });
 
-    const result = await runScraper(platform, scraperConfig, config.id);
+    const result = await runScraper(platform, scraperConfig, userId ?? config.userId ?? undefined, config.id);
     results.push(result);
 
     onProgress?.({

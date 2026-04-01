@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
+import AuthGuard from './components/AuthGuard';
 import { ToastProvider } from './components/Toast';
 import './styles/globals.css';
 
@@ -13,6 +14,7 @@ const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Analytics = lazy(() => import('./pages/Analytics'));
+const Login = lazy(() => import('./pages/Login'));
 
 function SuspenseRoute({ children }: { children: React.ReactNode }) {
   return (
@@ -30,7 +32,8 @@ createRoot(document.getElementById('root')!).render(
       <ToastProvider>
         <BrowserRouter>
           <Routes>
-            <Route element={<App />}>
+            <Route path="/login" element={<SuspenseRoute><Login /></SuspenseRoute>} />
+            <Route element={<AuthGuard><App /></AuthGuard>}>
               <Route index element={<SuspenseRoute><Dashboard /></SuspenseRoute>} />
               <Route path="listings" element={<SuspenseRoute><Listings /></SuspenseRoute>} />
               <Route path="listings/:id" element={<SuspenseRoute><ListingDetail /></SuspenseRoute>} />

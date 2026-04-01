@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import UserMenu from './UserMenu';
 
 const links = [
   {
@@ -125,9 +126,7 @@ export default function Sidebar() {
             </li>
           ))}
         </ul>
-        <div className="px-5 py-4 border-t border-gray-800">
-          <p className="text-[11px] text-gray-600">Find deals. Flip furniture.</p>
-        </div>
+        <UserMenu />
       </nav>
     </>
   );

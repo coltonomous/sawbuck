@@ -109,7 +109,7 @@ export interface RefinishingResult {
   ragSources: RagSourceRef[];
 }
 
-export async function generateRefinishingPlan(listingId: number, projectId?: number, apiKey?: string): Promise<RefinishingResult | null> {
+export async function generateRefinishingPlan(listingId: number, projectId?: number): Promise<RefinishingResult | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
@@ -139,7 +139,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     // RAG not available — continue without it
   }
 
-  const response = await generateText(prompt, SYSTEM_PROMPT, 3000, undefined, apiKey);
+  const response = await generateText(prompt, SYSTEM_PROMPT, 3000);
 
   // Parse JSON — handle markdown wrapping
   let jsonStr = response.trim();
