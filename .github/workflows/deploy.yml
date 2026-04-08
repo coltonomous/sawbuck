@@ -60,7 +60,7 @@ jobs:
 
           # One-time: remove stale DB left by previous failed deploy
           # TODO: remove this line after first successful deploy
-          rm -f data/sawbuck.db data/sawbuck.db-wal data/sawbuck.db-shm
+          sudo rm -f data/sawbuck.db data/sawbuck.db-wal data/sawbuck.db-shm
 
           docker compose build
           docker compose up -d
