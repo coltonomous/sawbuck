@@ -61,6 +61,8 @@ jobs:
           grep -q BETTER_AUTH_SECRET .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
           grep -q BETTER_AUTH_URL .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
           grep -q ADMIN_EMAIL .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
+          grep -q GOOGLE_CLIENT_ID .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
+          grep -q GOOGLE_CLIENT_SECRET .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           docker compose down --remove-orphans 2>/dev/null || true
 
           docker compose build
