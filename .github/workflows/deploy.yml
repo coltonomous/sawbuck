@@ -66,12 +66,12 @@ jobs:
           grep -q ANTHROPIC_API_KEY .env 2>/dev/null || echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' >> .env
           docker compose down --remove-orphans 2>/dev/null || true
 
-          docker compose build
-          docker compose up -d
-
-          # Clean up unused images and build cache
+          # Clean up before build to ensure enough disk space
           docker image prune -af --filter "until=24h"
           docker builder prune -af --filter "until=24h"
+
+          docker compose build
+          docker compose up -d
 
           # Wait for health check (first boot: migrations + admin seed + server start)
           echo "Waiting for health check..."
