@@ -69,8 +69,9 @@ jobs:
           docker compose build
           docker compose up -d
 
-          # Clean up old dangling images (previous builds), keep cache
-          docker image prune -f
+          # Clean up unused images and build cache
+          docker image prune -af --filter "until=24h"
+          docker builder prune -af --filter "until=24h"
 
           # Wait for health check (first boot: migrations + admin seed + server start)
           echo "Waiting for health check..."
