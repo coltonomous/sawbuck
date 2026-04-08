@@ -216,7 +216,7 @@ scrapersRouter.get('/platforms', async (c) => {
   return c.json(platforms);
 });
 
-// PATCH /platforms/:platform — toggle platform enabled (admin only — enforced in app.ts middleware)
+// PATCH /platforms/:platform — toggle platform enabled
 scrapersRouter.patch('/platforms/:platform', async (c) => {
   const platform = c.req.param('platform');
   const raw = await c.req.json();

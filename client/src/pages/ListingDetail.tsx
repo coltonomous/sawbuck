@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource } from '../api';
 import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
+import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
@@ -11,6 +12,7 @@ import { resolveImageUrl } from '../utils';
 export default function ListingDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { data: session } = useSession();
   const [listing, setListing] = useState<ListingDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [analyzing, setAnalyzing] = useState(false);
@@ -216,7 +218,7 @@ export default function ListingDetail() {
             <p className="mt-3 pt-3 border-t text-sm text-gray-700 leading-relaxed font-medium">{String(analysisData.refinishing_profit_verdict)}</p>
           )}
         </Card>
-      ) : (
+      ) : listing.userId === session?.user?.id ? (
         <button
           onClick={handleAnalyze}
           disabled={analyzing}
@@ -225,7 +227,7 @@ export default function ListingDetail() {
           {analyzing && <Spinner />}
           {analyzing ? 'Analyzing...' : 'Analyze with Claude'}
         </button>
-      )}
+      ) : null}
 
       {/* Comparables — hidden while transitioning away from eBay comps */}
       {/* {listing.furnitureType && <ComparablesList listingId={listing.id} />} */}

@@ -252,10 +252,24 @@ listingsRouter.patch('/:id', async (c) => {
   const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  await db.update(listings).set(parsed.data).where(eq(listings.id, id));
-  const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
+  await db.update(listings).set(parsed.data).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
+  const updated = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
 
   return c.json(updated);
+});
+
+// DELETE /:id — delete a listing (owner only)
+listingsRouter.delete('/:id', async (c) => {
+  const user = c.get('user');
+  const id = parseInt(c.req.param('id'));
+
+  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  if (!existing) return c.json({ error: 'Not found' }, 404);
+
+  await db.delete(listingImages).where(eq(listingImages.listingId, id));
+  await db.delete(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
+
+  return c.json({ ok: true });
 });
 
 // POST /:id/analyze — kick off analysis in background, return 202

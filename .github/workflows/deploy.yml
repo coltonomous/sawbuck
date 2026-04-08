@@ -57,13 +57,13 @@ jobs:
 
           cd /opt/sawbuck
 
-          # Ensure auth env vars are in .env
-          grep -q BETTER_AUTH_SECRET .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
-          grep -q BETTER_AUTH_URL .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
-          grep -q ADMIN_EMAIL .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
-          grep -q GOOGLE_CLIENT_ID .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
-          grep -q GOOGLE_CLIENT_SECRET .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
-          grep -q ANTHROPIC_API_KEY .env 2>/dev/null || echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' >> .env
+          # Ensure env vars are in .env (anchored grep to avoid substring matches)
+          grep -q '^BETTER_AUTH_SECRET=' .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
+          grep -q '^BETTER_AUTH_URL=' .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
+          grep -q '^ADMIN_EMAIL=' .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
+          grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
+          grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
+          grep -q '^ANTHROPIC_API_KEY=' .env 2>/dev/null || echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' >> .env
           docker compose down --remove-orphans 2>/dev/null || true
 
           # Clean up before build to ensure enough disk space

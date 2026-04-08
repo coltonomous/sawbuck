@@ -80,6 +80,8 @@ export interface Listing {
   dealScore: number | null;
   matchedSearchTerms: string | null;
   fingerprint: string | null;
+  analysisError: string | null;
+  userId: string | null;
   primaryImage?: string | null;
 }
 
@@ -414,6 +416,9 @@ export const api = {
   searchComparables: (listingId: number) =>
     request<{ comps: Comparable[]; blocked: boolean }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
   getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
+
+  deleteListing: (id: number) =>
+    request<{ ok: boolean }>(`/listings/${id}`, { method: 'DELETE' }),
 
   // Sawbuck listings
   createSawbuckListing: (data: { title: string; description?: string; askingPrice: number; location?: string }) =>
