@@ -12,6 +12,7 @@ import { projectsRouter } from './routes/projects.js';
 import { scrapersRouter } from './routes/scrapers.js';
 import { comparablesRouter } from './routes/comparables.js';
 import { statsRouter } from './routes/stats.js';
+import { adminRouter } from './routes/admin.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -100,7 +101,7 @@ app.use('/api/projects/:id/refinish', checkClaudeLimit);
 app.use('/api/projects/:id/listing-text', checkClaudeLimit);
 
 // ── Admin-only routes ───────────────────────────────────────────────
-app.use('/api/scrapers/platforms/:platform', requireAdmin);
+app.use('/api/admin/*', requireAdmin);
 
 // ── API routes ──────────────────────────────────────────────────────
 app.route('/api/listings', listingsRouter);
@@ -108,6 +109,7 @@ app.route('/api/projects', projectsRouter);
 app.route('/api/scrapers', scrapersRouter);
 app.route('/api/comparables', comparablesRouter);
 app.route('/api/stats', statsRouter);
+app.route('/api/admin', adminRouter);
 
 // ── Claude usage endpoint ───────────────────────────────────────────
 app.get('/api/usage/claude', async (c) => {

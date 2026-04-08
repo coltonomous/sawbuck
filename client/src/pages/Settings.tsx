@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, type SearchConfig, type ScrapeRun, type PlatformHealth } from '../api';
+import { api, type SearchConfig, type ScrapeRun, type PlatformHealth, type AdminUser } from '../api';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { platformLabel, platformColor, Card, CardHeader, SearchIcon } from '../components/ui';
@@ -10,6 +10,7 @@ export default function Settings() {
   const [platforms, setPlatforms] = useState<{ platform: string; enabled: boolean }[]>([]);
   const [loading, setLoading] = useState(true);
   const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
+  const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [form, setForm] = useState({
     searchTerm: '',
     location: '',
@@ -20,11 +21,16 @@ export default function Settings() {
 
   const isAdmin = session?.user?.role === 'admin';
 
+  const loadUsers = () => {
+    if (isAdmin) api.getUsers().then(setAdminUsers).catch(() => {});
+  };
+
   useEffect(() => {
     Promise.all([api.getScraperStatus(), api.getPlatformSettings(), api.getClaudeUsage()])
       .then(([s, p, u]) => { setStatus(s); setPlatforms(p); setUsage(u); })
       .catch(console.error)
       .finally(() => setLoading(false));
+    loadUsers();
 
     // Default location from browser geolocation
     if (navigator.geolocation) {
@@ -286,6 +292,74 @@ export default function Settings() {
           </ul>
         )}
       </Card>
+
+      {/* User management (admin only) */}
+      {isAdmin && (
+        <Card className="mb-5">
+          <CardHeader>User Management</CardHeader>
+          {adminUsers.length === 0 ? (
+            <p className="text-sm text-gray-500">Loading users...</p>
+          ) : (
+            <div className="divide-y divide-gray-100">
+              {adminUsers.map((u) => (
+                <div key={u.id} className="py-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {u.image ? (
+                      <img src={u.image} alt="" className="w-8 h-8 rounded-full shrink-0" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-xs font-bold text-gray-500 shrink-0">
+                        {(u.name || u.email)[0]?.toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{u.name || u.email}</p>
+                      <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-gray-400">{u.listingCount} listings</span>
+                    <span className="text-xs text-gray-400">{u.usageToday} calls today</span>
+                    <select
+                      value={u.role}
+                      onChange={async (e) => {
+                        const role = e.target.value as 'user' | 'admin';
+                        try {
+                          await api.updateUserRole(u.id, role);
+                          toast('success', `${u.name || u.email} → ${role}`);
+                          loadUsers();
+                        } catch (err) {
+                          toast('error', err instanceof Error ? err.message : 'Failed');
+                        }
+                      }}
+                      className="text-xs border border-gray-200 rounded px-2 py-1"
+                    >
+                      <option value="user">User</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    {u.id !== session?.user?.id && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Delete ${u.name || u.email}? This removes all their data.`)) return;
+                          try {
+                            await api.deleteUser(u.id);
+                            toast('success', 'User deleted');
+                            loadUsers();
+                          } catch (err) {
+                            toast('error', err instanceof Error ? err.message : 'Failed');
+                          }
+                        }}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* Recent runs */}
       <Card>

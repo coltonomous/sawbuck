@@ -21,7 +21,19 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-//Shared types
+// Shared types
+
+export interface AdminUser {
+  id: string;
+  name: string;
+  email: string;
+  image: string | null;
+  role: 'user' | 'admin';
+  dailyClaudeLimit: number;
+  usageToday: number;
+  listingCount: number;
+  createdAt: string;
+}
 
 
 export interface ListingImage {
@@ -405,4 +417,13 @@ export const api = {
 
   // Usage
   getClaudeUsage: () => request<{ used: number; limit: number; date: string }>('/usage/claude'),
+
+  // Admin
+  getUsers: () => request<AdminUser[]>('/admin/users'),
+  updateUserRole: (userId: string, role: 'user' | 'admin') =>
+    request<{ ok: boolean }>(`/admin/users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
+  updateUserLimit: (userId: string, limit: number) =>
+    request<{ ok: boolean }>(`/admin/users/${userId}/limit`, { method: 'PATCH', body: JSON.stringify({ limit }) }),
+  deleteUser: (userId: string) =>
+    request<{ ok: boolean }>(`/admin/users/${userId}`, { method: 'DELETE' }),
 };
