@@ -29,6 +29,10 @@ export default function Listings() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [createForm, setCreateForm] = useState({ title: '', description: '', askingPrice: '', location: '' });
 
   const handleImport = async (e: FormEvent) => {
     e.preventDefault();
@@ -49,6 +53,28 @@ export default function Listings() {
       setImportError(err.message || 'Import failed');
     } finally {
       setImporting(false);
+    }
+  };
+
+  const handleCreate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!createForm.title || !createForm.askingPrice) return;
+    setCreating(true);
+    setCreateError('');
+    try {
+      const { listing } = await api.createSawbuckListing({
+        title: createForm.title,
+        description: createForm.description || undefined,
+        askingPrice: parseFloat(createForm.askingPrice),
+        location: createForm.location || undefined,
+      });
+      setCreateForm({ title: '', description: '', askingPrice: '', location: '' });
+      setShowCreate(false);
+      navigate(`/listings/${listing.id}`);
+    } catch (err: any) {
+      setCreateError(err.message || 'Failed to create listing');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -114,26 +140,28 @@ export default function Listings() {
     <div>
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-2xl font-bold text-gray-900">All Listings</h2>
-        <button
-          onClick={() => { setShowImport(!showImport); setImportError(''); }}
-          className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
-            showImport
-              ? 'text-gray-500 hover:text-gray-700'
-              : 'border border-gray-300 hover:bg-gray-50 text-gray-700'
-          }`}
-        >
-          {showImport ? (
-            <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
-              Cancel
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-              Paste a Link
-            </>
-          )}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => { setShowCreate(!showCreate); setShowImport(false); setCreateError(''); }}
+            className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
+              showCreate
+                ? 'text-gray-500 hover:text-gray-700'
+                : 'bg-amber-500 text-white hover:bg-amber-600'
+            }`}
+          >
+            {showCreate ? 'Cancel' : 'Post Listing'}
+          </button>
+          <button
+            onClick={() => { setShowImport(!showImport); setShowCreate(false); setImportError(''); }}
+            className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
+              showImport
+                ? 'text-gray-500 hover:text-gray-700'
+                : 'border border-gray-300 hover:bg-gray-50 text-gray-700'
+            }`}
+          >
+            {showImport ? 'Cancel' : 'Paste a Link'}
+          </button>
+        </div>
       </div>
 
       {showImport && (
@@ -175,6 +203,55 @@ export default function Listings() {
               Craigslist, OfferUp, Mercari, eBay, or Facebook Marketplace
             </p>
           )}
+        </div>
+      )}
+
+      {showCreate && (
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-5 animate-in fade-in slide-in-from-top-1">
+          <form onSubmit={handleCreate} className="space-y-3">
+            <input
+              type="text"
+              placeholder="Title (e.g., Mid-century walnut dresser)"
+              value={createForm.title}
+              onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              required
+            />
+            <textarea
+              placeholder="Description (optional)"
+              value={createForm.description}
+              onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
+              rows={3}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number"
+                placeholder="Asking price ($)"
+                value={createForm.askingPrice}
+                onChange={(e) => setCreateForm({ ...createForm, askingPrice: e.target.value })}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                required
+                min="0"
+                step="0.01"
+              />
+              <input
+                type="text"
+                placeholder="Location (optional)"
+                value={createForm.location}
+                onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              />
+            </div>
+            {createError && <p className="text-sm text-red-600">{createError}</p>}
+            <button
+              type="submit"
+              disabled={creating || !createForm.title || !createForm.askingPrice}
+              className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-colors"
+            >
+              {creating ? <><Spinner size="xs" /> Posting</> : 'Post Listing'}
+            </button>
+          </form>
         </div>
       )}
 

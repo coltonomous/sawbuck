@@ -4,6 +4,13 @@ import { z } from 'zod';
 // Listings
 // ============================================================
 
+export const createSawbuckListingSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).optional(),
+  askingPrice: z.number().nonnegative(),
+  location: z.string().max(200).optional(),
+});
+
 const listingStatus = z.enum(['new', 'analyzed', 'watching', 'acquired', 'dismissed']);
 
 export const updateListingSchema = z.object({

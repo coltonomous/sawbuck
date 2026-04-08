@@ -1,16 +1,17 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
-import { eq, desc, asc, and, gte, lte, count, sql } from 'drizzle-orm';
+import { eq, desc, asc, and, or, gte, lte, count, sql } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
 import { processListingImages } from '../images/processor.js';
 import { calculatePricing } from '../analysis/pricing.js';
 import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
 import { getPrimaryImagePath } from '../lib/images.js';
-import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema } from '../lib/validation.js';
+import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema } from '../lib/validation.js';
 import { fingerprint } from '../scrapers/manager.js';
 import logger from '../lib/logger.js';
+import crypto from 'crypto';
 import type { Platform } from '../../shared/constants.js';
 
 export const listingsRouter = new Hono();
@@ -20,12 +21,12 @@ listingsRouter.get('/', async (c) => {
   const user = c.get('user');
   const { type, style, minScore, maxPrice, platform, status, page = '1', limit = '50', sort, sort_dir } = c.req.query();
 
-  const conditions = [eq(listings.userId, user.id)];
+  const conditions = [or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!];
   if (type) conditions.push(eq(listings.furnitureType, type));
   if (style) conditions.push(eq(listings.furnitureStyle, style));
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
   if (maxPrice) conditions.push(lte(listings.askingPrice, parseFloat(maxPrice)));
-  if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook'));
+  if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook' | 'sawbuck'));
   if (status) conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed'));
 
   const pageNum = parseInt(page);
@@ -150,12 +151,39 @@ listingsRouter.post('/import', async (c) => {
   return c.json({ listing: { ...listing, images }, alreadyExists: false }, 201);
 });
 
+// POST /create — create a user-posted sawbuck listing
+listingsRouter.post('/create', async (c) => {
+  const user = c.get('user');
+  const raw = await c.req.json();
+  const parsed = createSawbuckListingSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+
+  const externalId = crypto.randomUUID();
+  const [inserted] = await db.insert(listings).values({
+    externalId,
+    platform: 'sawbuck',
+    url: '',
+    title: parsed.data.title,
+    description: parsed.data.description || null,
+    askingPrice: parsed.data.askingPrice,
+    location: parsed.data.location || null,
+    sellerName: user.name || user.email,
+    scrapedAt: new Date().toISOString(),
+    status: 'new',
+    userId: user.id,
+  }).returning();
+
+  return c.json({ listing: inserted }, 201);
+});
+
 // GET /:id — single listing with images (auto-enriches if missing details)
 listingsRouter.get('/:id', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  let listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  let listing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))).get();
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-fetch details if missing description, images, or description looks like a page dump

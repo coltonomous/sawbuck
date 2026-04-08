@@ -69,7 +69,7 @@ export const claudeUsage = sqliteTable('claude_usage', {
 export const listings = sqliteTable('listings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   externalId: text('external_id').notNull(),
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook'] }).notNull(),
+  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] }).notNull(),
   url: text('url').notNull(),
   title: text('title').notNull(),
   description: text('description'),
@@ -139,7 +139,7 @@ export const listingImages = sqliteTable('listing_images', {
 
 export const searchConfigs = sqliteTable('search_configs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook'] }).notNull(),
+  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] }).notNull(),
   searchTerm: text('search_term').notNull(),
   category: text('category'),
   location: text('location'),
@@ -152,7 +152,7 @@ export const searchConfigs = sqliteTable('search_configs', {
 });
 
 export const platformSettings = sqliteTable('platform_settings', {
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook'] }).primaryKey(),
+  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] }).primaryKey(),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 });
 

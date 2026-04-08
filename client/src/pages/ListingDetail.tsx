@@ -232,15 +232,17 @@ export default function ListingDetail() {
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2.5 mb-6">
-        <a
-          href={listing.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors inline-flex items-center gap-2"
-        >
-          View Original
-          <ExternalLinkIcon />
-        </a>
+        {listing.platform !== 'sawbuck' && listing.url && (
+          <a
+            href={listing.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-4 py-2 bg-gray-900 text-white text-sm font-medium rounded-lg hover:bg-gray-800 transition-colors inline-flex items-center gap-2"
+          >
+            View Original
+            <ExternalLinkIcon />
+          </a>
+        )}
         {listing.status !== 'acquired' && (
           <button
             onClick={() => {

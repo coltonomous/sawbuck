@@ -55,7 +55,7 @@ export interface ListingImage {
 export interface Listing {
   id: number;
   externalId: string;
-  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook';
+  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook' | 'sawbuck';
   url: string;
   title: string;
   description: string | null;
@@ -414,6 +414,10 @@ export const api = {
   searchComparables: (listingId: number) =>
     request<{ comps: Comparable[]; blocked: boolean }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
   getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
+
+  // Sawbuck listings
+  createSawbuckListing: (data: { title: string; description?: string; askingPrice: number; location?: string }) =>
+    request<{ listing: Listing }>('/listings/create', { method: 'POST', body: JSON.stringify(data) }),
 
   // Usage
   getClaudeUsage: () => request<{ used: number; limit: number; date: string }>('/usage/claude'),
