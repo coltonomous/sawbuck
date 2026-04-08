@@ -1,11 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { Hono } from 'hono';
-import { db } from '../db/index.js';
+import { db, sqlite } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
-import { generateMaterialsFromPlan, getMaterialsForProject } from '../analysis/sourcing.js';
+import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
@@ -69,16 +69,20 @@ projectsRouter.post('/', async (c) => {
   const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
   if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
-  const [project] = await db.insert(projects).values({
-    listingId,
-    name,
-    purchasePrice,
-    purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
-    purchaseNotes,
-    userId: user.id,
-  }).returning();
+  const project = sqlite.transaction(() => {
+    const [created] = db.insert(projects).values({
+      listingId,
+      name,
+      purchasePrice,
+      purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+      purchaseNotes,
+      userId: user.id,
+    }).returning().all();
 
-  await db.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId));
+    db.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId)).run();
+
+    return created;
+  })();
 
   return c.json(project, 201);
 });
@@ -127,21 +131,26 @@ projectsRouter.delete('/:id', async (c) => {
   const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
   if (!project) return c.json({ error: 'Not found' }, 404);
 
+  // Delete photo files first (outside transaction — file I/O isn't rollbackable)
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   for (const photo of photos) {
     const filePath = path.join(IMAGES_DIR, photo.localPath);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
-  await db.delete(projectPhotos).where(eq(projectPhotos.projectId, id));
-  await db.delete(materials).where(eq(materials.projectId, id));
-  await db.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id));
-  await db.delete(projects).where(eq(projects.id, id));
 
-  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
-  if (listing) {
-    const newStatus = listing.furnitureType ? 'analyzed' : 'new';
-    await db.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId));
-  }
+  // Delete all DB records atomically
+  sqlite.transaction(() => {
+    db.delete(projectPhotos).where(eq(projectPhotos.projectId, id)).run();
+    db.delete(materials).where(eq(materials.projectId, id)).run();
+    db.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id)).run();
+    db.delete(projects).where(eq(projects.id, id)).run();
+
+    const listing = db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+    if (listing) {
+      const newStatus = listing.furnitureType ? 'analyzed' : 'new';
+      db.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId)).run();
+    }
+  })();
 
   return c.json({ ok: true });
 });
@@ -157,19 +166,22 @@ projectsRouter.post('/:id/refinish', async (c) => {
     const result = await generateRefinishingPlan(project.listingId, id);
     if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
+    // Generate materials + update project status atomically
     const storedPlans = await db.select()
       .from(refinishingPlans)
       .where(eq(refinishingPlans.projectId, id));
     const storedPlan = storedPlans[storedPlans.length - 1];
 
-    if (storedPlan) {
-      await generateMaterialsFromPlan(storedPlan.id, id);
-    }
+    sqlite.transaction(() => {
+      if (storedPlan) {
+        generateMaterialsFromPlanSync(storedPlan.id, id);
+      }
 
-    await db.update(projects).set({
-      status: 'refinishing',
-      updatedAt: new Date().toISOString(),
-    }).where(eq(projects.id, id));
+      db.update(projects).set({
+        status: 'refinishing',
+        updatedAt: new Date().toISOString(),
+      }).where(eq(projects.id, id)).run();
+    })();
 
     return c.json({
       plan: result.plan,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db } from '../db/index.js';
+import { db, sqlite } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
@@ -161,31 +161,32 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     return null;
   }
 
-  // Update listing with analysis results (clear any prior error)
-  await db.update(listings).set({
-    furnitureType: analysis.furniture_type,
-    furnitureStyle: analysis.furniture_style,
-    conditionScore: analysis.condition_score,
-    conditionNotes: analysis.condition_notes,
-    woodSpecies: analysis.wood_species,
-    woodConfidence: analysis.wood_confidence,
-    analysisRaw: JSON.stringify({
-      ...analysis,
-      rag_sources_used: ragChunksUsed,
-      rag_source_titles: ragSourceTitles,
-      rag_sources: ragSources,
-    }),
-    analyzedAt: new Date().toISOString(),
-    status: 'analyzed',
-    analysisError: null,
-  }).where(eq(listings.id, listingId));
+  // Update listing + mark images analyzed atomically
+  sqlite.transaction(() => {
+    db.update(listings).set({
+      furnitureType: analysis.furniture_type,
+      furnitureStyle: analysis.furniture_style,
+      conditionScore: analysis.condition_score,
+      conditionNotes: analysis.condition_notes,
+      woodSpecies: analysis.wood_species,
+      woodConfidence: analysis.wood_confidence,
+      analysisRaw: JSON.stringify({
+        ...analysis,
+        rag_sources_used: ragChunksUsed,
+        rag_source_titles: ragSourceTitles,
+        rag_sources: ragSources,
+      }),
+      analyzedAt: new Date().toISOString(),
+      status: 'analyzed',
+      analysisError: null,
+    }).where(eq(listings.id, listingId)).run();
 
-  // Mark images as analyzed
-  for (const img of toAnalyze) {
-    await db.update(listingImages).set({
-      analysisStatus: 'analyzed',
-    }).where(eq(listingImages.id, img.id));
-  }
+    for (const img of toAnalyze) {
+      db.update(listingImages).set({
+        analysisStatus: 'analyzed',
+      }).where(eq(listingImages.id, img.id)).run();
+    }
+  })();
 
   logger.info({
     listingId,

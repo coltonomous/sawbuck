@@ -5,8 +5,12 @@ import { parsePlanSteps, type RefinishingProduct } from './refinishing.js';
 import { generateAllSearchUrls } from '../lib/search-urls.js';
 import logger from '../lib/logger.js';
 
-export async function generateMaterialsFromPlan(planId: number, projectId?: number): Promise<number> {
-  const plan = await db.select().from(refinishingPlans).where(eq(refinishingPlans.id, planId)).get();
+/**
+ * Synchronous version — safe to call inside a better-sqlite3 transaction.
+ * All DB operations here are synchronous under the hood (better-sqlite3).
+ */
+export function generateMaterialsFromPlanSync(planId: number, projectId?: number): number {
+  const plan = db.select().from(refinishingPlans).where(eq(refinishingPlans.id, planId)).get();
   if (!plan) throw new Error(`Plan ${planId} not found`);
 
   const steps = parsePlanSteps(plan.steps);
@@ -25,7 +29,6 @@ export async function generateMaterialsFromPlan(planId: number, projectId?: numb
       if (seen.has(key)) continue;
       seen.add(key);
 
-      // Infer category from product name/step title
       const category = inferCategory(product.name, step.title);
       allProducts.push({ ...product, category });
     }
@@ -36,7 +39,7 @@ export async function generateMaterialsFromPlan(planId: number, projectId?: numb
   for (const product of allProducts) {
     const urls = generateAllSearchUrls(product.brand, product.name);
 
-    await db.insert(materials).values({
+    db.insert(materials).values({
       refinishingPlanId: planId,
       projectId: projectId ?? null,
       category: product.category,
@@ -48,12 +51,16 @@ export async function generateMaterialsFromPlan(planId: number, projectId?: numb
       amazonSearchUrl: urls.amazon,
       homeDepotSearchUrl: urls.homeDepot,
       lowesSearchUrl: urls.lowes,
-    });
+    }).run();
     inserted++;
   }
 
   logger.info({ planId, materialCount: inserted }, 'Generated materials from plan');
   return inserted;
+}
+
+export async function generateMaterialsFromPlan(planId: number, projectId?: number): Promise<number> {
+  return generateMaterialsFromPlanSync(planId, projectId);
 }
 
 function inferCategory(productName: string, stepTitle: string): string {
