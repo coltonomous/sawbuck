@@ -63,10 +63,6 @@ jobs:
           grep -q ADMIN_EMAIL .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
           docker compose down --remove-orphans 2>/dev/null || true
 
-          # One-time: remove stale DB left by previous failed deploy
-          # TODO: remove this line after first successful deploy
-          sudo rm -f data/sawbuck.db data/sawbuck.db-wal data/sawbuck.db-shm
-
           docker compose build
           docker compose up -d
 
