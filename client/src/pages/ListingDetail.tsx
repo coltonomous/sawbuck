@@ -227,8 +227,8 @@ export default function ListingDetail() {
         </button>
       )}
 
-      {/* Comparables */}
-      {listing.furnitureType && <ComparablesList listingId={listing.id} />}
+      {/* Comparables — hidden while transitioning away from eBay comps */}
+      {/* {listing.furnitureType && <ComparablesList listingId={listing.id} />} */}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2.5 mb-6">

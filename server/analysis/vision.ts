@@ -68,7 +68,7 @@ const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. R
   "damage_items": ["array of specific damage or wear: water ring on top, scratch on left side, missing drawer pull, etc."],
   "refinishing_potential": "high/medium/low — how much value could refinishing add",
   "flip_recommendation": "strong_buy/buy/maybe/pass — overall recommendation for buying to flip",
-  "refinishing_profit_verdict": "1-3 sentence brutal verdict: will buying this piece, refinishing it, and reselling it actually turn a profit? Factor in realistic material costs ($30-150), time investment (hobbyist rate ~$25/hr), and what refinished pieces of this type/style actually sell for. If the margins are thin or negative, say so plainly. No sugarcoating."
+  "refinishing_profit_verdict": "1-3 sentence brutal verdict: will buying this piece, refinishing it, and reselling it actually turn a profit? Consider BOTH full refinishing AND simple restoration (cleaning, minor touch-ups, hardware swap, light sanding) — if a quick restore gets 80% of the value for 20% of the effort, recommend that over a full refinish. Factor in realistic material costs ($30-150 for refinish, $10-30 for restore), time investment (hobbyist rate ~$25/hr), and what pieces of this type/style actually sell for in each condition. If the margins are thin or negative, say so plainly. No sugarcoating."
 }`;
 
 export async function analyzeListing(listingId: number): Promise<FurnitureAnalysis | null> {
