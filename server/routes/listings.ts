@@ -12,6 +12,9 @@ import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, cre
 import { fingerprint } from '../scrapers/manager.js';
 import logger from '../lib/logger.js';
 import crypto from 'crypto';
+import path from 'path';
+import fs from 'fs';
+import { ORIGINALS_DIR } from '../lib/paths.js';
 import type { Platform } from '../../shared/constants.js';
 
 export const listingsRouter = new Hono();
@@ -151,31 +154,62 @@ listingsRouter.post('/import', async (c) => {
   return c.json({ listing: { ...listing, images }, alreadyExists: false }, 201);
 });
 
-// POST /create — create a user-posted sawbuck listing
+// POST /create — create a user-posted sawbuck listing (multipart with photos)
 listingsRouter.post('/create', async (c) => {
   const user = c.get('user');
-  const raw = await c.req.json();
-  const parsed = createSawbuckListingSchema.safeParse(raw);
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.issues[0].message }, 400);
-  }
+  const formData = await c.req.formData();
+
+  const title = formData.get('title') as string;
+  const description = formData.get('description') as string | null;
+  const askingPrice = parseFloat(formData.get('askingPrice') as string);
+  const location = formData.get('location') as string | null;
+
+  if (!title || title.length > 200) return c.json({ error: 'Title is required (max 200 chars)' }, 400);
+  if (isNaN(askingPrice) || askingPrice < 0) return c.json({ error: 'Valid asking price is required' }, 400);
+
+  const photos = formData.getAll('photos') as File[];
+  if (photos.length === 0) return c.json({ error: 'At least one photo is required' }, 400);
 
   const externalId = crypto.randomUUID();
   const [inserted] = await db.insert(listings).values({
     externalId,
     platform: 'sawbuck',
     url: '',
-    title: parsed.data.title,
-    description: parsed.data.description || null,
-    askingPrice: parsed.data.askingPrice,
-    location: parsed.data.location || null,
+    title,
+    description: description || null,
+    askingPrice,
+    location: location || null,
     sellerName: user.name || user.email,
     scrapedAt: new Date().toISOString(),
     status: 'new',
     userId: user.id,
   }).returning();
 
-  return c.json({ listing: inserted }, 201);
+  // Save photos to disk and create listingImages rows
+  const imageDir = path.join(ORIGINALS_DIR, 'sawbuck', String(inserted.id));
+  fs.mkdirSync(imageDir, { recursive: true });
+
+  for (let i = 0; i < photos.length; i++) {
+    const file = photos[i];
+    const ext = path.extname(file.name) || '.jpg';
+    const filename = `${i}${ext}`;
+    const filePath = path.join(imageDir, filename);
+    const relativePath = path.join('originals', 'sawbuck', String(inserted.id), filename);
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    fs.writeFileSync(filePath, buffer);
+
+    await db.insert(listingImages).values({
+      listingId: inserted.id,
+      sourceUrl: '',
+      localPathOriginal: relativePath,
+      downloadStatus: 'downloaded',
+      isPrimary: i === 0,
+    });
+  }
+
+  const images = await db.select().from(listingImages).where(eq(listingImages.listingId, inserted.id));
+  return c.json({ listing: { ...inserted, images } }, 201);
 });
 
 // GET /:id — single listing with images (auto-enriches if missing details)

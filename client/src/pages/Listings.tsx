@@ -33,6 +33,7 @@ export default function Listings() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
   const [createForm, setCreateForm] = useState({ title: '', description: '', askingPrice: '', location: '' });
+  const [createPhotos, setCreatePhotos] = useState<File[]>([]);
 
   const handleImport = async (e: FormEvent) => {
     e.preventDefault();
@@ -58,17 +59,21 @@ export default function Listings() {
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
-    if (!createForm.title || !createForm.askingPrice) return;
+    if (!createForm.title || !createForm.askingPrice || createPhotos.length === 0) return;
     setCreating(true);
     setCreateError('');
     try {
-      const { listing } = await api.createSawbuckListing({
-        title: createForm.title,
-        description: createForm.description || undefined,
-        askingPrice: parseFloat(createForm.askingPrice),
-        location: createForm.location || undefined,
-      });
+      const formData = new FormData();
+      formData.append('title', createForm.title);
+      if (createForm.description) formData.append('description', createForm.description);
+      formData.append('askingPrice', createForm.askingPrice);
+      if (createForm.location) formData.append('location', createForm.location);
+      for (const photo of createPhotos) {
+        formData.append('photos', photo);
+      }
+      const { listing } = await api.createSawbuckListing(formData);
       setCreateForm({ title: '', description: '', askingPrice: '', location: '' });
+      setCreatePhotos([]);
       setShowCreate(false);
       navigate(`/listings/${listing.id}`);
     } catch (err: any) {
@@ -243,10 +248,26 @@ export default function Listings() {
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Photos <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={(e) => setCreatePhotos(Array.from(e.target.files || []))}
+                className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50"
+                required
+              />
+              {createPhotos.length > 0 && (
+                <p className="text-xs text-gray-400 mt-1">{createPhotos.length} photo{createPhotos.length !== 1 ? 's' : ''} selected</p>
+              )}
+            </div>
             {createError && <p className="text-sm text-red-600">{createError}</p>}
             <button
               type="submit"
-              disabled={creating || !createForm.title || !createForm.askingPrice}
+              disabled={creating || !createForm.title || !createForm.askingPrice || createPhotos.length === 0}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-colors"
             >
               {creating ? <><Spinner size="xs" /> Posting</> : 'Post Listing'}

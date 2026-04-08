@@ -421,8 +421,19 @@ export const api = {
     request<{ ok: boolean }>(`/listings/${id}`, { method: 'DELETE' }),
 
   // Sawbuck listings
-  createSawbuckListing: (data: { title: string; description?: string; askingPrice: number; location?: string }) =>
-    request<{ listing: Listing }>('/listings/create', { method: 'POST', body: JSON.stringify(data) }),
+  createSawbuckListing: async (data: FormData) => {
+    const res = await fetch(`${BASE}/listings/create`, {
+      method: 'POST',
+      credentials: 'include',
+      body: data,
+    });
+    if (res.status === 401) { window.location.href = '/login'; throw new Error('Unauthorized'); }
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ error: res.statusText }));
+      throw new Error(error.error || `HTTP ${res.status}`);
+    }
+    return res.json() as Promise<{ listing: Listing }>;
+  },
 
   // Usage
   getClaudeUsage: () => request<{ used: number; limit: number; date: string }>('/usage/claude'),
