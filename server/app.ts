@@ -95,10 +95,9 @@ app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
 // ── Require auth for all other API routes ───────────────────────────
 app.use('/api/*', requireAuth);
 
-// ── Claude usage limit on AI-calling routes ─────────────────────────
+// ── Claude usage limit on AI-calling routes (Sonnet only, Haiku is free) ──
 app.use('/api/listings/:id/analyze', checkClaudeLimit);
 app.use('/api/projects/:id/refinish', checkClaudeLimit);
-app.use('/api/projects/:id/listing-text', checkClaudeLimit);
 
 // ── Admin-only routes ───────────────────────────────────────────────
 app.use('/api/admin/*', requireAdmin);
