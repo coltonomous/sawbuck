@@ -1,4 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192">
   <rect width="192" height="192" rx="32" fill="#f59e0b"/>
-  <path d="M136 64L96 40 56 64m80 0L96 88m40-24v56L96 148m0-60L56 64m40 24v60M56 64v56l40 24" fill="none" stroke="#fff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Sawhorse: X-frame legs with top beam -->
+  <path d="M56 148L96 72l40 76" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M136 148L96 72 56 148" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Cross brace -->
+  <line x1="68" y1="116" x2="124" y2="116" stroke="#fff" stroke-width="8" stroke-linecap="round"/>
+  <!-- Top beam -->
+  <line x1="40" y1="72" x2="152" y2="72" stroke="#fff" stroke-width="12" stroke-linecap="round"/>
 </svg>
