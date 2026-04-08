@@ -52,10 +52,15 @@ jobs:
             -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
             ./ ec2-user@${{ secrets.EC2_HOST }}:/opt/sawbuck/
 
-          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<'EOF'
+          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<EOF
           set -e
 
           cd /opt/sawbuck
+
+          # Ensure auth env vars are in .env
+          grep -q BETTER_AUTH_SECRET .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
+          grep -q BETTER_AUTH_URL .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
+          grep -q ADMIN_EMAIL .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
           docker compose down --remove-orphans 2>/dev/null || true
 
           # One-time: remove stale DB left by previous failed deploy
@@ -70,7 +75,7 @@ jobs:
 
           # Wait for health check (first boot: migrations + admin seed + server start)
           echo "Waiting for health check..."
-          for i in $(seq 1 45); do
+          for i in \$(seq 1 45); do
             if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
               echo "Health check passed"
               break
