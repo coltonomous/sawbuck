@@ -223,7 +223,7 @@ export default function Listings() {
               required
             />
             <textarea
-              placeholder="Description (optional)"
+              placeholder="Description — condition, dimensions, history (optional)"
               value={createForm.description}
               onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
               rows={3}
@@ -242,16 +242,13 @@ export default function Listings() {
               />
               <input
                 type="text"
-                placeholder="Location (optional)"
+                placeholder="Location, e.g., Seattle (optional)"
                 value={createForm.location}
                 onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
                 className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Photos <span className="text-red-500">*</span>
-              </label>
               <input
                 type="file"
                 accept="image/*"
