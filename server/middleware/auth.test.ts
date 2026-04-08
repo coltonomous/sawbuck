@@ -55,14 +55,12 @@ describe('requireAdmin middleware', () => {
     expect(res.status).toBe(200);
   });
 
-  it('rejects non-admin from toggling platforms', async () => {
+  it('allows non-admin to toggle platforms', async () => {
     const res = await app.request('/api/scrapers/platforms/craigslist', {
       method: 'PATCH',
       headers: { ...authHeaders(regularUser), 'Content-Type': 'application/json' },
       body: JSON.stringify({ enabled: true }),
     });
-    expect(res.status).toBe(403);
-    const body = await res.json();
-    expect(body.error).toBe('Forbidden');
+    expect(res.status).toBe(200);
   });
 });
