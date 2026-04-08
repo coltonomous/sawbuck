@@ -319,23 +319,27 @@ export default function Settings() {
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs text-gray-400">{u.listingCount} listings</span>
                     <span className="text-xs text-gray-400">{u.usageToday} calls today</span>
-                    <select
-                      value={u.role}
-                      onChange={async (e) => {
-                        const role = e.target.value as 'user' | 'admin';
-                        try {
-                          await api.updateUserRole(u.id, role);
-                          toast('success', `${u.name || u.email} → ${role}`);
-                          loadUsers();
-                        } catch (err) {
-                          toast('error', err instanceof Error ? err.message : 'Failed');
-                        }
-                      }}
-                      className="text-xs border border-gray-200 rounded px-2 py-1"
-                    >
-                      <option value="user">User</option>
-                      <option value="admin">Admin</option>
-                    </select>
+                    {u.id === session?.user?.id ? (
+                      <span className="text-xs text-amber-600 font-medium px-2 py-1">Admin</span>
+                    ) : (
+                      <select
+                        value={u.role}
+                        onChange={async (e) => {
+                          const role = e.target.value as 'user' | 'admin';
+                          try {
+                            await api.updateUserRole(u.id, role);
+                            toast('success', `${u.name || u.email} → ${role}`);
+                            loadUsers();
+                          } catch (err) {
+                            toast('error', err instanceof Error ? err.message : 'Failed');
+                          }
+                        }}
+                        className="text-xs border border-gray-200 rounded px-2 py-1"
+                      >
+                        <option value="user">User</option>
+                        <option value="admin">Admin</option>
+                      </select>
+                    )}
                     {u.id !== session?.user?.id && (
                       <button
                         onClick={async () => {
