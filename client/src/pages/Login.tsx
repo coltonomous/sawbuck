@@ -1,8 +1,47 @@
-import { signIn } from '../lib/auth';
+import { useState } from 'react';
+import { signIn, signUp } from '../lib/auth';
 
 export default function Login() {
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
   const handleGoogleSignIn = () => {
     signIn.social({ provider: 'google', callbackURL: '/' });
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      if (isSignUp) {
+        const { error } = await signUp.email({
+          email,
+          password,
+          name: name || email.split('@')[0],
+        });
+        if (error) {
+          setError(error.message || 'Sign up failed');
+          return;
+        }
+      } else {
+        const { error } = await signIn.email({ email, password });
+        if (error) {
+          setError(error.message || 'Sign in failed');
+          return;
+        }
+      }
+      window.location.href = '/';
+    } catch {
+      setError('Something went wrong');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -31,6 +70,63 @@ export default function Login() {
             </svg>
             Sign in with Google
           </button>
+
+          <div className="flex items-center gap-3 my-4">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400">or</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          <form onSubmit={handleEmailSubmit} className="space-y-3">
+            {isSignUp && (
+              <input
+                type="text"
+                placeholder="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              />
+            )}
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={8}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+            />
+
+            {error && (
+              <p className="text-xs text-red-500">{error}</p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full px-4 py-2.5 bg-amber-500 text-white rounded-lg text-sm font-medium hover:bg-amber-600 transition-colors disabled:opacity-50"
+            >
+              {loading ? '...' : isSignUp ? 'Create account' : 'Sign in'}
+            </button>
+          </form>
+
+          <p className="text-center text-xs text-gray-500 mt-4">
+            {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+            <button
+              onClick={() => { setIsSignUp(!isSignUp); setError(''); }}
+              className="text-amber-600 hover:text-amber-700 font-medium"
+            >
+              {isSignUp ? 'Sign in' : 'Sign up'}
+            </button>
+          </p>
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">

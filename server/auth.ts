@@ -28,6 +28,12 @@ export const auth = betterAuth({
       },
     } : {}),
   },
+  account: {
+    accountLinking: {
+      enabled: true,
+      updateUserInfoOnLink: true,
+    },
+  },
   session: {
     cookieCache: {
       enabled: true,

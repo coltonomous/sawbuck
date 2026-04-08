@@ -7,28 +7,26 @@ import type { AuthUser } from '../auth.js';
 export async function checkClaudeLimit(c: Context, next: Next) {
   const user: AuthUser = c.get('user');
 
-  // Admin users have unlimited access
-  if (user.role === 'admin') {
-    return next();
-  }
-
   const today = new Date().toISOString().split('T')[0];
 
-  const usage = db.select()
-    .from(claudeUsage)
-    .where(and(eq(claudeUsage.userId, user.id), eq(claudeUsage.date, today)))
-    .get();
+  // Enforce limit for non-admin users
+  if (user.role !== 'admin') {
+    const usage = db.select()
+      .from(claudeUsage)
+      .where(and(eq(claudeUsage.userId, user.id), eq(claudeUsage.date, today)))
+      .get();
 
-  const count = usage?.callCount ?? 0;
-  const limit = user.dailyClaudeLimit ?? 20;
+    const count = usage?.callCount ?? 0;
+    const limit = user.dailyClaudeLimit ?? 20;
 
-  if (count >= limit) {
-    return c.json({
-      error: `Daily analysis limit reached (${count}/${limit}). Resets at midnight UTC.`,
-    }, 429);
+    if (count >= limit) {
+      return c.json({
+        error: `Daily analysis limit reached (${count}/${limit}). Resets at midnight UTC.`,
+      }, 429);
+    }
   }
 
-  // Increment usage (upsert)
+  // Track usage for all users (including admins)
   db.insert(claudeUsage)
     .values({ userId: user.id, date: today, callCount: 1 })
     .onConflictDoUpdate({

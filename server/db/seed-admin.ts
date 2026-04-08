@@ -17,7 +17,7 @@ if (!existing) {
   sqlite.prepare(`
     INSERT INTO users (id, name, email, email_verified, role, daily_claude_limit, created_at, updated_at)
     VALUES (?, ?, ?, 1, 'admin', 999999, ?, ?)
-  `).run(ADMIN_ID, 'Admin', ADMIN_EMAIL, now, now);
+  `).run(ADMIN_ID, ADMIN_EMAIL.split('@')[0], ADMIN_EMAIL, now, now);
   console.log(`[seed-admin] Created admin user: ${ADMIN_EMAIL}`);
 } else if (existing.role !== 'admin') {
   sqlite.prepare('UPDATE users SET role = ?, daily_claude_limit = 999999, updated_at = ? WHERE id = ?')
