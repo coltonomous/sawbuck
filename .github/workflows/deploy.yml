@@ -57,15 +57,20 @@ jobs:
 
           cd /opt/sawbuck
           docker compose down --remove-orphans 2>/dev/null || true
+
+          # One-time: remove stale DB left by previous failed deploy
+          # TODO: remove this line after first successful deploy
+          rm -f data/sawbuck.db data/sawbuck.db-wal data/sawbuck.db-shm
+
           docker compose build
           docker compose up -d
 
           # Clean up old dangling images (previous builds), keep cache
           docker image prune -f
 
-          # Wait for health check
+          # Wait for health check (first boot: migrations + admin seed + server start)
           echo "Waiting for health check..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 45); do
             if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
               echo "Health check passed"
               break
@@ -74,7 +79,7 @@ jobs:
           done
 
           if ! curl -sf http://localhost:3001/health > /dev/null 2>&1; then
-            echo "Health check failed" && docker compose logs --tail 20 && exit 1
+            echo "Health check failed" && docker compose logs --tail 50 && exit 1
           fi
 
           # Re-ingest RAG knowledge base (products + guides from sources.json)
