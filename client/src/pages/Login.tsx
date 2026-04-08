@@ -57,7 +57,7 @@ export default function Login() {
             </svg>
           </div>
           <h1 className="text-2xl font-bold text-gray-900">Sawbuck</h1>
-          <p className="text-sm text-gray-500 mt-1">Find deals. Flip furniture.</p>
+          <p className="text-sm text-gray-500 mt-1">Buy low. Sand. Sell high.</p>
         </div>
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
@@ -133,7 +133,7 @@ export default function Login() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-6">
-          Sign in to start finding deals
+          Sign in to start flipping
         </p>
       </div>
     </div>

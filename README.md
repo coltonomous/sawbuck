@@ -1,6 +1,8 @@
 # Sawbuck
 
-Find underpriced furniture on Craigslist, OfferUp, Mercari, eBay, and Facebook Marketplace. Analyze condition and value with Claude's vision API. Plan refinishing projects, source materials, and track profit from acquisition to sale.
+**Buy low. Sand. Sell high.**
+
+AI-powered furniture flipping — find underpriced pieces on Craigslist, OfferUp, Mercari, eBay, and Facebook Marketplace. Analyze condition and value with Claude's vision API. Plan refinishing projects, source materials, and track profit from acquisition to sale.
 
 ## What It Does
 
