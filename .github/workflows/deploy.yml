@@ -67,8 +67,7 @@ jobs:
           docker compose down --remove-orphans 2>/dev/null || true
 
           # Clean up before build to ensure enough disk space
-          docker image prune -af --filter "until=24h"
-          docker builder prune -af --filter "until=24h"
+          docker system prune -af
 
           docker compose build
           docker compose up -d
