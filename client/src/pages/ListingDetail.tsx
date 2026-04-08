@@ -170,7 +170,7 @@ export default function ListingDetail() {
                   onClick={() => setShowRagSources((v) => !v)}
                   className="px-2 py-0.5 rounded-lg text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors cursor-pointer"
                 >
-                  {String(analysisData.rag_sources_used)} sources {showRagSources ? '▼' : '▶'}
+                  {String(analysisData.rag_sources_used)} sources <span className={`inline-block transition-transform ${showRagSources ? 'rotate-90' : ''}`}>&#x25B8;</span>
                 </button>
               ) : null}
               {recLabel && (
