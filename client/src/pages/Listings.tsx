@@ -145,26 +145,34 @@ export default function Listings() {
     <div>
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-2xl font-bold text-gray-900">All Listings</h2>
-        <div className="flex gap-2">
+        <div className="flex items-end gap-4">
           <button
             onClick={() => { setShowCreate(!showCreate); setShowImport(false); setCreateError(''); }}
-            className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
-              showCreate
-                ? 'text-gray-500 hover:text-gray-700'
-                : 'bg-amber-500 text-white hover:bg-amber-600'
+            className={`text-center transition-colors ${
+              showCreate ? 'opacity-60' : ''
             }`}
           >
-            {showCreate ? 'Cancel' : 'Post Listing'}
+            <span className={`block text-sm px-3 py-1.5 rounded-lg ${
+              showCreate
+                ? 'text-gray-500'
+                : 'bg-amber-500 text-white hover:bg-amber-600'
+            }`}>
+              {showCreate ? 'Cancel' : 'Post Listing'}
+            </span>
+            {!showCreate && <span className="block text-[10px] text-gray-400 mt-0.5">Sell to other users</span>}
           </button>
           <button
             onClick={() => { setShowImport(!showImport); setShowCreate(false); setImportError(''); }}
-            className={`inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
-              showImport
-                ? 'text-gray-500 hover:text-gray-700'
-                : 'border border-gray-300 hover:bg-gray-50 text-gray-700'
-            }`}
+            className="text-center transition-colors"
           >
-            {showImport ? 'Cancel' : 'Paste a Link'}
+            <span className={`block text-sm px-3 py-1.5 rounded-lg ${
+              showImport
+                ? 'text-gray-500'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}>
+              {showImport ? 'Cancel' : 'Import'}
+            </span>
+            {!showImport && <span className="block text-[10px] text-gray-400 mt-0.5">Track a listing you found</span>}
           </button>
         </div>
       </div>
