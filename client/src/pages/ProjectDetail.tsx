@@ -165,7 +165,7 @@ export default function ProjectDetail() {
       </div>
 
       {/* Tabs */}
-      <div className="flex overflow-x-auto border-b border-gray-200 mb-6 -mx-4 px-4 md:mx-0 md:px-0">
+      <div className="flex overflow-x-auto md:overflow-x-visible border-b border-gray-200 mb-6 -mx-4 px-4 md:mx-0 md:px-0">
         {tabs.map(({ key, label }) => (
           <button
             key={key}
