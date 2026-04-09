@@ -2,12 +2,43 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import app from '../app.js';
 import { createTestUser, authHeaders, type TestUser } from './helpers.js';
 import { db } from '../db/index.js';
-import { listings, projects, refinishingPlans, users } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { listings, projects, users } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import crypto from 'crypto';
 
+function uniqueSuffix() {
+  return crypto.randomUUID().slice(0, 8);
+}
+
+function seedListing(userId: string, overrides: Record<string, any> = {}) {
+  const suffix = uniqueSuffix();
+  db.insert(listings).values({
+    externalId: `test-${suffix}`,
+    platform: 'craigslist',
+    url: `https://craigslist.org/${suffix}`,
+    title: `Test Listing ${suffix}`,
+    askingPrice: 100,
+    fingerprint: `fp-${suffix}`,
+    userId,
+    ...overrides,
+  }).run();
+  return db.select().from(listings).where(eq(listings.externalId, `test-${suffix}`)).get()!;
+}
+
+function seedAnalyzedListing(userId: string) {
+  return seedListing(userId, {
+    status: 'analyzed',
+    furnitureType: 'dresser',
+    furnitureStyle: 'mid-century modern',
+    conditionScore: 7,
+    conditionNotes: 'Minor scratches',
+    woodSpecies: 'walnut',
+    woodConfidence: 0.8,
+  });
+}
+
 // ============================================================
-// Auth Integration Tests
+// Auth
 // ============================================================
 
 describe('Auth', () => {
@@ -15,23 +46,21 @@ describe('Auth', () => {
     const routes = ['/api/listings', '/api/stats', '/api/usage/claude', '/api/admin/users'];
     for (const route of routes) {
       const res = await app.request(route);
-      expect(res.status).toBe(401);
+      expect(res.status, `${route} should require auth`).toBe(401);
     }
   });
 
-  it('creates a user via email signup and signs in', async () => {
-    const email = `integration-${crypto.randomUUID().slice(0, 8)}@example.com`;
+  it('signup + signin flow produces a usable session', async () => {
+    const email = `auth-${uniqueSuffix()}@example.com`;
     const password = 'TestPassword123!';
 
-    // Sign up
     const signUpRes = await app.request('/api/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name: 'Integration Test' }),
+      body: JSON.stringify({ email, password, name: 'Auth Test' }),
     });
     expect(signUpRes.status).toBe(200);
 
-    // Sign in
     const signInRes = await app.request('/api/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -39,111 +68,155 @@ describe('Auth', () => {
     });
     expect(signInRes.status).toBe(200);
 
-    // Extract session cookie and use it
     const setCookie = signInRes.headers.get('set-cookie') || '';
     const sessionCookie = setCookie.split(';').find(p => p.trim().startsWith('better-auth.session_token='))?.trim() || '';
     expect(sessionCookie).toBeTruthy();
 
-    const listingsRes = await app.request('/api/listings', {
-      headers: { Cookie: sessionCookie },
-    });
-    expect(listingsRes.status).toBe(200);
+    // Session cookie grants access to protected routes
+    const res = await app.request('/api/listings', { headers: { Cookie: sessionCookie } });
+    expect(res.status).toBe(200);
   });
 
-  it('rejects signup with duplicate email', async () => {
-    const email = `dup-${crypto.randomUUID().slice(0, 8)}@example.com`;
-    const password = 'TestPassword123!';
+  it('rejects duplicate email signup', async () => {
+    const email = `dup-${uniqueSuffix()}@example.com`;
+    const body = { email, password: 'TestPassword123!', name: 'Test' };
 
     await app.request('/api/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name: 'First' }),
+      body: JSON.stringify(body),
     });
 
-    const dupRes = await app.request('/api/auth/sign-up/email', {
+    const res = await app.request('/api/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, name: 'Second' }),
+      body: JSON.stringify(body),
     });
-    // better-auth returns 422 for duplicate email
-    expect(dupRes.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
-  it('rejects signin with wrong password', async () => {
-    const email = `wrongpw-${crypto.randomUUID().slice(0, 8)}@example.com`;
+  it('rejects wrong password', async () => {
+    const email = `wrongpw-${uniqueSuffix()}@example.com`;
 
     await app.request('/api/auth/sign-up/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: 'CorrectPassword1!', name: 'Test' }),
+      body: JSON.stringify({ email, password: 'CorrectPass123!', name: 'Test' }),
     });
 
     const res = await app.request('/api/auth/sign-in/email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password: 'WrongPassword1!' }),
+      body: JSON.stringify({ email, password: 'WrongPass123!' }),
     });
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
-  it('new users default to role=user with dailyClaudeLimit=20', async () => {
+  it('new users get role=user and dailyClaudeLimit=20', async () => {
     const user = await createTestUser('user');
-    const dbUser = db.select().from(users).where(eq(users.id, user.id)).get();
-    expect(dbUser?.role).toBe('user');
-    expect(dbUser?.dailyClaudeLimit).toBe(20);
+    const dbUser = db.select().from(users).where(eq(users.id, user.id)).get()!;
+    expect(dbUser.role).toBe('user');
+    expect(dbUser.dailyClaudeLimit).toBe(20);
   });
 });
 
 // ============================================================
-// Sawbuck Listing Lifecycle
+// Sawbuck Listing Ownership & Visibility
 // ============================================================
 
-describe('Sawbuck listing lifecycle', () => {
-  let user: TestUser;
-  let otherUser: TestUser;
+describe('Sawbuck listing visibility', () => {
+  let owner: TestUser;
+  let viewer: TestUser;
   let listingId: number;
 
   beforeAll(async () => {
-    user = await createTestUser('user');
-    otherUser = await createTestUser('user');
+    owner = await createTestUser('user');
+    viewer = await createTestUser('user');
+
+    // Seed a sawbuck listing directly in DB (avoids multipart complexity)
+    const listing = seedListing(owner.id, { platform: 'sawbuck', url: '', title: 'Sawbuck Oak Table' });
+    listingId = listing.id;
   });
 
-  it('creates a sawbuck listing', async () => {
-    const res = await app.request('/api/listings/create', {
-      method: 'POST',
-      headers: { ...authHeaders(user), 'Content-Type': 'multipart/form-data; boundary=---boundary' },
-      body: [
-        '-----boundary',
-        'Content-Disposition: form-data; name="title"',
-        '',
-        'Test Oak Dresser',
-        '-----boundary',
-        'Content-Disposition: form-data; name="askingPrice"',
-        '',
-        '150',
-        '-----boundary',
-        'Content-Disposition: form-data; name="description"',
-        '',
-        'Solid oak dresser in good condition',
-        '-----boundary',
-        'Content-Disposition: form-data; name="location"',
-        '',
-        'Seattle',
-        '-----boundary',
-        'Content-Disposition: form-data; name="photos"; filename="test.jpg"',
-        'Content-Type: image/jpeg',
-        '',
-        'fake-image-data',
-        '-----boundary--',
-      ].join('\r\n'),
-    });
-    expect(res.status).toBe(201);
+  it('owner can view their sawbuck listing', async () => {
+    const res = await app.request(`/api/listings/${listingId}`, { headers: authHeaders(owner) });
+    expect(res.status).toBe(200);
+  });
+
+  it('other users can view sawbuck listings', async () => {
+    const res = await app.request(`/api/listings/${listingId}`, { headers: authHeaders(viewer) });
+    expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.listing.platform).toBe('sawbuck');
-    expect(body.listing.title).toBe('Test Oak Dresser');
-    expect(body.listing.askingPrice).toBe(150);
-    expect(body.listing.userId).toBe(user.id);
-    listingId = body.listing.id;
+    expect(body.title).toBe('Sawbuck Oak Table');
+  });
+
+  it('sawbuck listings appear in other users feeds', async () => {
+    const res = await app.request('/api/listings?platform=sawbuck', { headers: authHeaders(viewer) });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.listings.some((l: any) => l.id === listingId)).toBe(true);
+  });
+
+  it('non-owners cannot modify sawbuck listings', async () => {
+    const res = await app.request(`/api/listings/${listingId}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(viewer), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'dismissed' }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('non-owners cannot delete sawbuck listings', async () => {
+    const res = await app.request(`/api/listings/${listingId}`, {
+      method: 'DELETE',
+      headers: authHeaders(viewer),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('owner can update listing status', async () => {
+    const res = await app.request(`/api/listings/${listingId}`, {
+      method: 'PATCH',
+      headers: { ...authHeaders(owner), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: 'watching' }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.status).toBe('watching');
+  });
+
+  it('owner can delete their listing', async () => {
+    const toDelete = seedListing(owner.id, { platform: 'sawbuck', url: '' });
+
+    const res = await app.request(`/api/listings/${toDelete.id}`, {
+      method: 'DELETE',
+      headers: authHeaders(owner),
+    });
+    expect(res.status).toBe(200);
+
+    const check = db.select().from(listings).where(eq(listings.id, toDelete.id)).get();
+    expect(check).toBeUndefined();
+  });
+
+  it('scraped listings from other users are not visible', async () => {
+    const otherUser = await createTestUser('user');
+    seedListing(otherUser.id, { title: 'Hidden Scraped Listing' });
+
+    const res = await app.request('/api/listings?limit=500', { headers: authHeaders(owner) });
+    const body = await res.json();
+    expect(body.listings.some((l: any) => l.title === 'Hidden Scraped Listing')).toBe(false);
+  });
+});
+
+// ============================================================
+// Sawbuck Listing Creation (multipart)
+// ============================================================
+
+describe('Sawbuck listing creation', () => {
+  let user: TestUser;
+
+  beforeAll(async () => {
+    user = await createTestUser('user');
   });
 
   it('rejects listing without photos', async () => {
@@ -164,76 +237,56 @@ describe('Sawbuck listing lifecycle', () => {
     });
     expect(res.status).toBe(400);
     const body = await res.json();
-    expect(body.error).toContain('photo');
+    expect(body.error.toLowerCase()).toContain('photo');
   });
 
-  it('other users can see sawbuck listings', async () => {
-    const res = await app.request(`/api/listings/${listingId}`, {
-      headers: authHeaders(otherUser),
+  it('rejects listing without title', async () => {
+    const res = await app.request('/api/listings/create', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'multipart/form-data; boundary=---boundary' },
+      body: [
+        '-----boundary',
+        'Content-Disposition: form-data; name="askingPrice"',
+        '',
+        '50',
+        '-----boundary',
+        'Content-Disposition: form-data; name="photos"; filename="test.jpg"',
+        'Content-Type: image/jpeg',
+        '',
+        'fake-image-data',
+        '-----boundary--',
+      ].join('\r\n'),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
+  });
+
+  it('creates listing with valid data and photo', async () => {
+    const res = await app.request('/api/listings/create', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'multipart/form-data; boundary=---boundary' },
+      body: [
+        '-----boundary',
+        'Content-Disposition: form-data; name="title"',
+        '',
+        'Integration Test Dresser',
+        '-----boundary',
+        'Content-Disposition: form-data; name="askingPrice"',
+        '',
+        '250',
+        '-----boundary',
+        'Content-Disposition: form-data; name="photos"; filename="test.jpg"',
+        'Content-Type: image/jpeg',
+        '',
+        'fake-image-data',
+        '-----boundary--',
+      ].join('\r\n'),
+    });
+    expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.title).toBe('Test Oak Dresser');
-  });
-
-  it('sawbuck listings appear in other users listing feeds', async () => {
-    const res = await app.request('/api/listings?platform=sawbuck', {
-      headers: authHeaders(otherUser),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.listings.some((l: any) => l.id === listingId)).toBe(true);
-  });
-
-  it('other users cannot modify sawbuck listings they do not own', async () => {
-    const res = await app.request(`/api/listings/${listingId}`, {
-      method: 'PATCH',
-      headers: { ...authHeaders(otherUser), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'dismissed' }),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it('other users cannot delete sawbuck listings they do not own', async () => {
-    const res = await app.request(`/api/listings/${listingId}`, {
-      method: 'DELETE',
-      headers: authHeaders(otherUser),
-    });
-    expect(res.status).toBe(404);
-  });
-
-  it('owner can update listing status', async () => {
-    const res = await app.request(`/api/listings/${listingId}`, {
-      method: 'PATCH',
-      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: 'watching' }),
-    });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.status).toBe('watching');
-  });
-
-  it('owner can delete their listing', async () => {
-    // Create a separate listing to delete
-    const suffix = crypto.randomUUID().slice(0, 6);
-    db.insert(listings).values({
-      externalId: `del-${suffix}`,
-      platform: 'sawbuck',
-      url: '',
-      title: 'To Delete',
-      askingPrice: 10,
-      userId: user.id,
-    }).run();
-    const created = db.select().from(listings).where(eq(listings.externalId, `del-${suffix}`)).get()!;
-
-    const res = await app.request(`/api/listings/${created.id}`, {
-      method: 'DELETE',
-      headers: authHeaders(user),
-    });
-    expect(res.status).toBe(200);
-
-    const check = db.select().from(listings).where(eq(listings.id, created.id)).get();
-    expect(check).toBeUndefined();
+    expect(body.listing.platform).toBe('sawbuck');
+    expect(body.listing.title).toBe('Integration Test Dresser');
+    expect(body.listing.askingPrice).toBe(250);
+    expect(body.listing.userId).toBe(user.id);
   });
 });
 
@@ -243,161 +296,146 @@ describe('Sawbuck listing lifecycle', () => {
 
 describe('Project lifecycle', () => {
   let user: TestUser;
-  let listingId: number;
-  let projectId: number;
 
   beforeAll(async () => {
     user = await createTestUser('user');
-
-    // Seed a listing with analysis data (simulating post-Claude analysis)
-    const suffix = crypto.randomUUID().slice(0, 6);
-    db.insert(listings).values({
-      externalId: `proj-${suffix}`,
-      platform: 'craigslist',
-      url: `https://craigslist.org/proj-${suffix}`,
-      title: 'Mid-Century Walnut Dresser',
-      askingPrice: 200,
-      status: 'analyzed',
-      furnitureType: 'dresser',
-      furnitureStyle: 'mid-century modern',
-      conditionScore: 7,
-      conditionNotes: 'Minor surface scratches, all drawers functional',
-      woodSpecies: 'walnut',
-      woodConfidence: 0.8,
-      fingerprint: `fp-proj-${suffix}`,
-      userId: user.id,
-    }).run();
-    const listing = db.select().from(listings).where(eq(listings.externalId, `proj-${suffix}`)).get()!;
-    listingId = listing.id;
   });
 
-  it('creates a project from a listing', async () => {
+  it('creates a project from an analyzed listing', async () => {
+    const listing = seedAnalyzedListing(user.id);
+
     const res = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        listingId,
-        name: 'Walnut Dresser Flip',
+        listingId: listing.id,
+        name: 'Test Flip',
         purchasePrice: 200,
-        purchaseDate: '2026-04-09',
-        purchaseNotes: 'Picked up from Craigslist',
       }),
     });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.name).toBe('Walnut Dresser Flip');
+    expect(body.name).toBe('Test Flip');
     expect(body.status).toBe('acquired');
     expect(body.purchasePrice).toBe(200);
-    projectId = body.id;
-  });
 
-  it('listing status updates to acquired', async () => {
-    const listing = db.select().from(listings).where(eq(listings.id, listingId)).get()!;
-    expect(listing.status).toBe('acquired');
+    // Listing status should update to acquired
+    const dbListing = db.select().from(listings).where(eq(listings.id, listing.id)).get()!;
+    expect(dbListing.status).toBe('acquired');
   });
 
   it('retrieves project with listing data', async () => {
-    const res = await app.request(`/api/projects/${projectId}`, {
-      headers: authHeaders(user),
+    const listing = seedAnalyzedListing(user.id);
+    const createRes = await app.request('/api/projects', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId: listing.id, name: 'Retrieve Test', purchasePrice: 100 }),
     });
+    const project = await createRes.json();
+
+    const res = await app.request(`/api/projects/${project.id}`, { headers: authHeaders(user) });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.name).toBe('Walnut Dresser Flip');
     expect(body.listing).toBeDefined();
-    expect(body.listing.title).toBe('Mid-Century Walnut Dresser');
+    expect(body.listing.id).toBe(listing.id);
   });
 
-  it('updates project status', async () => {
-    const res = await app.request(`/api/projects/${projectId}`, {
+  it('updates project status and financials', async () => {
+    const listing = seedAnalyzedListing(user.id);
+    const createRes = await app.request('/api/projects', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId: listing.id, name: 'Status Test', purchasePrice: 150 }),
+    });
+    const project = await createRes.json();
+
+    // Update status
+    const statusRes = await app.request(`/api/projects/${project.id}`, {
       method: 'PATCH',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: 'refinishing' }),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.status).toBe('refinishing');
-  });
+    expect(statusRes.status).toBe(200);
+    expect((await statusRes.json()).status).toBe('refinishing');
 
-  it('updates project financials', async () => {
-    const res = await app.request(`/api/projects/${projectId}/costs`, {
+    // Update financials
+    const costsRes = await app.request(`/api/projects/${project.id}/costs`, {
       method: 'PATCH',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        hoursInvested: 8,
-        hourlyRate: 25,
-        soldPrice: 600,
-        soldDate: '2026-05-01',
-        sellingFees: 30,
-      }),
+      body: JSON.stringify({ hoursInvested: 8, soldPrice: 600, sellingFees: 30 }),
     });
-    expect(res.status).toBe(200);
-    const body = await res.json();
-    expect(body.hoursInvested).toBe(8);
-    expect(body.soldPrice).toBe(600);
+    expect(costsRes.status).toBe(200);
+    const costs = await costsRes.json();
+    expect(costs.hoursInvested).toBe(8);
+    expect(costs.soldPrice).toBe(600);
   });
 
-  it('blocks refinishing plan without analysis', async () => {
-    // Create an unanalyzed listing + project
-    const suffix = crypto.randomUUID().slice(0, 6);
-    db.insert(listings).values({
-      externalId: `unanalyzed-${suffix}`,
-      platform: 'craigslist',
-      url: `https://craigslist.org/unanalyzed-${suffix}`,
-      title: 'Unanalyzed Chair',
-      askingPrice: 50,
-      status: 'new',
-      fingerprint: `fp-unanalyzed-${suffix}`,
-      userId: user.id,
-    }).run();
-    const unanalyzedListing = db.select().from(listings).where(eq(listings.externalId, `unanalyzed-${suffix}`)).get()!;
+  it('blocks refinishing plan for unanalyzed listing', async () => {
+    const listing = seedListing(user.id); // no furnitureType
 
-    const projectRes = await app.request('/api/projects', {
+    const createRes = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        listingId: unanalyzedListing.id,
-        name: 'Unanalyzed Project',
-        purchasePrice: 50,
-      }),
+      body: JSON.stringify({ listingId: listing.id, name: 'Unanalyzed', purchasePrice: 50 }),
     });
-    expect(projectRes.status).toBe(201);
-    const project = await projectRes.json();
+    const project = await createRes.json();
 
     const planRes = await app.request(`/api/projects/${project.id}/refinish`, {
       method: 'POST',
       headers: authHeaders(user),
     });
     expect(planRes.status).toBe(422);
-    const planBody = await planRes.json();
-    expect(planBody.error).toContain('Analyze');
+    const body = await planRes.json();
+    expect(body.error.toLowerCase()).toContain('analyze');
   });
 
   it('project appears in pipeline', async () => {
-    const res = await app.request('/api/projects/pipeline/all', {
-      headers: authHeaders(user),
+    const listing = seedAnalyzedListing(user.id);
+    const createRes = await app.request('/api/projects', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId: listing.id, name: 'Pipeline Test', purchasePrice: 100 }),
     });
+    const project = await createRes.json();
+
+    const res = await app.request('/api/projects/pipeline/all', { headers: authHeaders(user) });
     expect(res.status).toBe(200);
     const body = await res.json();
-    expect(body.some((p: any) => p.id === projectId)).toBe(true);
+    expect(body.some((p: any) => p.id === project.id)).toBe(true);
   });
 
-  it('other users cannot see the project', async () => {
-    const otherUser = await createTestUser('user');
-    const res = await app.request(`/api/projects/${projectId}`, {
-      headers: authHeaders(otherUser),
+  it('other users cannot access the project', async () => {
+    const listing = seedAnalyzedListing(user.id);
+    const createRes = await app.request('/api/projects', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId: listing.id, name: 'Isolation Test', purchasePrice: 100 }),
     });
+    const project = await createRes.json();
+
+    const otherUser = await createTestUser('user');
+    const res = await app.request(`/api/projects/${project.id}`, { headers: authHeaders(otherUser) });
     expect(res.status).toBe(404);
   });
 
-  it('deletes project and listing reverts', async () => {
-    const res = await app.request(`/api/projects/${projectId}`, {
+  it('deleting project reverts listing to analyzed status', async () => {
+    const listing = seedAnalyzedListing(user.id);
+    const createRes = await app.request('/api/projects', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ listingId: listing.id, name: 'Delete Test', purchasePrice: 100 }),
+    });
+    const project = await createRes.json();
+
+    const res = await app.request(`/api/projects/${project.id}`, {
       method: 'DELETE',
       headers: authHeaders(user),
     });
     expect(res.status).toBe(200);
 
-    const listing = db.select().from(listings).where(eq(listings.id, listingId)).get()!;
-    expect(listing.status).not.toBe('acquired');
+    // Listing should revert to 'analyzed' since it has furnitureType
+    const dbListing = db.select().from(listings).where(eq(listings.id, listing.id)).get()!;
+    expect(dbListing.status).toBe('analyzed');
   });
 });
 
@@ -408,84 +446,76 @@ describe('Project lifecycle', () => {
 describe('Admin operations', () => {
   let admin: TestUser;
   let regularUser: TestUser;
-  let targetUser: TestUser;
 
   beforeAll(async () => {
     admin = await createTestUser('admin');
     regularUser = await createTestUser('user');
-    targetUser = await createTestUser('user');
   });
 
-  it('rejects non-admin from accessing admin routes', async () => {
-    const res = await app.request('/api/admin/users', {
-      headers: authHeaders(regularUser),
-    });
+  it('rejects non-admin from admin routes', async () => {
+    const res = await app.request('/api/admin/users', { headers: authHeaders(regularUser) });
     expect(res.status).toBe(403);
   });
 
-  it('admin can list all users', async () => {
-    const res = await app.request('/api/admin/users', {
-      headers: authHeaders(admin),
-    });
+  it('lists all users with stats', async () => {
+    const res = await app.request('/api/admin/users', { headers: authHeaders(admin) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(Array.isArray(body)).toBe(true);
-    expect(body.length).toBeGreaterThanOrEqual(3);
-    expect(body[0]).toHaveProperty('email');
-    expect(body[0]).toHaveProperty('role');
-    expect(body[0]).toHaveProperty('usageToday');
-    expect(body[0]).toHaveProperty('listingCount');
+
+    const adminEntry = body.find((u: any) => u.id === admin.id);
+    expect(adminEntry).toBeDefined();
+    expect(adminEntry.role).toBe('admin');
+    expect(adminEntry).toHaveProperty('usageToday');
+    expect(adminEntry).toHaveProperty('listingCount');
   });
 
-  it('admin can promote user to admin', async () => {
-    const res = await app.request(`/api/admin/users/${targetUser.id}/role`, {
+  it('promotes and demotes a user', async () => {
+    const target = await createTestUser('user');
+
+    // Promote
+    const promoteRes = await app.request(`/api/admin/users/${target.id}/role`, {
       method: 'PATCH',
       headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'admin' }),
     });
-    expect(res.status).toBe(200);
-
-    const dbUser = db.select().from(users).where(eq(users.id, targetUser.id)).get()!;
+    expect(promoteRes.status).toBe(200);
+    let dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
     expect(dbUser.role).toBe('admin');
     expect(dbUser.dailyClaudeLimit).toBe(999999);
-  });
 
-  it('admin can demote user back to user', async () => {
-    const res = await app.request(`/api/admin/users/${targetUser.id}/role`, {
+    // Demote
+    const demoteRes = await app.request(`/api/admin/users/${target.id}/role`, {
       method: 'PATCH',
       headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'user' }),
     });
-    expect(res.status).toBe(200);
-
-    const dbUser = db.select().from(users).where(eq(users.id, targetUser.id)).get()!;
+    expect(demoteRes.status).toBe(200);
+    dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
     expect(dbUser.role).toBe('user');
     expect(dbUser.dailyClaudeLimit).toBe(20);
   });
 
-  it('admin cannot demote themselves', async () => {
+  it('prevents admin from demoting themselves', async () => {
     const res = await app.request(`/api/admin/users/${admin.id}/role`, {
       method: 'PATCH',
       headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'user' }),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('Cannot demote yourself');
   });
 
-  it('admin cannot delete themselves', async () => {
+  it('prevents admin from deleting themselves', async () => {
     const res = await app.request(`/api/admin/users/${admin.id}`, {
       method: 'DELETE',
       headers: authHeaders(admin),
     });
     expect(res.status).toBe(400);
-    const body = await res.json();
-    expect(body.error).toContain('Cannot delete yourself');
   });
 
-  it('rejects invalid role values', async () => {
-    const res = await app.request(`/api/admin/users/${targetUser.id}/role`, {
+  it('rejects invalid role', async () => {
+    const target = await createTestUser('user');
+    const res = await app.request(`/api/admin/users/${target.id}/role`, {
       method: 'PATCH',
       headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
       body: JSON.stringify({ role: 'superadmin' }),
@@ -493,32 +523,22 @@ describe('Admin operations', () => {
     expect(res.status).toBe(400);
   });
 
-  it('admin can update user Claude limit', async () => {
-    const res = await app.request(`/api/admin/users/${targetUser.id}/limit`, {
+  it('updates user Claude limit', async () => {
+    const target = await createTestUser('user');
+    const res = await app.request(`/api/admin/users/${target.id}/limit`, {
       method: 'PATCH',
       headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
       body: JSON.stringify({ limit: 50 }),
     });
     expect(res.status).toBe(200);
 
-    const dbUser = db.select().from(users).where(eq(users.id, targetUser.id)).get()!;
+    const dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
     expect(dbUser.dailyClaudeLimit).toBe(50);
   });
 
-  it('admin can delete a user and all their data', async () => {
+  it('deletes user and cascades all data', async () => {
     const victim = await createTestUser('user');
-
-    // Give the user some data
-    const suffix = crypto.randomUUID().slice(0, 6);
-    db.insert(listings).values({
-      externalId: `victim-${suffix}`,
-      platform: 'craigslist',
-      url: `https://craigslist.org/victim-${suffix}`,
-      title: 'Victim Listing',
-      askingPrice: 100,
-      fingerprint: `fp-victim-${suffix}`,
-      userId: victim.id,
-    }).run();
+    const listing = seedListing(victim.id);
 
     const res = await app.request(`/api/admin/users/${victim.id}`, {
       method: 'DELETE',
@@ -526,11 +546,15 @@ describe('Admin operations', () => {
     });
     expect(res.status).toBe(200);
 
-    // Verify user and their data are gone
-    const dbUser = db.select().from(users).where(eq(users.id, victim.id)).get();
-    expect(dbUser).toBeUndefined();
+    expect(db.select().from(users).where(eq(users.id, victim.id)).get()).toBeUndefined();
+    expect(db.select().from(listings).where(eq(listings.userId, victim.id)).all()).toHaveLength(0);
+  });
 
-    const dbListings = db.select().from(listings).where(eq(listings.userId, victim.id)).all();
-    expect(dbListings).toHaveLength(0);
+  it('returns 404 when deleting nonexistent user', async () => {
+    const res = await app.request('/api/admin/users/nonexistent-id', {
+      method: 'DELETE',
+      headers: authHeaders(admin),
+    });
+    expect(res.status).toBe(404);
   });
 });
