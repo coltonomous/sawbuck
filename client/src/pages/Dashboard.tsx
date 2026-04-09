@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type Listing } from '../api';
 import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
@@ -41,6 +41,8 @@ export default function Dashboard() {
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [searchTermFilter, setSearchTermFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
+  const [visibleCount, setVisibleCount] = useState(24);
+  const sentinelRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
 
@@ -48,9 +50,8 @@ export default function Dashboard() {
     setAllListings(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   }, []);
 
-  // Only show listings that have images
   const listings = useMemo(() => {
-    let result = allListings.filter(l => l.primaryImage);
+    let result = [...allListings];
     if (platformFilter) result = result.filter(l => l.platform === platformFilter);
     if (maxPrice) {
       const max = parseFloat(maxPrice);
@@ -107,6 +108,23 @@ export default function Dashboard() {
 
   useEffect(() => { loadListings(); }, []);
 
+  // Reset visible count when filters change
+  useEffect(() => { setVisibleCount(24); }, [sortBy, platformFilter, maxPrice, searchTermFilter]);
+
+  // Infinite scroll — load more when sentinel enters viewport
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) setVisibleCount(v => v + 24); },
+      { rootMargin: '200px' },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [listings.length]);
+
+  const visibleListings = useMemo(() => listings.slice(0, visibleCount), [listings, visibleCount]);
+
   const platforms = useMemo(() =>
     [...new Set(allListings.map(l => l.platform))].sort(),
     [allListings]
@@ -145,6 +163,8 @@ export default function Dashboard() {
       const data = JSON.parse(e.data);
       setProgress(data);
       setCompletedSteps((prev) => [...prev, data]);
+      // Incrementally load new listings as each config finishes
+      if (data.result?.new > 0) loadListings();
     });
 
     eventSource.addEventListener('done', (e) => {
@@ -341,19 +361,23 @@ export default function Dashboard() {
         <ListingsMap listings={listings} />
       ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {listings.map((listing) => (
+            {visibleListings.map((listing) => (
               <Link
                 key={listing.id}
                 to={`/listings/${listing.id}`}
                 className="group block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md hover:border-gray-300 transition-all"
               >
                 <div className="aspect-[4/3] overflow-hidden bg-gray-100">
-                  <img
-                    src={resolveImageUrl(listing.primaryImage!)}
-                    alt={listing.title}
-                    loading="lazy"
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                  />
+                  {listing.primaryImage ? (
+                    <img
+                      src={resolveImageUrl(listing.primaryImage)}
+                      alt={listing.title}
+                      loading="lazy"
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                  ) : (
+                    <div className="w-full h-full animate-pulse bg-gray-200" />
+                  )}
                 </div>
                 <div className="p-3.5">
                   <h3 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2">{listing.title}</h3>
@@ -382,6 +406,11 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
+          {visibleCount < listings.length && (
+            <div ref={sentinelRef} className="flex justify-center py-6">
+              <Spinner />
+            </div>
+          )}
       )}
     </div>
   );

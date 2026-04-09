@@ -172,7 +172,7 @@ export const scrapeRuns = sqliteTable('scrape_runs', {
 
 export const comparables = sqliteTable('comparables', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  listingId: integer('listing_id').references(() => listings.id),
+  listingId: integer('listing_id').references(() => listings.id, { onDelete: 'cascade' }),
   source: text('source').notNull().default('ebay'),
   sourceUrl: text('source_url'),
   title: text('title').notNull(),
@@ -195,7 +195,7 @@ export const comparables = sqliteTable('comparables', {
 
 export const refinishingPlans = sqliteTable('refinishing_plans', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  listingId: integer('listing_id').notNull().references(() => listings.id),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   projectId: integer('project_id'),
   styleRecommendation: text('style_recommendation'),
   description: text('description'),
@@ -248,7 +248,7 @@ export const materials = sqliteTable('materials', {
 
 export const projects = sqliteTable('projects', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  listingId: integer('listing_id').notNull().references(() => listings.id),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   status: text('status', { enum: ['acquired', 'refinishing', 'listed', 'sold', 'abandoned'] }).notNull().default('acquired'),
 
