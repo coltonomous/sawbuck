@@ -37,7 +37,7 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
     <div className="space-y-4">
       {/* Header */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
           <div>
             <h3 className="text-lg font-semibold text-gray-900">{plan.styleRecommendation}</h3>
             <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
@@ -48,7 +48,8 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
                 onClick={() => setShowSources((v) => !v)}
                 className="px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors cursor-pointer"
               >
-                {plan.ragSourcesUsed} sources {showSources ? '▼' : '▶'}
+                {plan.ragSourcesUsed} sources
+                <svg className={`inline-block w-3 h-3 ml-0.5 transition-transform ${showSources ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
               </button>
             ) : null}
             <span className={`px-2 py-0.5 rounded text-xs font-medium ${difficultyColor}`}>

@@ -125,7 +125,8 @@ export default function Analytics() {
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
-        <ChartCard title="Deal Score Distribution">
+        {/* Deal Score Distribution — hidden while eBay comps are disabled */}
+        {/* <ChartCard title="Deal Score Distribution">
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={dealScoreDistribution}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -135,7 +136,7 @@ export default function Analytics() {
               <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} name="Listings" />
             </BarChart>
           </ResponsiveContainer>
-        </ChartCard>
+        </ChartCard> */}
       </div>
 
       {/* Top furniture types */}

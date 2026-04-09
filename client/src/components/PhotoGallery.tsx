@@ -95,7 +95,7 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
           {grouped[type].length === 0 ? (
             <p className="text-xs text-gray-400 mb-4">No {type} photos yet</p>
           ) : (
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
               {grouped[type].map((photo) => (
                 <div key={photo.id} className="relative group">
                   <img

@@ -218,7 +218,6 @@ export default function Dashboard() {
           <option value="newest">Newest first</option>
           <option value="price_low">Price: low to high</option>
           <option value="price_high">Price: high to low</option>
-          <option value="score">Best deals</option>
         </select>
         <select
           value={platformFilter}
@@ -364,21 +363,7 @@ export default function Dashboard() {
                       <span className="font-semibold text-gray-900">${listing.askingPrice}</span>
                     )}
                   </div>
-                  {listing.dealScore != null && (
-                    <div className="mt-2">
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex-1 bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${dealScoreColor(listing.dealScore)}`}
-                            style={{ width: `${Math.min(listing.dealScore / 3 * 100, 100)}%` }}
-                          />
-                        </div>
-                        <span className={`text-[11px] font-semibold ${dealScoreTextColor(listing.dealScore)}`}>
-                          {listing.dealScore.toFixed(1)}x
-                        </span>
-                      </div>
-                    </div>
-                  )}
+                  {/* Deal score bar hidden while eBay comps are disabled */}
                   {listing.matchedSearchTerms && (() => {
                     try {
                       const terms: string[] = JSON.parse(listing.matchedSearchTerms);

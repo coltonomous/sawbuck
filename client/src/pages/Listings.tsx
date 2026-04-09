@@ -143,36 +143,28 @@ export default function Listings() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-1 gap-3">
         <h2 className="text-2xl font-bold text-gray-900">All Listings</h2>
-        <div className="flex items-end gap-4">
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={() => { setShowCreate(!showCreate); setShowImport(false); setCreateError(''); }}
-            className={`text-center transition-colors ${
-              showCreate ? 'opacity-60' : ''
+            className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
+              showCreate
+                ? 'text-gray-500 hover:text-gray-700'
+                : 'bg-amber-500 text-white hover:bg-amber-600'
             }`}
           >
-            <span className={`block text-sm px-3 py-1.5 rounded-lg ${
-              showCreate
-                ? 'text-gray-500'
-                : 'bg-amber-500 text-white hover:bg-amber-600'
-            }`}>
-              {showCreate ? 'Cancel' : 'Post Listing'}
-            </span>
-            {!showCreate && <span className="block text-[10px] text-gray-400 mt-0.5">Sell to other users</span>}
+            {showCreate ? 'Cancel' : 'Post'}
           </button>
           <button
             onClick={() => { setShowImport(!showImport); setShowCreate(false); setImportError(''); }}
-            className="text-center transition-colors"
-          >
-            <span className={`block text-sm px-3 py-1.5 rounded-lg ${
+            className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
               showImport
-                ? 'text-gray-500'
+                ? 'text-gray-500 hover:text-gray-700'
                 : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-            }`}>
-              {showImport ? 'Cancel' : 'Import'}
-            </span>
-            {!showImport && <span className="block text-[10px] text-gray-400 mt-0.5">Track a listing you found</span>}
+            }`}
+          >
+            {showImport ? 'Cancel' : 'Import'}
           </button>
         </div>
       </div>
@@ -345,7 +337,6 @@ export default function Listings() {
                   <SortHeader label="Platform" field="platform" className="w-28" />
                   <SortHeader label="Price" field="askingPrice" className="w-24" />
                   <SortHeader label="Type" field="furnitureType" className="w-32" />
-                  <SortHeader label="Score" field="dealScore" className="w-20" />
                   <SortHeader label="Status" field="status" className="w-24" />
                 </tr>
               </thead>
@@ -388,11 +379,6 @@ export default function Listings() {
                       {listing.askingPrice != null ? `$${listing.askingPrice}` : <span className="text-gray-300">-</span>}
                     </td>
                     <td className="px-4 py-2.5 text-sm text-gray-500">{listing.furnitureType || <span className="text-gray-300">-</span>}</td>
-                    <td className="px-4 py-2.5 text-sm">
-                      {listing.dealScore != null ? (
-                        <DealScoreBadge score={listing.dealScore} />
-                      ) : <span className="text-gray-300">-</span>}
-                    </td>
                     <td className="px-4 py-2.5"><StatusPill status={listing.status} /></td>
                   </tr>
                 ))}

@@ -7,7 +7,10 @@ export default function UserMenu() {
   const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
 
   useEffect(() => {
-    api.getClaudeUsage().then(setUsage).catch(() => {});
+    const fetchUsage = () => api.getClaudeUsage().then(setUsage).catch(() => {});
+    fetchUsage();
+    const interval = setInterval(fetchUsage, 30_000);
+    return () => clearInterval(interval);
   }, []);
 
   if (!session) return null;

@@ -162,6 +162,12 @@ projectsRouter.post('/:id/refinish', async (c) => {
   const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
+  // Check if the listing has been analyzed first
+  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+  if (listing && !listing.furnitureType) {
+    return c.json({ error: 'Analyze the listing with Claude first — the refinishing plan needs furniture type, condition, and wood data to be useful.' }, 422);
+  }
+
   try {
     const result = await generateRefinishingPlan(project.listingId, id);
     if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
