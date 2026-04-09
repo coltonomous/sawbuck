@@ -26,4 +26,7 @@ jobs:
       - name: Push schema to test DB
         run: npx drizzle-kit push
 
+      - name: Build client
+        run: cd client && npx vite build
+
       - run: npx vitest run
