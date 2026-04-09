@@ -28,7 +28,7 @@ export default function Settings() {
   useEffect(() => {
     Promise.all([api.getScraperStatus(), api.getPlatformSettings(), api.getClaudeUsage()])
       .then(([s, p, u]) => { setStatus(s); setPlatforms(p); setUsage(u); })
-      .catch(console.error)
+      .catch((err) => toast('error', `Failed to load settings: ${err instanceof Error ? err.message : 'Unknown error'}`))
       .finally(() => setLoading(false));
     loadUsers();
 

@@ -26,7 +26,7 @@ export default function ListingDetail() {
     if (!id) return;
     api.getListing(parseInt(id))
       .then(setListing)
-      .catch(console.error)
+      .catch((err) => toast('error', `Failed to load listing: ${err instanceof Error ? err.message : 'Unknown error'}`))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -260,7 +260,7 @@ export default function ListingDetail() {
         )}
         {listing.status !== 'dismissed' && (
           <button
-            onClick={() => api.updateListing(listing.id, { status: 'dismissed' }).then(() => setListing({ ...listing, status: 'dismissed' }))}
+            onClick={() => api.updateListing(listing.id, { status: 'dismissed' }).then(() => setListing({ ...listing, status: 'dismissed' })).catch((err) => toast('error', `Failed to dismiss: ${err instanceof Error ? err.message : 'Unknown error'}`))}
             className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
           >
             Dismiss

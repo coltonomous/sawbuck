@@ -314,15 +314,17 @@ listingsRouter.post('/:id/analyze', async (c) => {
   const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
-  // Fire and forget — results are persisted to DB
+  // Fire and forget — results/errors are persisted to DB
   (async () => {
     try {
       await downloadListingImages(id);
       await processListingImages(id);
       const analysis = await analyzeListing(id);
       if (analysis) await calculatePricing(id);
-    } catch (err) {
+    } catch (err: any) {
+      const errorMsg = `Analysis failed: ${err?.message || 'Unknown error'}`;
       logger.error({ err, listingId: id }, 'Error analyzing listing');
+      await db.update(listings).set({ analysisError: errorMsg }).where(eq(listings.id, id));
     }
   })();
 

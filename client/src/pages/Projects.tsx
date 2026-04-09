@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type PipelineProject } from '../api';
+import { useToast } from '../components/Toast';
 import { SkeletonKanban } from '../components/Skeleton';
 import { PROJECT_PIPELINE_STATUSES, PROJECT_STATUS_META } from '@shared/constants';
 
@@ -13,11 +14,12 @@ function daysSince(dateStr: string | null): number | null {
 export default function Projects() {
   const [projects, setProjects] = useState<PipelineProject[]>([]);
   const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
 
   useEffect(() => {
     api.getProjectsPipeline()
       .then(setProjects)
-      .catch(console.error)
+      .catch((err) => toast('error', `Failed to load projects: ${err instanceof Error ? err.message : 'Unknown error'}`))
       .finally(() => setLoading(false));
   }, []);
 

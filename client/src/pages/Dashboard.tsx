@@ -100,7 +100,7 @@ export default function Dashboard() {
         .filter(l => { if (seen.has(l.id)) return false; seen.add(l.id); return true; });
       setAllListings(all);
     } catch (err) {
-      console.error(err);
+      toast('error', `Failed to load listings: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -360,6 +360,7 @@ export default function Dashboard() {
       ) : viewMode === 'map' ? (
         <ListingsMap listings={listings} />
       ) : (
+        <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {visibleListings.map((listing) => (
               <Link
@@ -411,6 +412,7 @@ export default function Dashboard() {
               <Spinner />
             </div>
           )}
+        </>
       )}
     </div>
   );
