@@ -88,16 +88,7 @@ export default function Dashboard() {
 
   const loadListings = async () => {
     try {
-      const [cl, ou, mc, eb, sb] = await Promise.all([
-        api.getListings({ limit: '50', platform: 'craigslist', sort: 'scrapedAt', sort_dir: 'desc' }),
-        api.getListings({ limit: '50', platform: 'offerup', sort: 'scrapedAt', sort_dir: 'desc' }),
-        api.getListings({ limit: '50', platform: 'mercari', sort: 'scrapedAt', sort_dir: 'desc' }).catch(() => ({ listings: [], total: 0 })),
-        api.getListings({ limit: '50', platform: 'ebay', sort: 'scrapedAt', sort_dir: 'desc' }).catch(() => ({ listings: [], total: 0 })),
-        api.getListings({ limit: '50', platform: 'sawbuck', sort: 'scrapedAt', sort_dir: 'desc' }).catch(() => ({ listings: [], total: 0 })),
-      ]);
-      const seen = new Set<number>();
-      const all = [...cl.listings, ...ou.listings, ...mc.listings, ...eb.listings, ...sb.listings]
-        .filter(l => { if (seen.has(l.id)) return false; seen.add(l.id); return true; });
+      const { listings: all } = await api.getListings({ limit: '1000', sort: 'scrapedAt', sort_dir: 'desc' });
       setAllListings(all);
     } catch (err) {
       toast('error', `Failed to load listings: ${err instanceof Error ? err.message : 'Unknown error'}`);
