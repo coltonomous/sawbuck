@@ -149,6 +149,7 @@ export default function Dashboard() {
     setProgress(null);
     setCompletedSteps([]);
 
+    let finished = false;
     const eventSource = new EventSource('/api/scrapers/run/stream');
 
     eventSource.addEventListener('start', (e) => {
@@ -168,6 +169,7 @@ export default function Dashboard() {
     });
 
     eventSource.addEventListener('done', (e) => {
+      finished = true;
       const data = JSON.parse(e.data);
       const results = data.results || [];
       const totalNew = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.new || 0), 0);
@@ -185,10 +187,12 @@ export default function Dashboard() {
     });
 
     eventSource.addEventListener('close', () => {
+      finished = true;
       eventSource.close();
     });
 
     eventSource.onerror = () => {
+      if (finished) return; // Server closed connection after done — not an error
       setScraping(false);
       setProgress(null);
       setScrapeResult('Connection lost during scrape.');
