@@ -66,7 +66,8 @@ jobs:
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^ANTHROPIC_API_KEY=' .env 2>/dev/null || echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' >> .env
-          docker compose down --remove-orphans 2>/dev/null || true
+          docker compose down --remove-orphans --volumes 2>/dev/null || true
+          docker rm -f sawbuck-app-1 2>/dev/null || true
 
           # Clean up before build to ensure enough disk space
           docker system prune -af
