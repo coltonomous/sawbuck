@@ -26,11 +26,23 @@ interface ScrapeProgress {
   results?: ScrapeStepResult[];
 }
 
-type SortOption = 'newest' | 'price_low' | 'price_high' | 'score';
+type SortOption = 'newest' | 'price_low' | 'price_high';
+
+const PAGE_SIZE = 24;
+
+const SORT_TO_API: Record<SortOption, { sort: string; sort_dir: string }> = {
+  newest: { sort: 'scrapedAt', sort_dir: 'desc' },
+  price_low: { sort: 'askingPrice', sort_dir: 'asc' },
+  price_high: { sort: 'askingPrice', sort_dir: 'desc' },
+};
 
 export default function Dashboard() {
   const [allListings, setAllListings] = useState<Listing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [total, setTotal] = useState(0);
+  const pageRef = useRef(1);
   const [scraping, setScraping] = useState(false);
   const [progress, setProgress] = useState<ScrapeProgress | null>(null);
   const [completedSteps, setCompletedSteps] = useState<ScrapeProgress[]>([]);
@@ -41,7 +53,6 @@ export default function Dashboard() {
   const [maxPrice, setMaxPrice] = useState<string>('');
   const [searchTermFilter, setSearchTermFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
-  const [visibleCount, setVisibleCount] = useState(24);
   const sentinelRef = useRef<HTMLDivElement>(null);
 
   const { toast } = useToast();
@@ -50,71 +61,75 @@ export default function Dashboard() {
     setAllListings(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   }, []);
 
+  // Client-side search term filter (not supported by API)
   const listings = useMemo(() => {
-    let result = [...allListings];
-    if (platformFilter) result = result.filter(l => l.platform === platformFilter);
-    if (maxPrice) {
-      const max = parseFloat(maxPrice);
-      if (!isNaN(max)) result = result.filter(l => l.askingPrice != null && l.askingPrice <= max);
-    }
-    if (searchTermFilter) {
-      result = result.filter(l => {
-        try {
-          const terms: string[] = l.matchedSearchTerms ? JSON.parse(l.matchedSearchTerms) : [];
-          return terms.includes(searchTermFilter);
-        } catch { return false; }
-      });
-    }
-    result.sort((a, b) => {
-      switch (sortBy) {
-        case 'price_low':
-          return (a.askingPrice ?? Infinity) - (b.askingPrice ?? Infinity);
-        case 'price_high':
-          return (b.askingPrice ?? 0) - (a.askingPrice ?? 0);
-        case 'score':
-          if (a.dealScore != null && b.dealScore != null) return b.dealScore - a.dealScore;
-          if (a.dealScore != null) return -1;
-          if (b.dealScore != null) return 1;
-          return b.id - a.id;
-        case 'newest':
-        default:
-          return b.id - a.id;
-      }
+    if (!searchTermFilter) return allListings;
+    return allListings.filter(l => {
+      try {
+        const terms: string[] = l.matchedSearchTerms ? JSON.parse(l.matchedSearchTerms) : [];
+        return terms.includes(searchTermFilter);
+      } catch { return false; }
     });
-    return result;
-  }, [allListings, sortBy, platformFilter, maxPrice, searchTermFilter]);
+  }, [allListings, searchTermFilter]);
 
   useBackgroundEnrich(allListings, handleEnriched);
 
-  const loadListings = async () => {
+  const buildParams = useCallback((page: number) => {
+    const { sort, sort_dir } = SORT_TO_API[sortBy];
+    const params: Record<string, string> = { page: String(page), limit: String(PAGE_SIZE), sort, sort_dir };
+    if (platformFilter) params.platform = platformFilter;
+    if (maxPrice) params.maxPrice = maxPrice;
+    return params;
+  }, [sortBy, platformFilter, maxPrice]);
+
+  const loadListings = useCallback(async () => {
+    setLoading(true);
+    pageRef.current = 1;
     try {
-      const { listings: all } = await api.getListings({ limit: '1000', sort: 'scrapedAt', sort_dir: 'desc' });
-      setAllListings(all);
+      const { listings: batch, total: t } = await api.getListings(buildParams(1));
+      setAllListings(batch);
+      setTotal(t);
+      setHasMore(batch.length < t);
     } catch (err) {
       toast('error', `Failed to load listings: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
-  };
+  }, [buildParams, toast]);
 
-  useEffect(() => { loadListings(); }, []);
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    const nextPage = pageRef.current + 1;
+    try {
+      const { listings: batch, total: t } = await api.getListings(buildParams(nextPage));
+      pageRef.current = nextPage;
+      setAllListings(prev => {
+        const seen = new Set(prev.map(l => l.id));
+        return [...prev, ...batch.filter(l => !seen.has(l.id))];
+      });
+      setTotal(t);
+      setHasMore(nextPage * PAGE_SIZE < t);
+    } catch {
+      // Non-critical — user can scroll again to retry
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [buildParams, loadingMore, hasMore]);
 
-  // Reset visible count when filters change
-  useEffect(() => { setVisibleCount(24); }, [sortBy, platformFilter, maxPrice, searchTermFilter]);
+  useEffect(() => { loadListings(); }, [loadListings]);
 
-  // Infinite scroll — load more when sentinel enters viewport
+  // Infinite scroll — load next page when sentinel enters viewport
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
     const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setVisibleCount(v => v + 24); },
+      ([entry]) => { if (entry.isIntersecting) loadMore(); },
       { rootMargin: '200px' },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [listings.length]);
-
-  const visibleListings = useMemo(() => listings.slice(0, visibleCount), [listings, visibleCount]);
+  }, [loadMore]);
 
   const platforms = useMemo(() =>
     [...new Set(allListings.map(l => l.platform))].sort(),
@@ -200,7 +215,7 @@ export default function Dashboard() {
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Top Deals</h2>
           <p className="text-sm text-gray-500 mt-0.5">
-            {listings.length} listing{listings.length !== 1 ? 's' : ''}
+            {total} listing{total !== 1 ? 's' : ''}
             {enrichingCount > 0 && (
               <span className="text-gray-400 ml-1">({enrichingCount} loading...)</span>
             )}
@@ -357,7 +372,7 @@ export default function Dashboard() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {visibleListings.map((listing) => (
+            {listings.map((listing) => (
               <Link
                 key={listing.id}
                 to={`/listings/${listing.id}`}
@@ -402,9 +417,9 @@ export default function Dashboard() {
               </Link>
             ))}
           </div>
-          {visibleCount < listings.length && (
+          {hasMore && (
             <div ref={sentinelRef} className="flex justify-center py-6">
-              <Spinner />
+              {loadingMore && <Spinner />}
             </div>
           )}
         </>

@@ -9,6 +9,7 @@ import { calculatePricing } from '../analysis/pricing.js';
 import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema } from '../lib/validation.js';
+import { parsePagination, buildOrderBy } from '../lib/pagination.js';
 import { fingerprint } from '../scrapers/manager.js';
 import logger from '../lib/logger.js';
 import crypto from 'crypto';
@@ -22,7 +23,8 @@ export const listingsRouter = new Hono();
 // GET / — list listings with filters
 listingsRouter.get('/', async (c) => {
   const user = c.get('user');
-  const { type, style, minScore, maxPrice, platform, status, page = '1', limit = '50', sort, sort_dir } = c.req.query();
+  const { type, style, minScore, maxPrice, platform, status, search } = c.req.query();
+  const pagination = parsePagination(c);
 
   const conditions = [or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!];
   if (type) conditions.push(eq(listings.furnitureType, type));
@@ -31,30 +33,31 @@ listingsRouter.get('/', async (c) => {
   if (maxPrice) conditions.push(lte(listings.askingPrice, parseFloat(maxPrice)));
   if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook' | 'sawbuck'));
   if (status) conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed'));
+  if (search || pagination.search) {
+    const term = search || pagination.search!;
+    conditions.push(sql`${listings.title} LIKE ${'%' + term + '%'}`);
+  }
 
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
   const whereClause = and(...conditions);
 
-  // Map sort key + direction to Drizzle order clause
-  const dirFn = sort_dir === 'asc' ? asc : desc;
-  const sortCol = sort === 'title' ? listings.title
-    : sort === 'platform' ? listings.platform
-    : sort === 'askingPrice' ? listings.askingPrice
-    : sort === 'furnitureType' ? listings.furnitureType
-    : sort === 'status' ? listings.status
-    : sort === 'scrapedAt' ? listings.scrapedAt
-    : sort === 'dealScore' ? listings.dealScore
-    : null;
-  const orderBy = sortCol ? dirFn(sortCol) : desc(listings.dealScore);
+  const sortColumns: Record<string, typeof listings.title> = {
+    title: listings.title,
+    platform: listings.platform,
+    askingPrice: listings.askingPrice,
+    furnitureType: listings.furnitureType,
+    status: listings.status,
+    scrapedAt: listings.scrapedAt,
+    dealScore: listings.dealScore,
+  };
+  const orderBy = buildOrderBy(pagination, sortColumns, desc(listings.dealScore));
 
   const [results, countResult] = await Promise.all([
     db.select()
       .from(listings)
       .where(whereClause)
       .orderBy(orderBy)
-      .limit(limitNum)
-      .offset((pageNum - 1) * limitNum),
+      .limit(pagination.limit)
+      .offset(pagination.offset),
     db.select({ total: count() })
       .from(listings)
       .where(whereClause),
