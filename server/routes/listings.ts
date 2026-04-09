@@ -28,7 +28,10 @@ listingsRouter.get('/', async (c) => {
 
   const conditions = mine
     ? [and(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!]
-    : [or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!];
+    : [or(
+        and(eq(listings.userId, user.id), sql`${listings.platform} != 'sawbuck'`),
+        and(sql`${listings.platform} = 'sawbuck'`, sql`${listings.userId} != ${user.id}`),
+      )!];
   if (type) conditions.push(eq(listings.furnitureType, type));
   if (style) conditions.push(eq(listings.furnitureStyle, style));
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
