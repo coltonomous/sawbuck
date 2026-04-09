@@ -11,6 +11,13 @@ export const createSawbuckListingSchema = z.object({
   location: z.string().max(200).optional(),
 });
 
+export const editSawbuckListingSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().max(5000).nullable(),
+  askingPrice: z.number().nonnegative(),
+  location: z.string().max(200).nullable(),
+}).partial();
+
 const listingStatus = z.enum(['new', 'analyzed', 'watching', 'acquired', 'dismissed']);
 
 export const updateListingSchema = z.object({

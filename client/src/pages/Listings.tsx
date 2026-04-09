@@ -22,7 +22,6 @@ export default function Listings() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [platformFilter, setPlatformFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
-  const [myPostsOnly, setMyPostsOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showImport, setShowImport] = useState(false);
@@ -30,11 +29,6 @@ export default function Listings() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
   const importInputRef = useRef<HTMLInputElement>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState('');
-  const [createForm, setCreateForm] = useState({ title: '', description: '', askingPrice: '', location: '' });
-  const [createPhotos, setCreatePhotos] = useState<File[]>([]);
 
   const handleImport = async (e: FormEvent) => {
     e.preventDefault();
@@ -58,32 +52,6 @@ export default function Listings() {
     }
   };
 
-  const handleCreate = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!createForm.title || !createForm.askingPrice || createPhotos.length === 0) return;
-    setCreating(true);
-    setCreateError('');
-    try {
-      const formData = new FormData();
-      formData.append('title', createForm.title);
-      if (createForm.description) formData.append('description', createForm.description);
-      formData.append('askingPrice', createForm.askingPrice);
-      if (createForm.location) formData.append('location', createForm.location);
-      for (const photo of createPhotos) {
-        formData.append('photos', photo);
-      }
-      const { listing } = await api.createSawbuckListing(formData);
-      setCreateForm({ title: '', description: '', askingPrice: '', location: '' });
-      setCreatePhotos([]);
-      setShowCreate(false);
-      navigate(`/listings/${listing.id}`);
-    } catch (err: any) {
-      setCreateError(err.message || 'Failed to create listing');
-    } finally {
-      setCreating(false);
-    }
-  };
-
   useEffect(() => {
     if (showImport) importInputRef.current?.focus();
   }, [showImport]);
@@ -98,7 +66,6 @@ export default function Listings() {
     };
     if (platformFilter) params.platform = platformFilter;
     if (statusFilter) params.status = statusFilter;
-    if (myPostsOnly) params.mine = 'true';
 
     api.getListings(params)
       .then(({ listings: data, total: t }) => {
@@ -107,7 +74,7 @@ export default function Listings() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, sortKey, sortDir, platformFilter, statusFilter, myPostsOnly]);
+  }, [page, sortKey, sortDir, platformFilter, statusFilter]);
 
   useEffect(() => { fetchListings(); }, [fetchListings]);
 
@@ -147,28 +114,16 @@ export default function Listings() {
     <div>
       <div className="flex items-center justify-between mb-1 gap-3">
         <h2 className="text-2xl font-bold text-gray-900">All Listings</h2>
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={() => { setShowCreate(!showCreate); setShowImport(false); setCreateError(''); }}
-            className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
-              showCreate
-                ? 'text-gray-500 hover:text-gray-700'
-                : 'bg-amber-500 text-white hover:bg-amber-600'
-            }`}
-          >
-            {showCreate ? 'Cancel' : 'Post'}
-          </button>
-          <button
-            onClick={() => { setShowImport(!showImport); setShowCreate(false); setImportError(''); }}
-            className={`text-sm px-3 py-1.5 rounded-lg transition-colors ${
-              showImport
-                ? 'text-gray-500 hover:text-gray-700'
-                : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            {showImport ? 'Cancel' : 'Import'}
-          </button>
-        </div>
+        <button
+          onClick={() => { setShowImport(!showImport); setImportError(''); }}
+          className={`text-sm px-3 py-1.5 rounded-lg transition-colors shrink-0 ${
+            showImport
+              ? 'text-gray-500 hover:text-gray-700'
+              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          {showImport ? 'Cancel' : 'Import'}
+        </button>
       </div>
 
       {showImport && (
@@ -213,68 +168,6 @@ export default function Listings() {
         </div>
       )}
 
-      {showCreate && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4 mb-5 animate-in fade-in slide-in-from-top-1">
-          <form onSubmit={handleCreate} className="space-y-3">
-            <input
-              type="text"
-              placeholder="Title (e.g., Mid-century walnut dresser)"
-              value={createForm.title}
-              onChange={(e) => setCreateForm({ ...createForm, title: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-              required
-            />
-            <textarea
-              placeholder="Description — condition, dimensions, history (optional)"
-              value={createForm.description}
-              onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}
-              rows={3}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <input
-                type="number"
-                placeholder="Asking price ($)"
-                value={createForm.askingPrice}
-                onChange={(e) => setCreateForm({ ...createForm, askingPrice: e.target.value })}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-                required
-                min="0"
-                step="0.01"
-              />
-              <input
-                type="text"
-                placeholder="Location, e.g., Seattle (optional)"
-                value={createForm.location}
-                onChange={(e) => setCreateForm({ ...createForm, location: e.target.value })}
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
-              />
-            </div>
-            <div>
-              <input
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={(e) => setCreatePhotos(Array.from(e.target.files || []))}
-                className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-gray-300 file:text-sm file:font-medium file:bg-white file:text-gray-700 hover:file:bg-gray-50"
-                required
-              />
-              {createPhotos.length > 0 && (
-                <p className="text-xs text-gray-400 mt-1">{createPhotos.length} photo{createPhotos.length !== 1 ? 's' : ''} selected</p>
-              )}
-            </div>
-            {createError && <p className="text-sm text-red-600">{createError}</p>}
-            <button
-              type="submit"
-              disabled={creating || !createForm.title || !createForm.askingPrice || createPhotos.length === 0}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 disabled:opacity-40 transition-colors"
-            >
-              {creating ? <><Spinner size="xs" /> Posting</> : 'Post Listing'}
-            </button>
-          </form>
-        </div>
-      )}
-
       <p className="text-sm text-gray-500 mb-5">
         {total} listing{total !== 1 ? 's' : ''}
         {(platformFilter || statusFilter) && ' (filtered)'}
@@ -298,19 +191,9 @@ export default function Listings() {
           <option value="">All statuses</option>
           {LISTING_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        <button
-          onClick={() => { setMyPostsOnly(!myPostsOnly); setPlatformFilter(''); setPage(1); }}
-          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
-            myPostsOnly
-              ? 'bg-amber-500 text-white'
-              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
-          }`}
-        >
-          My Posts
-        </button>
-        {(platformFilter || statusFilter || myPostsOnly) && (
+        {(platformFilter || statusFilter) && (
           <button
-            onClick={() => { setPlatformFilter(''); setStatusFilter(''); setMyPostsOnly(false); setPage(1); }}
+            onClick={() => { setPlatformFilter(''); setStatusFilter(''); setPage(1); }}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >
             Clear filters

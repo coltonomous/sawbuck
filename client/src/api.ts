@@ -421,6 +421,9 @@ export const api = {
     request<{ ok: boolean }>(`/listings/${id}`, { method: 'DELETE' }),
 
   // Sawbuck listings
+  editSawbuckListing: (id: number, data: { title?: string; description?: string | null; askingPrice?: number; location?: string | null }) =>
+    request<Listing>(`/listings/create/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+
   createSawbuckListing: async (data: FormData) => {
     const res = await fetch(`${BASE}/listings/create`, {
       method: 'POST',

@@ -13,6 +13,7 @@ const ListingDetail = lazy(() => import('./pages/ListingDetail'));
 const Projects = lazy(() => import('./pages/Projects'));
 const ProjectDetail = lazy(() => import('./pages/ProjectDetail'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Marketplace = lazy(() => import('./pages/Marketplace'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Login = lazy(() => import('./pages/Login'));
 
@@ -37,6 +38,7 @@ createRoot(document.getElementById('root')!).render(
               <Route index element={<SuspenseRoute><Dashboard /></SuspenseRoute>} />
               <Route path="listings" element={<SuspenseRoute><Listings /></SuspenseRoute>} />
               <Route path="listings/:id" element={<SuspenseRoute><ListingDetail /></SuspenseRoute>} />
+              <Route path="marketplace" element={<SuspenseRoute><Marketplace /></SuspenseRoute>} />
               <Route path="projects" element={<SuspenseRoute><Projects /></SuspenseRoute>} />
               <Route path="projects/:id" element={<SuspenseRoute><ProjectDetail /></SuspenseRoute>} />
               <Route path="analytics" element={<SuspenseRoute><Analytics /></SuspenseRoute>} />

@@ -8,7 +8,7 @@ import { processListingImages } from '../images/processor.js';
 import { calculatePricing } from '../analysis/pricing.js';
 import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
 import { getPrimaryImagePath } from '../lib/images.js';
-import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema } from '../lib/validation.js';
+import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema, editSawbuckListingSchema } from '../lib/validation.js';
 import { parsePagination, buildOrderBy } from '../lib/pagination.js';
 import { fingerprint } from '../scrapers/manager.js';
 import logger from '../lib/logger.js';
@@ -215,6 +215,26 @@ listingsRouter.post('/create', async (c) => {
 
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, inserted.id));
   return c.json({ listing: { ...inserted, images } }, 201);
+});
+
+// PATCH /create/:id — edit a user-posted sawbuck listing
+listingsRouter.patch('/create/:id', async (c) => {
+  const user = c.get('user');
+  const id = parseInt(c.req.param('id'));
+  const raw = await c.req.json();
+  const parsed = editSawbuckListingSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+
+  const existing = await db.select().from(listings).where(
+    and(eq(listings.id, id), eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))
+  ).get();
+  if (!existing) return c.json({ error: 'Not found' }, 404);
+
+  await db.update(listings).set(parsed.data).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
+  const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
+  return c.json(updated);
 });
 
 // GET /:id — single listing with images (auto-enriches if missing details)
