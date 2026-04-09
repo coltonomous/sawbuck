@@ -20,6 +20,9 @@ export default function ListingDetail() {
   const [showRagSources, setShowRagSources] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
   const projectFormRef = useRef<HTMLDivElement>(null);
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState({ title: '', description: '', askingPrice: '', location: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -266,7 +269,108 @@ export default function ListingDetail() {
             Dismiss
           </button>
         )}
+        {listing.platform === 'sawbuck' && listing.userId === session?.user?.id && (
+          <>
+            <button
+              onClick={() => {
+                setEditForm({
+                  title: listing.title,
+                  description: listing.description || '',
+                  askingPrice: listing.askingPrice?.toString() || '',
+                  location: listing.location || '',
+                });
+                setShowEdit(!showEdit);
+              }}
+              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              {showEdit ? 'Cancel Edit' : 'Edit'}
+            </button>
+            <button
+              onClick={async () => {
+                if (!confirm('Delete this listing? This cannot be undone.')) return;
+                try {
+                  await api.deleteListing(listing.id);
+                  toast('success', 'Listing deleted');
+                  navigate('/listings?tab=mine');
+                } catch (err) {
+                  toast('error', err instanceof Error ? err.message : 'Failed to delete');
+                }
+              }}
+              className="px-4 py-2 bg-white border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
+            >
+              Delete
+            </button>
+          </>
+        )}
       </div>
+
+      {/* Edit form for own sawbuck listings */}
+      {showEdit && (
+        <div className="bg-white rounded-lg shadow-sm border-2 border-amber-200 p-5 mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 mb-3">Edit Listing</h3>
+          <div className="space-y-3">
+            <input
+              type="text" value={editForm.title}
+              onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              placeholder="Title"
+            />
+            <textarea
+              value={editForm.description}
+              onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+              rows={3}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              placeholder="Description (optional)"
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <input
+                type="number" value={editForm.askingPrice}
+                onChange={(e) => setEditForm({ ...editForm, askingPrice: e.target.value })}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                placeholder="Price" min="0" step="0.01"
+              />
+              <input
+                type="text" value={editForm.location}
+                onChange={(e) => setEditForm({ ...editForm, location: e.target.value })}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+                placeholder="Location (optional)"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  setSavingEdit(true);
+                  try {
+                    const updated = await api.editSawbuckListing(listing.id, {
+                      title: editForm.title,
+                      description: editForm.description || null,
+                      askingPrice: parseFloat(editForm.askingPrice),
+                      location: editForm.location || null,
+                    });
+                    setListing({ ...listing, ...updated });
+                    setShowEdit(false);
+                    toast('success', 'Listing updated');
+                  } catch (err) {
+                    toast('error', err instanceof Error ? err.message : 'Failed to update');
+                  } finally {
+                    setSavingEdit(false);
+                  }
+                }}
+                disabled={savingEdit}
+                className="px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {savingEdit ? 'Saving...' : 'Save'}
+              </button>
+              <button
+                onClick={() => setShowEdit(false)}
+                className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Project creation form */}
       {showProjectForm && (

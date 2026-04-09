@@ -59,10 +59,10 @@ const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. R
 
 {
   "furniture_type": "primary type (dresser, desk, chair, table, bookcase, cabinet, nightstand, bed_frame, sofa, sideboard, vanity, hutch, other)",
-  "furniture_style": "design period/style (mid-century modern, victorian, art deco, farmhouse, industrial, contemporary, traditional, colonial, danish modern, etc.)",
+  "furniture_style": "design period/style (mid-century modern, victorian, art deco, farmhouse, industrial, contemporary, traditional, colonial, danish modern, japanese/tansu, chinese, korean, chinoiserie, campaign, shaker, mission/craftsman, regency, bohemian, coastal, brutalist, etc.)",
   "condition_score": 1-10 number (10=like new, 7=good minor wear, 5=fair visible issues, 3=needs significant work, 1=heavily damaged),
   "condition_notes": "specific observations about condition — scratches, stains, missing hardware, structural issues, finish wear",
-  "wood_species": "best guess (oak, walnut, maple, teak, pine, mahogany, cherry, etc.) or null if cannot determine",
+  "wood_species": "best guess (oak, walnut, maple, teak, pine, mahogany, cherry, rosewood, elm, paulownia, cedar, cypress, bamboo, etc.) or null if cannot determine",
   "wood_confidence": 0-1 confidence in wood identification,
   "notable_features": ["array of noteworthy features: dovetail joints, original hardware, unique design, solid wood construction, etc."],
   "damage_items": ["array of specific damage or wear: water ring on top, scratch on left side, missing drawer pull, etc."],
