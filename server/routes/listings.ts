@@ -23,10 +23,12 @@ export const listingsRouter = new Hono();
 // GET / — list listings with filters
 listingsRouter.get('/', async (c) => {
   const user = c.get('user');
-  const { type, style, minScore, maxPrice, platform, status, search } = c.req.query();
+  const { type, style, minScore, maxPrice, platform, status, search, mine } = c.req.query();
   const pagination = parsePagination(c);
 
-  const conditions = [or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!];
+  const conditions = mine
+    ? [and(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!]
+    : [or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!];
   if (type) conditions.push(eq(listings.furnitureType, type));
   if (style) conditions.push(eq(listings.furnitureStyle, style));
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));

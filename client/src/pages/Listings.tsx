@@ -22,6 +22,7 @@ export default function Listings() {
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [platformFilter, setPlatformFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
+  const [myPostsOnly, setMyPostsOnly] = useState(false);
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showImport, setShowImport] = useState(false);
@@ -97,6 +98,7 @@ export default function Listings() {
     };
     if (platformFilter) params.platform = platformFilter;
     if (statusFilter) params.status = statusFilter;
+    if (myPostsOnly) params.mine = 'true';
 
     api.getListings(params)
       .then(({ listings: data, total: t }) => {
@@ -105,7 +107,7 @@ export default function Listings() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [page, sortKey, sortDir, platformFilter, statusFilter]);
+  }, [page, sortKey, sortDir, platformFilter, statusFilter, myPostsOnly]);
 
   useEffect(() => { fetchListings(); }, [fetchListings]);
 
@@ -296,9 +298,19 @@ export default function Listings() {
           <option value="">All statuses</option>
           {LISTING_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
-        {(platformFilter || statusFilter) && (
+        <button
+          onClick={() => { setMyPostsOnly(!myPostsOnly); setPlatformFilter(''); setPage(1); }}
+          className={`px-3 py-1.5 rounded-lg text-sm transition-colors ${
+            myPostsOnly
+              ? 'bg-amber-500 text-white'
+              : 'border border-gray-300 text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          My Posts
+        </button>
+        {(platformFilter || statusFilter || myPostsOnly) && (
           <button
-            onClick={() => { setPlatformFilter(''); setStatusFilter(''); setPage(1); }}
+            onClick={() => { setPlatformFilter(''); setStatusFilter(''); setMyPostsOnly(false); setPage(1); }}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >
             Clear filters
