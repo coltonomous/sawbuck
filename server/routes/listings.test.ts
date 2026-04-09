@@ -65,24 +65,25 @@ describe('Auth enforcement', () => {
 });
 
 describe('User isolation', () => {
-  it('user A only sees their own listings', async () => {
+  it('user A only sees their own listings (plus sawbuck community listings)', async () => {
     const res = await app.request('/api/listings?limit=50', {
       headers: authHeaders(userA),
     });
     const body = await res.json();
     expect(body.listings.length).toBeGreaterThan(0);
-    expect(body.listings.every((l: any) => l.userId === userA.id)).toBe(true);
+    // User A sees their own listings + any sawbuck listings from other users
+    expect(body.listings.every((l: any) => l.userId === userA.id || l.platform === 'sawbuck')).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User A Dresser')).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User B Table')).toBe(false);
   });
 
-  it('user B only sees their own listings', async () => {
+  it('user B only sees their own listings (plus sawbuck community listings)', async () => {
     const res = await app.request('/api/listings?limit=50', {
       headers: authHeaders(userB),
     });
     const body = await res.json();
     expect(body.listings.length).toBeGreaterThan(0);
-    expect(body.listings.every((l: any) => l.userId === userB.id)).toBe(true);
+    expect(body.listings.every((l: any) => l.userId === userB.id || l.platform === 'sawbuck')).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User B Table')).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User A Dresser')).toBe(false);
   });
