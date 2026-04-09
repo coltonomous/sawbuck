@@ -219,7 +219,7 @@ export default function ListingDetail() {
             <p className="mt-3 pt-3 border-t text-sm text-gray-700 leading-relaxed font-medium">{String(analysisData.refinishing_profit_verdict)}</p>
           )}
         </Card>
-      ) : listing.userId === session?.user?.id ? (
+      ) : listing.userId === session?.user?.id || listing.platform === 'sawbuck' ? (
         <button
           onClick={handleAnalyze}
           disabled={analyzing}

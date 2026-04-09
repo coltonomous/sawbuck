@@ -339,7 +339,10 @@ listingsRouter.post('/:id/analyze', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  // Allow analysis of own listings + any sawbuck listing
+  const listing = await db.select().from(listings).where(
+    and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))
+  ).get();
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Fire and forget — results/errors are persisted to DB
