@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { db } from '../db/index.js';
+import { db, sqlite } from '../db/index.js';
 import { users, sessions, listings, projects, claudeUsage } from '../db/schema.js';
 import { eq, and, count, sql } from 'drizzle-orm';
 
@@ -91,8 +91,28 @@ adminRouter.delete('/users/:id', async (c) => {
   const user = db.select().from(users).where(eq(users.id, id)).get();
   if (!user) return c.json({ error: 'User not found' }, 404);
 
-  // Cascading deletes handle sessions, accounts, etc.
-  db.delete(users).where(eq(users.id, id)).run();
+  // Manual cascade — deployed DB may not have ON DELETE CASCADE on all FKs
+  try {
+    sqlite.transaction(() => {
+      // Delete in dependency order (deepest children first)
+      sqlite.prepare('DELETE FROM materials WHERE refinishing_plan_id IN (SELECT id FROM refinishing_plans WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?))').run(id);
+      sqlite.prepare('DELETE FROM listing_images WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)').run(id);
+      sqlite.prepare('DELETE FROM project_photos WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)').run(id);
+      sqlite.prepare('DELETE FROM refinishing_plans WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)').run(id);
+      sqlite.prepare('DELETE FROM comparables WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)').run(id);
+      sqlite.prepare('DELETE FROM projects WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM listings WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM scrape_runs WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM search_configs WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM background_jobs WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM claude_usage WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM accounts WHERE user_id = ?').run(id);
+      sqlite.prepare('DELETE FROM users WHERE id = ?').run(id);
+    })();
+  } catch (err: any) {
+    return c.json({ error: `Failed to delete user: ${err.message}` }, 500);
+  }
 
   return c.json({ ok: true });
 });
