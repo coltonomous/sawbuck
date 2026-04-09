@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type Listing } from '../api';
 import type { FormEvent } from 'react';
 import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
@@ -8,6 +8,7 @@ import BulkActionBar from '../components/BulkActionBar';
 import { PlatformBadge, DealScoreBadge, StatusPill, EmptyState, SearchIcon, Spinner } from '../components/ui';
 import { resolveImageUrl } from '../utils';
 import { PLATFORMS, LISTING_STATUSES } from '@shared/constants';
+import MyListings from './MyListings';
 
 type SortKey = 'title' | 'platform' | 'askingPrice' | 'furnitureType' | 'dealScore' | 'status' | 'scrapedAt';
 type SortDir = 'asc' | 'desc';
@@ -15,6 +16,8 @@ const PER_PAGE = 50;
 
 export default function Listings() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get('tab') === 'mine' ? 'mine' : 'all';
   const [listings, setListings] = useState<Listing[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -110,8 +113,25 @@ export default function Listings() {
     </th>
   );
 
+  if (tab === 'mine') {
+    return (
+      <div>
+        <div className="flex gap-4 border-b border-gray-200 mb-5">
+          <button onClick={() => setSearchParams({})} className="px-1 pb-2.5 text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">All Listings</button>
+          <button className="px-1 pb-2.5 text-sm font-medium text-amber-600 border-b-2 border-amber-500">My Listings</button>
+        </div>
+        <MyListings />
+      </div>
+    );
+  }
+
   return (
     <div>
+      <div className="flex gap-4 border-b border-gray-200 mb-5">
+        <button className="px-1 pb-2.5 text-sm font-medium text-gray-900 border-b-2 border-gray-900">All Listings</button>
+        <button onClick={() => setSearchParams({ tab: 'mine' })} className="px-1 pb-2.5 text-sm font-medium text-gray-400 hover:text-gray-700 transition-colors">My Listings</button>
+      </div>
+
       <div className="flex items-center justify-between mb-1 gap-3">
         <h2 className="text-2xl font-bold text-gray-900">All Listings</h2>
         <button
