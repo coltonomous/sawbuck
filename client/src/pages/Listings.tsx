@@ -227,7 +227,7 @@ export default function Listings() {
         <EmptyState
           icon={<SearchIcon />}
           title="No listings found"
-          subtitle={<>Run a scraper from the <a href="/" className="text-blue-600 hover:underline">Dashboard</a> or configure searches in Settings.</>}
+          subtitle="The agent is searching for deals. Check back soon!"
         />
       ) : (
         <>

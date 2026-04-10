@@ -1,0 +1,137 @@
+import { db } from '../../db/index.js';
+import { listings, listingImages } from '../../db/schema.js';
+import { eq } from 'drizzle-orm';
+import { analyzeListing } from '../../analysis/vision.js';
+import { downloadListingImages } from '../../images/downloader.js';
+import { processListingImages } from '../../images/processor.js';
+import { calculatePricing, type PricingResult } from '../../analysis/pricing.js';
+import { agentConfig } from '../config.js';
+import type { AgentState, EvaluatedCandidate } from '../state.js';
+import logger from '../../lib/logger.js';
+import fs from 'fs';
+
+export async function evaluateWithSonnet(state: AgentState): Promise<Partial<AgentState>> {
+  const toEvaluate = state.passedTriage.slice(
+    0,
+    agentConfig.maxSonnetEvals - state.sonnetEvaluated,
+  );
+
+  const evaluated: EvaluatedCandidate[] = [];
+  const qualified: EvaluatedCandidate[] = [];
+  const errors: AgentState['errors'] = [];
+
+  for (const candidate of toEvaluate) {
+    try {
+      // Insert listing into DB as agent-discovered (userId = null)
+      const inserted = await db.insert(listings).values({
+        externalId: candidate.externalId,
+        platform: 'craigslist',
+        url: candidate.url,
+        title: candidate.title,
+        description: candidate.description ?? null,
+        askingPrice: candidate.askingPrice,
+        location: candidate.location || null,
+        latitude: candidate.latitude ?? null,
+        longitude: candidate.longitude ?? null,
+        postedAt: candidate.postedAt ?? null,
+        userId: null, // shared agent listing
+        triageSource: 'agent_sonnet',
+        agentRunId: state.runId,
+      }).onConflictDoNothing().returning({ id: listings.id });
+
+      if (inserted.length === 0) {
+        logger.info({ externalId: candidate.externalId }, 'Evaluate: listing already exists, skipping');
+        continue;
+      }
+      const listingId = inserted[0].id;
+
+      // Insert images
+      if (candidate.imageUrls.length > 0) {
+        await db.insert(listingImages).values(
+          candidate.imageUrls.slice(0, 3).map((url, i) => ({
+            listingId,
+            sourceUrl: url,
+            isPrimary: i === 0,
+          })),
+        );
+      }
+
+      // Download, process, and analyze
+      await downloadListingImages(listingId);
+      await processListingImages(listingId);
+
+      // Delete originals after processing to save space (keep only resized WebP)
+      const images = await db.select().from(listingImages).where(eq(listingImages.listingId, listingId));
+      for (const img of images) {
+        if (img.localPathOriginal) {
+          try {
+            fs.unlinkSync(img.localPathOriginal);
+            await db.update(listingImages)
+              .set({ localPathOriginal: null })
+              .where(eq(listingImages.id, img.id));
+          } catch {
+            // not critical if cleanup fails
+          }
+        }
+      }
+
+      const analysis = await analyzeListing(listingId);
+      if (!analysis) {
+        errors.push({ node: 'evaluate', message: `Analysis failed for ${candidate.title}`, timestamp: new Date().toISOString() });
+        continue;
+      }
+
+      // Skip pricing if eBay creds not configured
+      let pricing: PricingResult | null = null;
+      if (process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET) {
+        pricing = await calculatePricing(listingId);
+      }
+
+      const evalCandidate: EvaluatedCandidate = {
+        ...candidate,
+        listingId,
+        evaluation: {
+          furnitureType: analysis.furniture_type,
+          furnitureStyle: analysis.furniture_style,
+          conditionScore: analysis.condition_score,
+          woodSpecies: analysis.wood_species,
+          estimatedValue: pricing?.estimatedValue ?? 0,
+          dealScore: pricing?.dealScore ?? 0,
+          flipRecommendation: analysis.flip_recommendation,
+          refinishingPotential: analysis.refinishing_potential,
+          profitVerdict: analysis.refinishing_profit_verdict,
+        },
+      };
+
+      evaluated.push(evalCandidate);
+
+      // Check quality threshold
+      const passesRecommendation = (agentConfig.flipRecommendationThreshold as readonly string[]).includes(analysis.flip_recommendation);
+      // If no eBay creds, qualify on recommendation alone; otherwise require deal score too
+      const passesDealScore = pricing
+        ? (pricing.dealScore >= agentConfig.dealScoreThreshold)
+        : true;
+
+      if (passesRecommendation && passesDealScore) {
+        qualified.push(evalCandidate);
+      }
+
+      logger.info(
+        { listingId, title: candidate.title, recommendation: analysis.flip_recommendation, dealScore: pricing?.dealScore },
+        'Evaluate: listing analyzed',
+      );
+    } catch (err) {
+      logger.error({ title: candidate.title, error: String(err) }, 'Evaluate: failed for listing');
+      errors.push({ node: 'evaluate', message: `${candidate.title}: ${String(err)}`, timestamp: new Date().toISOString() });
+    }
+  }
+
+  logger.info({ evaluated: evaluated.length, qualified: qualified.length }, 'Evaluate node complete');
+
+  return {
+    evaluatedCandidates: evaluated,
+    qualifiedListings: qualified,
+    sonnetEvaluated: state.sonnetEvaluated + evaluated.length,
+    errors,
+  };
+}

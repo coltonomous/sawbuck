@@ -2,8 +2,7 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
-import { closeBrowser } from '../scrapers/browser-pool.js';
+import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import { searchComparablesSchema } from '../lib/validation.js';
 
 export const comparablesRouter = new Hono();
@@ -42,11 +41,9 @@ comparablesRouter.post('/search', async (c) => {
   }
 
   try {
-    const { comps, blocked } = await searchEbayComps(params, listingId);
-    await closeBrowser();
-    return c.json({ comps, blocked });
+    const { comps } = await searchEbayComps(params, listingId);
+    return c.json({ comps });
   } catch (err: unknown) {
-    await closeBrowser();
     const message = err instanceof Error ? err.message : 'Unknown error';
     return c.json({ error: message }, 500);
   }

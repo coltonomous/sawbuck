@@ -1,10 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { db } from '../db/index.js';
-import { listings, listingImages, projects } from '../db/schema.js';
-import { sql, and, lt, isNotNull, notInArray } from 'drizzle-orm';
+import { listings, listingImages, projects, conceptRenders } from '../db/schema.js';
+import { sql, and, lt, isNotNull, notInArray, isNull, eq } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
+import { agentConfig } from '../agents/config.js';
 import logger from '../lib/logger.js';
 
 export interface CleanupResult {
@@ -20,7 +21,8 @@ export interface CleanupResult {
  */
 export async function cleanupOrphanedImages(): Promise<CleanupResult> {
   const { retentionDays } = config.images;
-  const cutoff = sql`datetime('now', '-${sql.raw(String(retentionDays))} days')`;
+  const userCutoff = sql`datetime('now', '-${sql.raw(String(retentionDays))} days')`;
+  const agentCutoff = sql`datetime('now', '-${sql.raw(String(agentConfig.agentImageRetentionDays))} days')`;
 
   // Find listing IDs that have an associated project — these are protected
   const projectListingIds = db
@@ -28,6 +30,8 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     .from(projects);
 
   // Find old listings without projects that still have image files on disk
+  // Agent listings (userId IS NULL) use shorter retention
+  // Dismissed agent listings are cleaned immediately
   const staleImages = db
     .select({
       imageId: listingImages.id,
@@ -40,12 +44,39 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     .innerJoin(listings, sql`${listingImages.listingId} = ${listings.id}`)
     .where(
       and(
-        lt(listings.scrapedAt, cutoff),
         notInArray(listings.id, projectListingIds),
         sql`(${listingImages.localPathOriginal} IS NOT NULL OR ${listingImages.localPathResized} IS NOT NULL)`,
+        sql`(
+          (${listings.userId} IS NOT NULL AND ${listings.scrapedAt} < ${userCutoff})
+          OR (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
+          OR (${listings.userId} IS NULL AND ${listings.status} = 'dismissed')
+        )`,
       ),
     )
     .all();
+
+  // Also clean up concept render images for dismissed or stale agent listings
+  const staleConceptPaths = db
+    .select({ localPath: conceptRenders.localPath })
+    .from(conceptRenders)
+    .innerJoin(listings, sql`${conceptRenders.listingId} = ${listings.id}`)
+    .where(
+      and(
+        notInArray(listings.id, projectListingIds),
+        isNotNull(conceptRenders.localPath),
+        sql`(
+          (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
+          OR (${listings.userId} IS NULL AND ${listings.status} = 'dismissed')
+        )`,
+      ),
+    )
+    .all();
+
+  for (const concept of staleConceptPaths) {
+    if (concept.localPath) {
+      try { fs.unlinkSync(concept.localPath); } catch {}
+    }
+  }
 
   if (staleImages.length === 0) {
     logger.info('No orphaned images to clean up');
@@ -92,7 +123,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
       .set({
         localPathOriginal: null,
         localPathResized: null,
-        downloadStatus: 'cleaned' as any,
+        downloadStatus: 'cleaned',
       })
       .where(sql`${listingImages.id} = ${img.imageId}`)
       .run();

@@ -1,8 +1,8 @@
 import { serve } from '@hono/node-server';
 import app from './app.js';
-import { closeBrowser } from './scrapers/browser-pool.js';
 import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import { cleanupOrphanedImages } from './images/cleanup.js';
+import { startScheduler, stopScheduler } from './agents/scheduler.js';
 import logger from './lib/logger.js';
 
 const port = parseInt(process.env.PORT || '3001');
@@ -28,11 +28,18 @@ setTimeout(runImageCleanup, 30_000);
 const cleanupTimer = setInterval(runImageCleanup, IMAGE_CLEANUP_INTERVAL_MS);
 cleanupTimer.unref();
 
+// Agent pipeline scheduler — runs automatically if AWS Bedrock is configured
+if (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION) {
+  setTimeout(() => startScheduler(), 10_000);
+} else {
+  logger.info('AWS_REGION not set — agent scheduler disabled');
+}
+
 // Graceful shutdown
 async function shutdown() {
   logger.info('Shutting down...');
   clearInterval(cleanupTimer);
-  await closeBrowser();
+  stopScheduler();
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);

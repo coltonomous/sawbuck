@@ -1,7 +1,7 @@
 import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
+import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import logger from '../lib/logger.js';
 
 // Pricing algorithm tuning — these are domain constants, not runtime config

@@ -35,7 +35,7 @@ export async function createTestUser(role: 'user' | 'admin' = 'user'): Promise<T
   // If admin, promote the user
   if (role === 'admin') {
     db.update(users)
-      .set({ role: 'admin', dailyClaudeLimit: 999999 })
+      .set({ role: 'admin' })
       .where(eq(users.id, userId))
       .run();
   }

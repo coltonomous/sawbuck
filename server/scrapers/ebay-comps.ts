@@ -1,4 +1,3 @@
-import { withPage } from './browser-pool.js';
 import { db } from '../db/index.js';
 import { comparables } from '../db/schema.js';
 import { searchEbayBrowse } from '../lib/ebay.js';
@@ -17,12 +16,11 @@ export interface EbayComp {
   soldDate?: string;
   url: string;
   condition?: string;
-  source: 'ebay_sold' | 'ebay_active';
+  source: 'ebay_active';
 }
 
 export interface EbayCompsResult {
   comps: EbayComp[];
-  blocked: boolean;
 }
 
 export function buildQueryVariants(params: CompSearchParams): string[] {
@@ -50,186 +48,53 @@ export function buildQueryVariants(params: CompSearchParams): string[] {
   return variants.filter(Boolean);
 }
 
-interface ScrapedSoldResult {
-  comps: { title: string; price: number; date: string; url: string; condition: string }[];
-  blocked: boolean;
-}
-
-async function scrapeSoldListings(query: string): Promise<ScrapedSoldResult> {
-  const params = new URLSearchParams({
-    _nkw: query,
-    LH_Complete: '1',
-    LH_Sold: '1',
-    _sop: '13',
-  });
-
-  const searchUrl = `https://www.ebay.com/sch/i.html?${params}`;
-  logger.info({ searchUrl }, 'Searching eBay sold listings');
-
-  return withPage(async (page) => {
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(1500 + Math.random() * 1000);
-
-    // Failure detection: check for blocks/CAPTCHAs/redirects
-    const blocked = await page.evaluate(() => {
-      const url = window.location.href;
-      // Redirected away from search results
-      if (!url.includes('/sch/')) return true;
-      // CAPTCHA indicators
-      if (document.querySelector('#captcha, .captcha, #g-recaptcha')) return true;
-      // Results container exists but has 0 real items
-      const container = document.querySelector('.srp-results');
-      if (container) {
-        const items = container.querySelectorAll('.s-item');
-        const realItems = Array.from(items).filter(el => {
-          const title = el.querySelector('.s-item__title')?.textContent?.trim();
-          return title && title !== 'Shop on eBay';
-        });
-        if (realItems.length === 0) return false; // Genuinely zero results, not blocked
-      }
-      return false;
-    });
-
-    if (blocked) {
-      logger.warn({ query }, 'Detected eBay block/CAPTCHA');
-      return { comps: [], blocked: true };
-    }
-
-    const comps = await page.evaluate(() => {
-      const items: { title: string; price: number; date: string; url: string; condition: string }[] = [];
-
-      document.querySelectorAll('.s-item').forEach((item) => {
-        const titleEl = item.querySelector('.s-item__title');
-        const priceEl = item.querySelector('.s-item__price');
-        const linkEl = item.querySelector('.s-item__link');
-        const dateEl = item.querySelector('.s-item__title--tagblock .POSITIVE, .s-item__ended-date');
-        const conditionEl = item.querySelector('.SECONDARY_INFO');
-
-        const title = titleEl?.textContent?.trim() || '';
-        if (!title || title === 'Shop on eBay') return;
-
-        const priceText = priceEl?.textContent || '';
-        const priceMatch = priceText.match(/\$([0-9,]+\.?\d*)/);
-        if (!priceMatch) return;
-        const price = parseFloat(priceMatch[1].replace(',', ''));
-        if (isNaN(price) || price === 0) return;
-
-        const url = (linkEl as HTMLAnchorElement)?.href || '';
-        const date = dateEl?.textContent?.trim() || '';
-        const condition = conditionEl?.textContent?.trim() || '';
-
-        items.push({ title, price, date, url, condition });
-      });
-
-      return items;
-    });
-
-    return { comps, blocked: false };
-  });
-}
-
 export async function searchEbayComps(params: CompSearchParams, listingId?: number): Promise<EbayCompsResult> {
   const queries = buildQueryVariants(params);
   if (queries.length === 0) {
-    return { comps: [], blocked: false };
-  }
-
-  // Try each query variant, stop at first with >= 3 results
-  let soldComps: { title: string; price: number; date: string; url: string; condition: string }[] = [];
-  let blocked = false;
-  let usedQuery = queries[0];
-
-  for (const query of queries) {
-    try {
-      const result = await scrapeSoldListings(query);
-      blocked = result.blocked;
-
-      if (result.blocked) {
-        logger.warn({ query }, 'Blocked on eBay query, will try Browse API fallback');
-        break;
-      }
-
-      if (result.comps.length >= 3) {
-        soldComps = result.comps;
-        usedQuery = query;
-        logger.info({ query, count: result.comps.length }, 'Found eBay sold results');
-        break;
-      }
-
-      // Keep best result so far
-      if (result.comps.length > soldComps.length) {
-        soldComps = result.comps;
-        usedQuery = query;
-      }
-    } catch (err: any) {
-      logger.error({ query, err: err.message }, 'eBay comps scraper error');
-    }
+    return { comps: [] };
   }
 
   const results: EbayComp[] = [];
 
-  // Store sold comps
-  for (const comp of soldComps.slice(0, 30)) {
-    const ebayComp: EbayComp = {
-      title: comp.title,
-      soldPrice: comp.price,
-      soldDate: comp.date || undefined,
-      url: comp.url,
-      condition: comp.condition || undefined,
-      source: 'ebay_sold',
-    };
-
-    if (listingId) {
-      await db.insert(comparables).values({
-        listingId,
-        source: 'ebay_sold',
-        sourceUrl: comp.url,
-        title: comp.title,
-        soldPrice: comp.price,
-        soldDate: comp.date || null,
-        condition: comp.condition || null,
-        searchQuery: usedQuery,
-      });
-    }
-
-    results.push(ebayComp);
-  }
-
-  // Browse API fallback: when blocked or 0 sold results
-  if (blocked || soldComps.length === 0) {
-    logger.info({ blocked, soldCount: soldComps.length }, 'Falling back to Browse API active listings');
-    const browseQuery = queries[0]; // Use most specific query
-
+  // Try each query variant via Browse API, stop at first with >= 3 results
+  for (const query of queries) {
     try {
-      const activeItems = await searchEbayBrowse({ query: browseQuery, limit: 20 });
+      const activeItems = await searchEbayBrowse({ query, limit: 20 });
 
-      for (const item of activeItems) {
-        const ebayComp: EbayComp = {
-          title: item.title,
-          soldPrice: item.price,
-          url: item.itemWebUrl,
-          condition: item.condition,
-          source: 'ebay_active',
-        };
-
-        if (listingId) {
-          await db.insert(comparables).values({
-            listingId,
-            source: 'ebay_active',
-            sourceUrl: item.itemWebUrl,
+      if (activeItems.length >= 3 || query === queries[queries.length - 1]) {
+        for (const item of activeItems) {
+          const ebayComp: EbayComp = {
             title: item.title,
             soldPrice: item.price,
-            condition: item.condition || null,
-            searchQuery: browseQuery,
-          });
+            url: item.itemWebUrl,
+            condition: item.condition,
+            source: 'ebay_active',
+          };
+
+          if (listingId) {
+            await db.insert(comparables).values({
+              listingId,
+              source: 'ebay_active',
+              sourceUrl: item.itemWebUrl,
+              title: item.title,
+              soldPrice: item.price,
+              condition: item.condition || null,
+              searchQuery: query,
+            });
+          }
+
+          results.push(ebayComp);
         }
 
-        results.push(ebayComp);
+        if (activeItems.length >= 3) {
+          logger.info({ query, count: activeItems.length }, 'Found eBay active comps via Browse API');
+          break;
+        }
       }
     } catch (err: any) {
-      logger.error({ err: err.message }, 'Browse API fallback failed');
+      logger.error({ query, err: err.message }, 'eBay Browse API error');
     }
   }
 
-  return { comps: results, blocked };
+  return { comps: results };
 }

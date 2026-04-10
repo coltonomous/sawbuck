@@ -89,7 +89,7 @@ vi.mock('../db/index.js', () => {
 });
 
 vi.mock('../db/schema.js', () => ({
-  listings: { id: 'id', scrapedAt: 'scraped_at' },
+  listings: { id: 'id', scrapedAt: 'scraped_at', userId: 'user_id', status: 'status' },
   listingImages: {
     id: 'id', listingId: 'listing_id',
     localPathOriginal: 'local_path_original',
@@ -97,6 +97,7 @@ vi.mock('../db/schema.js', () => ({
     fileSizeBytes: 'file_size_bytes',
   },
   projects: { listingId: 'listing_id' },
+  conceptRenders: { listingId: 'listing_id', localPath: 'local_path' },
 }));
 
 vi.mock('../lib/paths.js', () => ({
@@ -106,6 +107,12 @@ vi.mock('../lib/paths.js', () => ({
 vi.mock('../lib/config.js', () => ({
   config: {
     images: { retentionDays: 30 },
+  },
+}));
+
+vi.mock('../agents/config.js', () => ({
+  agentConfig: {
+    agentImageRetentionDays: 14,
   },
 }));
 

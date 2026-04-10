@@ -112,11 +112,10 @@ describe('Auth', () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
-  it('new users get role=user and dailyClaudeLimit=20', async () => {
+  it('new users get role=user by default', async () => {
     const user = await createTestUser('user');
     const dbUser = db.select().from(users).where(eq(users.id, user.id)).get()!;
     expect(dbUser.role).toBe('user');
-    expect(dbUser.dailyClaudeLimit).toBe(20);
   });
 });
 
@@ -151,7 +150,7 @@ describe('Sawbuck listing visibility', () => {
   });
 
   it('sawbuck listings appear in other users feeds', async () => {
-    const res = await app.request('/api/listings?platform=sawbuck', { headers: authHeaders(viewer) });
+    const res = await app.request('/api/listings?platform=sawbuck&limit=100', { headers: authHeaders(viewer) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.listings.some((l: any) => l.id === listingId)).toBe(true);
@@ -466,7 +465,6 @@ describe('Admin operations', () => {
     const adminEntry = body.find((u: any) => u.id === admin.id);
     expect(adminEntry).toBeDefined();
     expect(adminEntry.role).toBe('admin');
-    expect(adminEntry).toHaveProperty('usageToday');
     expect(adminEntry).toHaveProperty('listingCount');
   });
 
@@ -482,7 +480,6 @@ describe('Admin operations', () => {
     expect(promoteRes.status).toBe(200);
     let dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
     expect(dbUser.role).toBe('admin');
-    expect(dbUser.dailyClaudeLimit).toBe(999999);
 
     // Demote
     const demoteRes = await app.request(`/api/admin/users/${target.id}/role`, {
@@ -493,7 +490,6 @@ describe('Admin operations', () => {
     expect(demoteRes.status).toBe(200);
     dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
     expect(dbUser.role).toBe('user');
-    expect(dbUser.dailyClaudeLimit).toBe(20);
   });
 
   it('prevents admin from demoting themselves', async () => {
@@ -521,19 +517,6 @@ describe('Admin operations', () => {
       body: JSON.stringify({ role: 'superadmin' }),
     });
     expect(res.status).toBe(400);
-  });
-
-  it('updates user Claude limit', async () => {
-    const target = await createTestUser('user');
-    const res = await app.request(`/api/admin/users/${target.id}/limit`, {
-      method: 'PATCH',
-      headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ limit: 50 }),
-    });
-    expect(res.status).toBe(200);
-
-    const dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
-    expect(dbUser.dailyClaudeLimit).toBe(50);
   });
 
   it('deletes user and cascades all data', async () => {

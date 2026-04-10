@@ -10,9 +10,6 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
-# Playwright Chromium
-RUN npx playwright install --with-deps chromium
-
 # Server + config (source is mounted over these in dev)
 COPY server/ ./server/
 COPY drizzle/ ./drizzle/
@@ -21,6 +18,6 @@ COPY shared/ ./shared/
 COPY scripts/ ./scripts/
 COPY drizzle.config.ts tsconfig.json ./
 
-RUN mkdir -p /app/data/images/originals /app/data/images/resized
+RUN mkdir -p /app/data/images/originals /app/data/images/resized /app/data/images/concepts
 
 EXPOSE 3001 5173

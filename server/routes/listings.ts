@@ -1,16 +1,15 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { listings, listingImages } from '../db/schema.js';
-import { eq, desc, asc, and, or, gte, lte, count, sql } from 'drizzle-orm';
+import { listings, listingImages, conceptRenders, users } from '../db/schema.js';
+import { eq, desc, asc, and, or, gte, lte, count, sql, isNull } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
 import { processListingImages } from '../images/processor.js';
 import { calculatePricing } from '../analysis/pricing.js';
-import { fetchListingDetails } from '../scrapers/detail-fetcher.js';
-import { getPrimaryImagePath } from '../lib/images.js';
+import { getPrimaryImagePath, getPrimaryImagePaths } from '../lib/images.js';
 import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema, editSawbuckListingSchema } from '../lib/validation.js';
 import { parsePagination, buildOrderBy } from '../lib/pagination.js';
-import { fingerprint } from '../scrapers/manager.js';
+import { fingerprint } from '../lib/fingerprint.js';
 import logger from '../lib/logger.js';
 import crypto from 'crypto';
 import path from 'path';
@@ -29,14 +28,90 @@ listingsRouter.get('/', async (c) => {
   const conditions = mine
     ? [and(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))!]
     : [or(
+        // User's own scraped listings (non-sawbuck)
         and(eq(listings.userId, user.id), sql`${listings.platform} != 'sawbuck'`),
+        // Community sawbuck listings from other users
         and(sql`${listings.platform} = 'sawbuck'`, sql`${listings.userId} != ${user.id}`),
+        // Agent-discovered listings (userId IS NULL)
+        isNull(listings.userId),
       )!];
+
+  // Apply user preference filters to agent-discovered listings only
+  // (user's own listings are always shown regardless of preferences)
+  const userPrefs = await db.select({
+    maxBudget: users.maxBudget,
+    preferredLatitude: users.preferredLatitude,
+    preferredLongitude: users.preferredLongitude,
+    preferredRadiusMiles: users.preferredRadiusMiles,
+    shopSpace: users.shopSpace,
+    experienceLevel: users.experienceLevel,
+    stylePreferences: users.stylePreferences,
+  }).from(users).where(eq(users.id, user.id)).get();
+
+  if (!mine && userPrefs) {
+    if (userPrefs.maxBudget) {
+      conditions.push(
+        or(
+          sql`${listings.userId} IS NOT NULL`,
+          lte(listings.askingPrice, userPrefs.maxBudget),
+          isNull(listings.askingPrice),
+        )!,
+      );
+    }
+
+    if (userPrefs.preferredLatitude && userPrefs.preferredLongitude && userPrefs.preferredRadiusMiles) {
+      conditions.push(
+        or(
+          sql`${listings.userId} IS NOT NULL`,
+          isNull(listings.latitude),
+          sql`(3959 * acos(cos(radians(${userPrefs.preferredLatitude})) * cos(radians(${listings.latitude})) * cos(radians(${listings.longitude}) - radians(${userPrefs.preferredLongitude})) + sin(radians(${userPrefs.preferredLatitude})) * sin(radians(${listings.latitude})))) <= ${userPrefs.preferredRadiusMiles}`,
+        )!,
+      );
+    }
+
+    if (userPrefs.shopSpace === 'small_workshop') {
+      conditions.push(
+        or(
+          sql`${listings.userId} IS NOT NULL`,
+          sql`${listings.furnitureType} NOT IN ('sofa', 'sectional', 'dining_table', 'bed_frame')`,
+          isNull(listings.furnitureType),
+        )!,
+      );
+    }
+
+    if (userPrefs.experienceLevel === 'beginner') {
+      conditions.push(
+        or(
+          sql`${listings.userId} IS NOT NULL`,
+          gte(listings.conditionScore, 5),
+          isNull(listings.conditionScore),
+        )!,
+      );
+    }
+
+    if (userPrefs.stylePreferences) {
+      try {
+        const styles = JSON.parse(userPrefs.stylePreferences) as string[];
+        if (styles.length > 0) {
+          const styleConditions = styles.map((s) => sql`${listings.furnitureStyle} LIKE ${'%' + s + '%'}`);
+          conditions.push(
+            or(
+              sql`${listings.userId} IS NOT NULL`,
+              isNull(listings.furnitureStyle),
+              or(...styleConditions)!,
+            )!,
+          );
+        }
+      } catch {
+        // invalid JSON, skip style filtering
+      }
+    }
+  }
   if (type) conditions.push(eq(listings.furnitureType, type));
   if (style) conditions.push(eq(listings.furnitureStyle, style));
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
   if (maxPrice) conditions.push(lte(listings.askingPrice, parseFloat(maxPrice)));
-  if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook' | 'sawbuck'));
+  if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'ebay' | 'sawbuck'));
   if (status) conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed'));
   if (search || pagination.search) {
     const term = search || pagination.search!;
@@ -70,10 +145,55 @@ listingsRouter.get('/', async (c) => {
 
   const total = countResult[0]?.total ?? 0;
 
-  const enriched = await Promise.all(results.map(async (listing) => ({
+  // Batch-load concept renders for agent listings
+  const agentListingIds = results.filter((l) => l.userId === null).map((l) => l.id);
+  const conceptMap = new Map<number, Array<{
+    difficulty: string;
+    label: string;
+    summary: string;
+    estimatedHours: number | null;
+    estimatedMaterialCost: number | null;
+    estimatedResalePrice: number | null;
+    localPath: string;
+  }>>();
+  if (agentListingIds.length > 0) {
+    const renders = await db.select({
+      listingId: conceptRenders.listingId,
+      difficulty: conceptRenders.difficulty,
+      label: conceptRenders.label,
+      summary: conceptRenders.summary,
+      estimatedHours: conceptRenders.estimatedHours,
+      estimatedMaterialCost: conceptRenders.estimatedMaterialCost,
+      estimatedResalePrice: conceptRenders.estimatedResalePrice,
+      localPath: conceptRenders.localPath,
+    })
+      .from(conceptRenders)
+      .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
+      .all();
+    for (const r of renders) {
+      if (r.localPath) {
+        if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
+        conceptMap.get(r.listingId)!.push({
+          difficulty: r.difficulty,
+          label: r.label,
+          summary: r.summary,
+          estimatedHours: r.estimatedHours,
+          estimatedMaterialCost: r.estimatedMaterialCost,
+          estimatedResalePrice: r.estimatedResalePrice,
+          localPath: r.localPath,
+        });
+      }
+    }
+  }
+
+  // Batch-load primary images (1 query instead of N)
+  const primaryImages = await getPrimaryImagePaths(results.map((l) => l.id));
+
+  const enriched = results.map((listing) => ({
     ...listing,
-    primaryImage: await getPrimaryImagePath(listing.id),
-  })));
+    primaryImage: primaryImages.get(listing.id) ?? null,
+    conceptImages: conceptMap.get(listing.id) ?? null,
+  }));
 
   return c.json({ listings: enriched, total });
 });
@@ -102,25 +222,15 @@ listingsRouter.post('/import', async (c) => {
       extractId: (u) => u.match(/\/item\/detail\/(\d+)/)?.[1] ?? u.match(/\/offer\/(\d+)/)?.[1] ?? null,
     },
     {
-      pattern: /mercari\.com/,
-      platform: 'mercari',
-      extractId: (u) => u.match(/\/item\/(\w+)/)?.[1] ?? null,
-    },
-    {
       pattern: /ebay\.com/,
       platform: 'ebay',
       extractId: (u) => u.match(/\/itm\/(\d+)/)?.[1] ?? u.match(/\/itm\/[^/]+\/(\d+)/)?.[1] ?? null,
-    },
-    {
-      pattern: /facebook\.com\/marketplace/,
-      platform: 'facebook',
-      extractId: (u) => u.match(/\/item\/(\d+)/)?.[1] ?? u.match(/\/marketplace\/item\/(\d+)/)?.[1] ?? null,
     },
   ];
 
   const match = platformPatterns.find((p) => p.pattern.test(url));
   if (!match) {
-    return c.json({ error: 'Unsupported platform. Supported: Craigslist, OfferUp, Mercari, eBay, Facebook Marketplace.' }, 400);
+    return c.json({ error: 'Unsupported platform. Supported: Craigslist, OfferUp, Mercari, eBay.' }, 400);
   }
 
   const externalId = match.extractId(url);
@@ -144,16 +254,9 @@ listingsRouter.post('/import', async (c) => {
     url,
     title: '(imported — loading details…)',
     matchedSearchTerms: JSON.stringify(['manual-import']),
-    fingerprint: fingerprint({ externalId, platform: match.platform, url, title: '', imageUrls: [] }),
+    fingerprint: fingerprint({ externalId, platform: match.platform, title: '' }),
     userId: user.id,
   }).returning();
-
-  // Scrape the detail page to populate title, description, images, etc.
-  try {
-    await fetchListingDetails(inserted);
-  } catch (err) {
-    logger.warn({ err, url }, 'Detail fetch failed on import');
-  }
 
   // Re-fetch the listing with updated data + images
   const listing = await db.select().from(listings).where(eq(listings.id, inserted.id)).get();
@@ -269,16 +372,6 @@ listingsRouter.get('/:id', async (c) => {
     if (badLocation) cleanupFields.location = null;
     await db.update(listings).set(cleanupFields).where(eq(listings.id, id));
     listing = (await db.select().from(listings).where(eq(listings.id, id)).get())!;
-  }
-  if (!listing.description || images.length === 0) {
-    try {
-      await fetchListingDetails(listing);
-      listing = (await db.select().from(listings).where(eq(listings.id, id)).get())!;
-      const updatedImages = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
-      return c.json({ ...listing, images: updatedImages });
-    } catch (err) {
-      logger.warn({ err, listingId: id }, 'Auto-enrich failed');
-    }
   }
 
   return c.json({ ...listing, images });

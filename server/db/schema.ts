@@ -12,7 +12,15 @@ export const users = sqliteTable('users', {
   emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
   image: text('image'),
   role: text('role', { enum: ['user', 'admin'] }).notNull().default('user'),
-  dailyClaudeLimit: integer('daily_claude_limit').notNull().default(20),
+  // User preferences (for filtering agent-discovered listings)
+  preferredLatitude: real('preferred_latitude'),
+  preferredLongitude: real('preferred_longitude'),
+  preferredRadiusMiles: integer('preferred_radius_miles').default(25),
+  maxBudget: real('max_budget'),
+  shopSpace: text('shop_space', { enum: ['small_workshop', 'one_car_garage', 'two_car_garage', 'full_shop'] }),
+  experienceLevel: text('experience_level', { enum: ['beginner', 'intermediate', 'advanced'] }),
+  stylePreferences: text('style_preferences'), // JSON array of style strings
+
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
 });
@@ -69,7 +77,7 @@ export const claudeUsage = sqliteTable('claude_usage', {
 export const listings = sqliteTable('listings', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   externalId: text('external_id').notNull(),
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] }).notNull(),
+  platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).notNull(),
   url: text('url').notNull(),
   title: text('title').notNull(),
   description: text('description'),
@@ -106,7 +114,11 @@ export const listings = sqliteTable('listings', {
   // Analysis error tracking
   analysisError: text('analysis_error'),
 
-  // Multi-user
+  // Agent pipeline
+  triageSource: text('triage_source', { enum: ['manual', 'agent_haiku', 'agent_sonnet'] }),
+  agentRunId: text('agent_run_id'),
+
+  // Multi-user (NULL = agent-discovered shared listing)
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   uniqueIndex('idx_listings_platform_external').on(table.platform, table.externalId),
@@ -116,6 +128,7 @@ export const listings = sqliteTable('listings', {
   index('idx_listings_furniture_type').on(table.furnitureType),
   index('idx_listings_scraped_at').on(table.scrapedAt),
   index('idx_listings_fingerprint').on(table.fingerprint),
+  index('idx_listings_user_id').on(table.userId),
 ]);
 
 export const listingImages = sqliteTable('listing_images', {
@@ -127,7 +140,7 @@ export const listingImages = sqliteTable('listing_images', {
   width: integer('width'),
   height: integer('height'),
   fileSizeBytes: integer('file_size_bytes'),
-  downloadStatus: text('download_status', { enum: ['pending', 'downloaded', 'failed'] }).notNull().default('pending'),
+  downloadStatus: text('download_status', { enum: ['pending', 'downloaded', 'failed', 'cleaned'] }).notNull().default('pending'),
   analysisStatus: text('analysis_status', { enum: ['pending', 'analyzed', 'skipped', 'failed'] }).notNull().default('pending'),
   analysisResult: text('analysis_result'),
   isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
@@ -139,7 +152,7 @@ export const listingImages = sqliteTable('listing_images', {
 
 export const searchConfigs = sqliteTable('search_configs', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] }).notNull(),
+  platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).notNull(),
   searchTerm: text('search_term').notNull(),
   category: text('category'),
   location: text('location'),
@@ -152,7 +165,7 @@ export const searchConfigs = sqliteTable('search_configs', {
 });
 
 export const platformSettings = sqliteTable('platform_settings', {
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] }).primaryKey(),
+  platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).primaryKey(),
   enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
 });
 
@@ -299,6 +312,45 @@ export const backgroundJobs = sqliteTable('background_jobs', {
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_background_jobs_status').on(table.status),
+]);
+
+// ============================================================
+// Agent Pipeline
+// ============================================================
+
+export const agentRuns = sqliteTable('agent_runs', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  runId: text('run_id').notNull().unique(),
+  startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
+  completedAt: text('completed_at'),
+  status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
+  scraped: integer('scraped').default(0),
+  triaged: integer('triaged').default(0),
+  passedTriage: integer('passed_triage').default(0),
+  evaluated: integer('evaluated').default(0),
+  qualified: integer('qualified').default(0),
+  rendered: integer('rendered').default(0),
+  errorsCount: integer('errors_count').default(0),
+  errorDetails: text('error_details'), // JSON array
+  config: text('config'), // JSON snapshot of caps/thresholds
+});
+
+export const conceptRenders = sqliteTable('concept_renders', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  agentRunId: text('agent_run_id'),
+  difficulty: text('difficulty', { enum: ['simple', 'moderate', 'full'] }).notNull(),
+  label: text('label').notNull(), // "Quick Clean & Oil", "Sand & Refinish", "Full Transformation"
+  summary: text('summary').notNull(), // brief description of approach
+  estimatedHours: real('estimated_hours'),
+  estimatedMaterialCost: real('estimated_material_cost'),
+  estimatedResalePrice: real('estimated_resale_price'),
+  prompt: text('prompt').notNull(),
+  renderedImageUrl: text('rendered_image_url'),
+  localPath: text('local_path'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (table) => [
+  index('idx_concept_renders_listing_id').on(table.listingId),
 ]);
 
 export const projectPhotos = sqliteTable('project_photos', {

@@ -46,20 +46,16 @@ describe('requireAuth middleware', () => {
 });
 
 describe('requireAdmin middleware', () => {
-  it('allows admin to toggle platforms', async () => {
-    const res = await app.request('/api/scrapers/platforms/craigslist', {
-      method: 'PATCH',
-      headers: { ...authHeaders(adminUser), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: true }),
+  it('rejects non-admin from admin routes', async () => {
+    const res = await app.request('/api/admin/users', {
+      headers: authHeaders(regularUser),
     });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
-  it('allows non-admin to toggle platforms', async () => {
-    const res = await app.request('/api/scrapers/platforms/craigslist', {
-      method: 'PATCH',
-      headers: { ...authHeaders(regularUser), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled: true }),
+  it('allows admin to access admin routes', async () => {
+    const res = await app.request('/api/admin/users', {
+      headers: authHeaders(adminUser),
     });
     expect(res.status).toBe(200);
   });

@@ -5,26 +5,8 @@ import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { useToast } from '../components/Toast';
 import { SkeletonCard } from '../components/Skeleton';
 import ListingsMap from '../components/ListingsMap';
-import { PlatformBadge, Spinner, EmptyState, SearchIcon, dealScoreColor, dealScoreTextColor } from '../components/ui';
+import { PlatformBadge, Spinner, EmptyState, SearchIcon } from '../components/ui';
 import { resolveImageUrl } from '../utils';
-
-interface ScrapeStepResult {
-  found: number;
-  relevant?: number;
-  filtered?: number;
-  new: number;
-  error?: string;
-}
-
-interface ScrapeProgress {
-  type: 'start' | 'config_start' | 'config_done' | 'done';
-  total?: number;
-  current?: number;
-  platform?: string;
-  searchTerm?: string;
-  result?: ScrapeStepResult;
-  results?: ScrapeStepResult[];
-}
 
 type SortOption = 'newest' | 'price_low' | 'price_high';
 
@@ -43,15 +25,9 @@ export default function Dashboard() {
   const [hasMore, setHasMore] = useState(true);
   const [total, setTotal] = useState(0);
   const pageRef = useRef(1);
-  const [scraping, setScraping] = useState(false);
-  const [progress, setProgress] = useState<ScrapeProgress | null>(null);
-  const [completedSteps, setCompletedSteps] = useState<ScrapeProgress[]>([]);
-  const [scrapeResult, setScrapeResult] = useState<string | null>(null);
-
   const [sortBy, setSortBy] = useState<SortOption>('newest');
   const [platformFilter, setPlatformFilter] = useState<string>('');
   const [maxPrice, setMaxPrice] = useState<string>('');
-  const [searchTermFilter, setSearchTermFilter] = useState<string>('');
   const [viewMode, setViewMode] = useState<'grid' | 'map'>('grid');
   const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -61,16 +37,7 @@ export default function Dashboard() {
     setAllListings(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   }, []);
 
-  // Client-side search term filter (not supported by API)
-  const listings = useMemo(() => {
-    if (!searchTermFilter) return allListings;
-    return allListings.filter(l => {
-      try {
-        const terms: string[] = l.matchedSearchTerms ? JSON.parse(l.matchedSearchTerms) : [];
-        return terms.includes(searchTermFilter);
-      } catch { return false; }
-    });
-  }, [allListings, searchTermFilter]);
+  const listings = allListings;
 
   useBackgroundEnrich(allListings, handleEnriched);
 
@@ -136,78 +103,9 @@ export default function Dashboard() {
     [allListings]
   );
 
-  const searchTerms = useMemo(() => {
-    const terms = new Set<string>();
-    allListings.forEach(l => {
-      try {
-        const t: string[] = l.matchedSearchTerms ? JSON.parse(l.matchedSearchTerms) : [];
-        t.forEach(s => terms.add(s));
-      } catch {}
-    });
-    return [...terms].sort();
-  }, [allListings]);
-
   const enrichingCount = allListings.filter(l => !l.primaryImage).length;
 
-  const handleScrape = () => {
-    setScraping(true);
-    setScrapeResult(null);
-    setProgress(null);
-    setCompletedSteps([]);
-
-    let finished = false;
-    const eventSource = new EventSource('/api/scrapers/run/stream');
-
-    eventSource.addEventListener('start', (e) => {
-      setProgress(JSON.parse(e.data));
-    });
-
-    eventSource.addEventListener('config_start', (e) => {
-      setProgress(JSON.parse(e.data));
-    });
-
-    eventSource.addEventListener('config_done', (e) => {
-      const data = JSON.parse(e.data);
-      setProgress(data);
-      setCompletedSteps((prev) => [...prev, data]);
-      // Incrementally load new listings as each config finishes
-      if (data.result?.new > 0) loadListings();
-    });
-
-    eventSource.addEventListener('done', (e) => {
-      finished = true;
-      const data = JSON.parse(e.data);
-      const results = data.results || [];
-      const totalNew = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.new || 0), 0);
-      const totalRelevant = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.relevant || r.found || 0), 0);
-      const totalFiltered = results.reduce((sum: number, r: ScrapeStepResult) => sum + (r.filtered || 0), 0);
-      const msg = results.length === 0
-        ? 'No search configs found. Add some in Settings first.'
-        : `${totalRelevant} relevant listings${totalFiltered ? ` (${totalFiltered} irrelevant filtered)` : ''}, ${totalNew} new.`;
-      setScrapeResult(msg);
-      toast(results.length === 0 ? 'info' : 'success', msg);
-      setScraping(false);
-      setProgress(null);
-      loadListings();
-      eventSource.close();
-    });
-
-    eventSource.addEventListener('close', () => {
-      finished = true;
-      eventSource.close();
-    });
-
-    eventSource.onerror = () => {
-      if (finished) return; // Server closed connection after done — not an error
-      setScraping(false);
-      setProgress(null);
-      setScrapeResult('Connection lost during scrape.');
-      toast('error', 'Connection lost during scrape.');
-      eventSource.close();
-    };
-  };
-
-  const hasActiveFilters = !!(platformFilter || maxPrice || searchTermFilter);
+  const hasActiveFilters = !!(platformFilter || maxPrice);
 
   return (
     <div>
@@ -222,19 +120,7 @@ export default function Dashboard() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {scrapeResult && !scraping && (
-            <span className={`text-sm ${scrapeResult.startsWith('Error') || scrapeResult.includes('No search') || scrapeResult.includes('lost') ? 'text-amber-600' : 'text-green-600'} hidden sm:inline`}>
-              {scrapeResult}
-            </span>
-          )}
-          <button
-            onClick={handleScrape}
-            disabled={scraping}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
-          >
-            {scraping && <Spinner />}
-            {scraping ? 'Scraping...' : 'Run Scraper'}
-          </button>
+          <span className="text-sm text-gray-400">Auto-discovered by agent</span>
         </div>
       </div>
 
@@ -257,16 +143,6 @@ export default function Dashboard() {
           <option value="">All platforms</option>
           {platforms.map(p => <option key={p} value={p}>{p}</option>)}
         </select>
-        {searchTerms.length > 1 && (
-          <select
-            value={searchTermFilter}
-            onChange={e => setSearchTermFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-1.5 text-sm bg-white"
-          >
-            <option value="">All searches</option>
-            {searchTerms.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
-        )}
         <input
           type="number"
           placeholder="Max price"
@@ -276,7 +152,7 @@ export default function Dashboard() {
         />
         {hasActiveFilters && (
           <button
-            onClick={() => { setPlatformFilter(''); setMaxPrice(''); setSearchTermFilter(''); }}
+            onClick={() => { setPlatformFilter(''); setMaxPrice(''); }}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >
             Clear filters
@@ -303,53 +179,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Progress panel */}
-      {scraping && (
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <Spinner size="md" color="blue" />
-            <span className="text-sm font-medium text-gray-700">
-              {progress?.type === 'config_start'
-                ? `Scraping ${progress.platform} "${progress.searchTerm}" (${progress.current}/${progress.total})...`
-                : progress?.type === 'start'
-                ? `Starting scraper (${progress.total} search${progress.total === 1 ? '' : 'es'})...`
-                : 'Preparing...'}
-            </span>
-          </div>
-
-          {progress?.total && (
-            <div className="w-full bg-gray-100 rounded-full h-1.5 mb-3">
-              <div
-                className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
-                style={{ width: `${(completedSteps.length / progress.total) * 100}%` }}
-              />
-            </div>
-          )}
-
-          {completedSteps.length > 0 && (
-            <div className="space-y-1.5">
-              {completedSteps.map((step, i) => (
-                <div key={i} className="flex items-center justify-between text-xs">
-                  <span className={`flex items-center gap-1.5 ${step.result?.error ? 'text-red-500' : 'text-gray-500'}`}>
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] ${
-                      step.result?.error ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'
-                    }`}>
-                      {step.result?.error ? '\u2717' : '\u2713'}
-                    </span>
-                    {step.platform} "{step.searchTerm}"
-                  </span>
-                  <span className={step.result?.error ? 'text-red-500' : 'text-green-600'}>
-                    {step.result?.error
-                      ? 'failed'
-                      : `${step.result?.relevant ?? step.result?.found} relevant${step.result?.filtered ? ` (${step.result.filtered} filtered)` : ''}, ${step.result?.new} new`}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -358,7 +187,7 @@ export default function Dashboard() {
         <EmptyState
           icon={<SearchIcon />}
           title="No listings yet"
-          subtitle={<>Configure search terms in <Link to="/settings" className="text-blue-600 hover:underline">Settings</Link>, then run the scraper.</>}
+          subtitle="The agent is searching for deals. Check back soon!"
         />
       ) : listings.length === 0 ? (
         <div className="text-center py-16 text-gray-400">
@@ -398,21 +227,9 @@ export default function Dashboard() {
                       <span className="font-semibold text-gray-900">${listing.askingPrice}</span>
                     )}
                   </div>
-                  {/* Deal score bar hidden while eBay comps are disabled */}
-                  {listing.matchedSearchTerms && (() => {
-                    try {
-                      const terms: string[] = JSON.parse(listing.matchedSearchTerms);
-                      return terms.length > 0 ? (
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          {terms.map(t => (
-                            <span key={t} className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-500 text-[11px]">
-                              {t}
-                            </span>
-                          ))}
-                        </div>
-                      ) : null;
-                    } catch { return null; }
-                  })()}
+                  {listing.analysisError && (
+                    <div className="mt-2 text-xs text-red-500">Analysis failed</div>
+                  )}
                 </div>
               </Link>
             ))}

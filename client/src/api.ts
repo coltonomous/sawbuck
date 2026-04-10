@@ -29,7 +29,6 @@ export interface AdminUser {
   email: string;
   image: string | null;
   role: 'user' | 'admin';
-  dailyClaudeLimit: number;
   usageToday: number;
   listingCount: number;
   createdAt: string;
@@ -55,7 +54,7 @@ export interface ListingImage {
 export interface Listing {
   id: number;
   externalId: string;
-  platform: 'craigslist' | 'offerup' | 'mercari' | 'ebay' | 'facebook' | 'sawbuck';
+  platform: 'craigslist' | 'offerup' | 'ebay' | 'sawbuck';
   url: string;
   title: string;
   description: string | null;
@@ -83,6 +82,7 @@ export interface Listing {
   analysisError: string | null;
   userId: string | null;
   primaryImage?: string | null;
+  conceptImages?: Array<{ localPath: string; prompt: string }> | null;
 }
 
 export interface ListingDetail extends Listing {
@@ -207,30 +207,14 @@ export interface PipelineProject extends Project {
   furnitureStyle: string | null;
 }
 
-export interface SearchConfig {
-  id: number;
-  platform: string;
-  searchTerm: string;
-  category: string | null;
-  location: string | null;
-  minPrice: number | null;
-  maxPrice: number | null;
-  isActive: boolean;
-  lastRunAt: string | null;
-  createdAt: string;
-}
-
-export interface ScrapeRun {
-  id: number;
-  platform: string;
-  searchConfigId: number | null;
-  startedAt: string;
-  completedAt: string | null;
-  listingsFound: number | null;
-  listingsNew: number | null;
-  listingsDuplicate: number | null;
-  error: string | null;
-  status: 'running' | 'completed' | 'failed';
+export interface Preferences {
+  preferredLatitude: number | null;
+  preferredLongitude: number | null;
+  preferredRadiusMiles: number | null;
+  maxBudget: number | null;
+  shopSpace: string | null;
+  experienceLevel: string | null;
+  stylePreferences: string[] | null;
 }
 
 export interface StatsResponse {
@@ -297,23 +281,23 @@ export interface MaterialUpdate {
   actualPrice?: number;
 }
 
-export interface SearchConfigInput {
-  platform?: string;
-  searchTerm: string;
-  category?: string;
-  location?: string;
-  minPrice?: number;
-  maxPrice?: number;
+export interface AgentRun {
+  id: number;
+  runId: string;
+  startedAt: string;
+  completedAt: string | null;
+  status: 'running' | 'completed' | 'failed';
+  scraped: number | null;
+  triaged: number | null;
+  passedTriage: number | null;
+  evaluated: number | null;
+  qualified: number | null;
+  rendered: number | null;
+  errorsCount: number | null;
+  errorDetails: Array<{ node: string; message: string; timestamp: string }> | null;
 }
 
-export interface PlatformHealth {
-  status: 'ok' | 'warning' | 'error';
-  message: string | null;
-  lastRun: string | null;
-  consecutiveZeros: number;
-}
-
-//API client
+// API client
 
 
 export const api = {
@@ -345,19 +329,13 @@ export const api = {
   deleteProject: (id: number) =>
     request<{ ok: boolean }>(`/projects/${id}`, { method: 'DELETE' }),
 
-  // Scrapers
-  runScraper: () => request<Record<string, unknown>>('/scrapers/run', { method: 'POST' }),
-  getScraperStatus: () => request<{ recentRuns: ScrapeRun[]; configs: SearchConfig[]; health: Record<string, PlatformHealth> }>('/scrapers/status'),
-  addSearchConfig: (data: SearchConfigInput) =>
-    request<SearchConfig>('/scrapers/configs', { method: 'POST', body: JSON.stringify(data) }),
-  deleteSearchConfig: (id: number) =>
-    request<{ ok: boolean }>(`/scrapers/configs/${id}`, { method: 'DELETE' }),
-  clearAllSearchConfigs: () =>
-    request<{ ok: boolean }>('/scrapers/configs/all', { method: 'DELETE' }),
-  getPlatformSettings: () =>
-    request<{ platform: string; enabled: boolean }[]>('/scrapers/platforms'),
-  togglePlatform: (platform: string, enabled: boolean) =>
-    request<{ ok: boolean }>(`/scrapers/platforms/${platform}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+  // Agent runs (admin)
+  getAgentRuns: () => request<{ recentRuns: AgentRun[] }>('/scrapers/status'),
+
+  // Preferences
+  getPreferences: () => request<Preferences>('/user/preferences'),
+  updatePreferences: (data: Partial<Preferences>) =>
+    request<{ success: boolean }>('/user/preferences', { method: 'PATCH', body: JSON.stringify(data) }),
 
   // Refinishing
   generateRefinishingPlan: (projectId: number) =>
@@ -438,15 +416,10 @@ export const api = {
     return res.json() as Promise<{ listing: Listing }>;
   },
 
-  // Usage
-  getClaudeUsage: () => request<{ used: number; limit: number; date: string }>('/usage/claude'),
-
   // Admin
   getUsers: () => request<AdminUser[]>('/admin/users'),
   updateUserRole: (userId: string, role: 'user' | 'admin') =>
     request<{ ok: boolean }>(`/admin/users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
-  updateUserLimit: (userId: string, limit: number) =>
-    request<{ ok: boolean }>(`/admin/users/${userId}/limit`, { method: 'PATCH', body: JSON.stringify({ limit }) }),
   deleteUser: (userId: string) =>
     request<{ ok: boolean }>(`/admin/users/${userId}`, { method: 'DELETE' }),
 };

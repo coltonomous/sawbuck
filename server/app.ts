@@ -6,13 +6,13 @@ import { pinoLogger } from 'hono-pino';
 import logger from './lib/logger.js';
 import { auth } from './auth.js';
 import { requireAuth, requireAdmin } from './middleware/auth.js';
-import { checkClaudeLimit } from './middleware/claude-limit.js';
 import { listingsRouter } from './routes/listings.js';
 import { projectsRouter } from './routes/projects.js';
 import { scrapersRouter } from './routes/scrapers.js';
 import { comparablesRouter } from './routes/comparables.js';
 import { statsRouter } from './routes/stats.js';
 import { adminRouter } from './routes/admin.js';
+import { preferencesRouter } from './routes/preferences.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -95,10 +95,6 @@ app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
 // ── Require auth for all other API routes ───────────────────────────
 app.use('/api/*', requireAuth);
 
-// ── Claude usage limit on AI-calling routes (Sonnet only, Haiku is free) ──
-app.use('/api/listings/:id/analyze', checkClaudeLimit);
-app.use('/api/projects/:id/refinish', checkClaudeLimit);
-
 // ── Admin-only routes ───────────────────────────────────────────────
 app.use('/api/admin/*', requireAdmin);
 
@@ -109,27 +105,7 @@ app.route('/api/scrapers', scrapersRouter);
 app.route('/api/comparables', comparablesRouter);
 app.route('/api/stats', statsRouter);
 app.route('/api/admin', adminRouter);
-
-// ── Claude usage endpoint ───────────────────────────────────────────
-app.get('/api/usage/claude', async (c) => {
-  const { eq, and } = await import('drizzle-orm');
-  const { db } = await import('./db/index.js');
-  const { claudeUsage } = await import('./db/schema.js');
-
-  const user = c.get('user');
-  const today = new Date().toISOString().split('T')[0];
-
-  const usage = db.select()
-    .from(claudeUsage)
-    .where(and(eq(claudeUsage.userId, user.id), eq(claudeUsage.date, today)))
-    .get();
-
-  return c.json({
-    used: usage?.callCount ?? 0,
-    limit: user.dailyClaudeLimit ?? 20,
-    date: today,
-  });
-});
+app.route('/api/user/preferences', preferencesRouter);
 
 // ── Serve listing images with cache headers ─────────────────────────
 app.use('/images/*', async (c, next) => {

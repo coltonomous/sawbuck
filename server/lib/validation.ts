@@ -79,7 +79,7 @@ export const generateListingTextSchema = z.object({
 // Scrapers
 // ============================================================
 
-const platform = z.enum(['craigslist', 'offerup', 'mercari', 'ebay', 'facebook']);
+const platform = z.enum(['craigslist', 'offerup', 'ebay']);
 
 export const runScraperSchema = z.object({
   platform: platform,
@@ -105,9 +105,7 @@ export const togglePlatformSchema = z.object({
 const SUPPORTED_LISTING_HOSTS = [
   /^([a-z]+\.)?craigslist\.org$/,
   /^(www\.)?offerup\.com$/,
-  /^(www\.)?mercari\.com$/,
   /^(www\.)?ebay\.com$/,
-  /^(www\.)?facebook\.com$/,
 ];
 
 export const importListingSchema = z.object({
@@ -142,7 +140,7 @@ export const importListingSchema = z.object({
         const host = new URL(val).hostname;
         return SUPPORTED_LISTING_HOSTS.some((re) => re.test(host));
       } catch { return false; }
-    }, { message: 'Unsupported platform. Supported: Craigslist, OfferUp, Mercari, eBay, Facebook Marketplace.' }),
+    }, { message: 'Unsupported platform. Supported: Craigslist, OfferUp, eBay.' }),
 });
 
 // ============================================================
