@@ -45,19 +45,19 @@ describe('RAG retrieval', () => {
   });
 
   describe('isAvailable', () => {
-    it('returns true when knowledge base has data', () => {
-      mockChunkCount.mockReturnValue(10);
-      expect(isAvailable()).toBe(true);
+    it('returns true when knowledge base has data', async () => {
+      mockChunkCount.mockResolvedValue(10);
+      expect(await isAvailable()).toBe(true);
     });
 
-    it('returns false when knowledge base is empty', () => {
-      mockChunkCount.mockReturnValue(0);
-      expect(isAvailable()).toBe(false);
+    it('returns false when knowledge base is empty', async () => {
+      mockChunkCount.mockResolvedValue(0);
+      expect(await isAvailable()).toBe(false);
     });
 
-    it('returns false when store throws (not initialized)', () => {
-      mockChunkCount.mockImplementation(() => { throw new Error('no such table'); });
-      expect(isAvailable()).toBe(false);
+    it('returns false when store throws (not initialized)', async () => {
+      mockChunkCount.mockRejectedValue(new Error('no such table'));
+      expect(await isAvailable()).toBe(false);
     });
   });
 

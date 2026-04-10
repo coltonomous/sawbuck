@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { db, sqlite } from '../db/index.js';
+import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
@@ -72,7 +72,7 @@ const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. R
 }`;
 
 export async function analyzeListing(listingId: number): Promise<FurnitureAnalysis | null> {
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
   // Get downloaded/processed images
@@ -162,8 +162,8 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
   }
 
   // Update listing + mark images analyzed atomically
-  sqlite.transaction(() => {
-    db.update(listings).set({
+  await db.transaction(async (tx) => {
+    await tx.update(listings).set({
       furnitureType: analysis.furniture_type,
       furnitureStyle: analysis.furniture_style,
       conditionScore: analysis.condition_score,
@@ -179,14 +179,14 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
       analyzedAt: new Date().toISOString(),
       status: 'analyzed',
       analysisError: null,
-    }).where(eq(listings.id, listingId)).run();
+    }).where(eq(listings.id, listingId));
 
     for (const img of toAnalyze) {
-      db.update(listingImages).set({
+      await tx.update(listingImages).set({
         analysisStatus: 'analyzed',
-      }).where(eq(listingImages.id, img.id)).run();
+      }).where(eq(listingImages.id, img.id));
     }
-  })();
+  });
 
   logger.info({
     listingId,

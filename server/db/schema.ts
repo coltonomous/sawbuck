@@ -1,17 +1,18 @@
-import { sqliteTable, text, integer, real, uniqueIndex, index, unique } from 'drizzle-orm/sqlite-core';
+import { pgTable, text, integer, real, serial, boolean, timestamp, uniqueIndex, index, unique } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
 
 // ============================================================
 // Auth (better-auth)
 // ============================================================
 
-export const users = sqliteTable('users', {
+export const users = pgTable('users', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
   email: text('email').notNull().unique(),
-  emailVerified: integer('email_verified', { mode: 'boolean' }).notNull().default(false),
+  emailVerified: boolean('email_verified').notNull().default(false),
   image: text('image'),
   role: text('role', { enum: ['user', 'admin'] }).notNull().default('user'),
+
   // User preferences (for filtering agent-discovered listings)
   preferredLatitude: real('preferred_latitude'),
   preferredLongitude: real('preferred_longitude'),
@@ -19,24 +20,24 @@ export const users = sqliteTable('users', {
   maxBudget: real('max_budget'),
   shopSpace: text('shop_space', { enum: ['small_workshop', 'one_car_garage', 'two_car_garage', 'full_shop'] }),
   experienceLevel: text('experience_level', { enum: ['beginner', 'intermediate', 'advanced'] }),
-  stylePreferences: text('style_preferences'), // JSON array of style strings
+  stylePreferences: text('style_preferences'),
 
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 });
 
-export const sessions = sqliteTable('sessions', {
+export const sessions = pgTable('sessions', {
   id: text('id').primaryKey(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
+  expiresAt: timestamp('expires_at').notNull(),
   token: text('token').notNull().unique(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 });
 
-export const accounts = sqliteTable('accounts', {
+export const accounts = pgTable('accounts', {
   id: text('id').primaryKey(),
   accountId: text('account_id').notNull(),
   providerId: text('provider_id').notNull(),
@@ -44,38 +45,29 @@ export const accounts = sqliteTable('accounts', {
   accessToken: text('access_token'),
   refreshToken: text('refresh_token'),
   idToken: text('id_token'),
-  accessTokenExpiresAt: integer('access_token_expires_at', { mode: 'timestamp' }),
-  refreshTokenExpiresAt: integer('refresh_token_expires_at', { mode: 'timestamp' }),
+  accessTokenExpiresAt: timestamp('access_token_expires_at'),
+  refreshTokenExpiresAt: timestamp('refresh_token_expires_at'),
   scope: text('scope'),
   password: text('password'),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+  createdAt: timestamp('created_at').notNull(),
+  updatedAt: timestamp('updated_at').notNull(),
 });
 
-export const verifications = sqliteTable('verifications', {
+export const verifications = pgTable('verifications', {
   id: text('id').primaryKey(),
   identifier: text('identifier').notNull(),
   value: text('value').notNull(),
-  expiresAt: integer('expires_at', { mode: 'timestamp' }).notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }),
-  updatedAt: integer('updated_at', { mode: 'timestamp' }),
+  expiresAt: timestamp('expires_at').notNull(),
+  createdAt: timestamp('created_at'),
+  updatedAt: timestamp('updated_at'),
 });
-
-export const claudeUsage = sqliteTable('claude_usage', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  date: text('date').notNull(), // 'YYYY-MM-DD'
-  callCount: integer('call_count').notNull().default(0),
-}, (table) => [
-  unique('idx_claude_usage_user_date').on(table.userId, table.date),
-]);
 
 // ============================================================
 // Phase 1: Deal Finder
 // ============================================================
 
-export const listings = sqliteTable('listings', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const listings = pgTable('listings', {
+  id: serial('id').primaryKey(),
   externalId: text('external_id').notNull(),
   platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).notNull(),
   url: text('url').notNull(),
@@ -87,10 +79,9 @@ export const listings = sqliteTable('listings', {
   longitude: real('longitude'),
   sellerName: text('seller_name'),
   postedAt: text('posted_at'),
-  scrapedAt: text('scraped_at').notNull().default(sql`(datetime('now'))`),
+  scrapedAt: text('scraped_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   status: text('status', { enum: ['new', 'analyzed', 'watching', 'acquired', 'dismissed'] }).notNull().default('new'),
 
-  // Claude Vision analysis
   furnitureType: text('furniture_type'),
   furnitureStyle: text('furniture_style'),
   conditionScore: real('condition_score'),
@@ -100,25 +91,17 @@ export const listings = sqliteTable('listings', {
   analysisRaw: text('analysis_raw'),
   analyzedAt: text('analyzed_at'),
 
-  // Pricing
   estimatedValue: real('estimated_value'),
   estimatedRefinishedValue: real('estimated_refinished_value'),
   dealScore: real('deal_score'),
 
-  // Search matching — JSON array of search terms that found this listing
   matchedSearchTerms: text('matched_search_terms'),
-
-  // Deduplication
   fingerprint: text('fingerprint'),
-
-  // Analysis error tracking
   analysisError: text('analysis_error'),
 
-  // Agent pipeline
   triageSource: text('triage_source', { enum: ['manual', 'agent_haiku', 'agent_sonnet'] }),
   agentRunId: text('agent_run_id'),
 
-  // Multi-user (NULL = agent-discovered shared listing)
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   uniqueIndex('idx_listings_platform_external').on(table.platform, table.externalId),
@@ -131,8 +114,8 @@ export const listings = sqliteTable('listings', {
   index('idx_listings_user_id').on(table.userId),
 ]);
 
-export const listingImages = sqliteTable('listing_images', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const listingImages = pgTable('listing_images', {
+  id: serial('id').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   sourceUrl: text('source_url').notNull(),
   localPathOriginal: text('local_path_original'),
@@ -143,37 +126,37 @@ export const listingImages = sqliteTable('listing_images', {
   downloadStatus: text('download_status', { enum: ['pending', 'downloaded', 'failed', 'cleaned'] }).notNull().default('pending'),
   analysisStatus: text('analysis_status', { enum: ['pending', 'analyzed', 'skipped', 'failed'] }).notNull().default('pending'),
   analysisResult: text('analysis_result'),
-  isPrimary: integer('is_primary', { mode: 'boolean' }).notNull().default(false),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  isPrimary: boolean('is_primary').notNull().default(false),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   index('idx_listing_images_listing_id').on(table.listingId),
   index('idx_listing_images_download_status').on(table.downloadStatus),
 ]);
 
-export const searchConfigs = sqliteTable('search_configs', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const searchConfigs = pgTable('search_configs', {
+  id: serial('id').primaryKey(),
   platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).notNull(),
   searchTerm: text('search_term').notNull(),
   category: text('category'),
   location: text('location'),
   minPrice: real('min_price'),
   maxPrice: real('max_price'),
-  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  isActive: boolean('is_active').notNull().default(true),
   lastRunAt: text('last_run_at'),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 });
 
-export const platformSettings = sqliteTable('platform_settings', {
+export const platformSettings = pgTable('platform_settings', {
   platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).primaryKey(),
-  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  enabled: boolean('enabled').notNull().default(true),
 });
 
-export const scrapeRuns = sqliteTable('scrape_runs', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const scrapeRuns = pgTable('scrape_runs', {
+  id: serial('id').primaryKey(),
   platform: text('platform').notNull(),
   searchConfigId: integer('search_config_id').references(() => searchConfigs.id),
-  startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
+  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text('completed_at'),
   listingsFound: integer('listings_found').default(0),
   listingsNew: integer('listings_new').default(0),
@@ -183,8 +166,8 @@ export const scrapeRuns = sqliteTable('scrape_runs', {
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 });
 
-export const comparables = sqliteTable('comparables', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const comparables = pgTable('comparables', {
+  id: serial('id').primaryKey(),
   listingId: integer('listing_id').references(() => listings.id, { onDelete: 'cascade' }),
   source: text('source').notNull().default('ebay'),
   sourceUrl: text('source_url'),
@@ -195,7 +178,7 @@ export const comparables = sqliteTable('comparables', {
   furnitureType: text('furniture_type'),
   furnitureStyle: text('furniture_style'),
   searchQuery: text('search_query'),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_comparables_listing_id').on(table.listingId),
@@ -206,13 +189,13 @@ export const comparables = sqliteTable('comparables', {
 // Phase 2: Refinishing Advisor
 // ============================================================
 
-export const refinishingPlans = sqliteTable('refinishing_plans', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const refinishingPlans = pgTable('refinishing_plans', {
+  id: serial('id').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   projectId: integer('project_id'),
   styleRecommendation: text('style_recommendation'),
   description: text('description'),
-  steps: text('steps').notNull(), // JSON array
+  steps: text('steps').notNull(),
   estimatedHours: real('estimated_hours'),
   estimatedMaterialCost: real('estimated_material_cost'),
   estimatedResalePrice: real('estimated_resale_price'),
@@ -221,9 +204,9 @@ export const refinishingPlans = sqliteTable('refinishing_plans', {
   afterDescription: text('after_description'),
   rawResponse: text('raw_response'),
   ragSourcesUsed: integer('rag_sources_used').default(0),
-  ragSourceTitles: text('rag_source_titles'), // JSON array of title strings
-  ragSources: text('rag_sources'), // JSON array of {title, source, type}
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  ragSourceTitles: text('rag_source_titles'),
+  ragSources: text('rag_sources'),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_refinishing_plans_listing_id').on(table.listingId),
@@ -233,8 +216,8 @@ export const refinishingPlans = sqliteTable('refinishing_plans', {
 // Phase 3: Parts Sourcing
 // ============================================================
 
-export const materials = sqliteTable('materials', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const materials = pgTable('materials', {
+  id: serial('id').primaryKey(),
   refinishingPlanId: integer('refinishing_plan_id').notNull().references(() => refinishingPlans.id, { onDelete: 'cascade' }),
   projectId: integer('project_id'),
   category: text('category').notNull(),
@@ -244,12 +227,12 @@ export const materials = sqliteTable('materials', {
   unit: text('unit'),
   estimatedPrice: real('estimated_price'),
   actualPrice: real('actual_price'),
-  purchased: integer('purchased', { mode: 'boolean' }).notNull().default(false),
+  purchased: boolean('purchased').notNull().default(false),
   amazonSearchUrl: text('amazon_search_url'),
   homeDepotSearchUrl: text('home_depot_search_url'),
   lowesSearchUrl: text('lowes_search_url'),
   notes: text('notes'),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   index('idx_materials_plan_id').on(table.refinishingPlanId),
   index('idx_materials_project_id').on(table.projectId),
@@ -259,13 +242,12 @@ export const materials = sqliteTable('materials', {
 // Phase 4: Project Tracking
 // ============================================================
 
-export const projects = sqliteTable('projects', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const projects = pgTable('projects', {
+  id: serial('id').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   name: text('name').notNull(),
   status: text('status', { enum: ['acquired', 'refinishing', 'listed', 'sold', 'abandoned'] }).notNull().default('acquired'),
 
-  // Cost tracking
   purchasePrice: real('purchase_price').notNull(),
   purchaseDate: text('purchase_date'),
   purchaseNotes: text('purchase_notes'),
@@ -273,7 +255,6 @@ export const projects = sqliteTable('projects', {
   hoursInvested: real('hours_invested').default(0),
   hourlyRate: real('hourly_rate').default(25),
 
-  // Sale tracking
   listedPrice: real('listed_price'),
   listedDate: text('listed_date'),
   listedPlatform: text('listed_platform'),
@@ -282,15 +263,14 @@ export const projects = sqliteTable('projects', {
   sellingFees: real('selling_fees').default(0),
   shippingCost: real('shipping_cost').default(0),
 
-  // Calculated
   totalCost: real('total_cost'),
   profit: real('profit'),
   roiPercentage: real('roi_percentage'),
 
   notes: text('notes'),
   listingText: text('listing_text'),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_projects_status').on(table.status),
@@ -301,13 +281,13 @@ export const projects = sqliteTable('projects', {
 // Background Jobs
 // ============================================================
 
-export const backgroundJobs = sqliteTable('background_jobs', {
-  id: text('id').primaryKey(), // UUID
+export const backgroundJobs = pgTable('background_jobs', {
+  id: text('id').primaryKey(),
   type: text('type', { enum: ['scrape', 'analyze'] }).notNull(),
   status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
-  result: text('result'), // JSON
+  result: text('result'),
   error: text('error'),
-  startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
+  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text('completed_at'),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
@@ -318,10 +298,10 @@ export const backgroundJobs = sqliteTable('background_jobs', {
 // Agent Pipeline
 // ============================================================
 
-export const agentRuns = sqliteTable('agent_runs', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const agentRuns = pgTable('agent_runs', {
+  id: serial('id').primaryKey(),
   runId: text('run_id').notNull().unique(),
-  startedAt: text('started_at').notNull().default(sql`(datetime('now'))`),
+  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
   completedAt: text('completed_at'),
   status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
   scraped: integer('scraped').default(0),
@@ -331,35 +311,35 @@ export const agentRuns = sqliteTable('agent_runs', {
   qualified: integer('qualified').default(0),
   rendered: integer('rendered').default(0),
   errorsCount: integer('errors_count').default(0),
-  errorDetails: text('error_details'), // JSON array
-  config: text('config'), // JSON snapshot of caps/thresholds
+  errorDetails: text('error_details'),
+  config: text('config'),
 });
 
-export const conceptRenders = sqliteTable('concept_renders', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const conceptRenders = pgTable('concept_renders', {
+  id: serial('id').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   agentRunId: text('agent_run_id'),
   difficulty: text('difficulty', { enum: ['simple', 'moderate', 'full'] }).notNull(),
-  label: text('label').notNull(), // "Quick Clean & Oil", "Sand & Refinish", "Full Transformation"
-  summary: text('summary').notNull(), // brief description of approach
+  label: text('label').notNull(),
+  summary: text('summary').notNull(),
   estimatedHours: real('estimated_hours'),
   estimatedMaterialCost: real('estimated_material_cost'),
   estimatedResalePrice: real('estimated_resale_price'),
   prompt: text('prompt').notNull(),
   renderedImageUrl: text('rendered_image_url'),
   localPath: text('local_path'),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   index('idx_concept_renders_listing_id').on(table.listingId),
 ]);
 
-export const projectPhotos = sqliteTable('project_photos', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+export const projectPhotos = pgTable('project_photos', {
+  id: serial('id').primaryKey(),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
   photoType: text('photo_type', { enum: ['before', 'during', 'after'] }).notNull(),
   localPath: text('local_path').notNull(),
   caption: text('caption'),
-  takenAt: text('taken_at').notNull().default(sql`(datetime('now'))`),
+  takenAt: text('taken_at').notNull().default(sql`CURRENT_TIMESTAMP`),
 }, (table) => [
   index('idx_project_photos_project_id').on(table.projectId),
 ]);

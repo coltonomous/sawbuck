@@ -46,7 +46,7 @@ listingsRouter.get('/', async (c) => {
     shopSpace: users.shopSpace,
     experienceLevel: users.experienceLevel,
     stylePreferences: users.stylePreferences,
-  }).from(users).where(eq(users.id, user.id)).get();
+  }).from(users).where(eq(users.id, user.id)).then(r => r[0]);
 
   if (!mine && userPrefs) {
     if (userPrefs.maxBudget) {
@@ -169,7 +169,7 @@ listingsRouter.get('/', async (c) => {
     })
       .from(conceptRenders)
       .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
-      .all();
+      ;
     for (const r of renders) {
       if (r.localPath) {
         if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
@@ -242,7 +242,7 @@ listingsRouter.post('/import', async (c) => {
   const existing = await db.select()
     .from(listings)
     .where(and(eq(listings.platform, match.platform), eq(listings.externalId, externalId), eq(listings.userId, user.id)))
-    .get();
+    .then(r => r[0]);
   if (existing) {
     return c.json({ listing: existing, alreadyExists: true });
   }
@@ -259,7 +259,7 @@ listingsRouter.post('/import', async (c) => {
   }).returning();
 
   // Re-fetch the listing with updated data + images
-  const listing = await db.select().from(listings).where(eq(listings.id, inserted.id)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, inserted.id)).then(r => r[0]);
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, inserted.id));
 
   return c.json({ listing: { ...listing, images }, alreadyExists: false }, 201);
@@ -335,11 +335,11 @@ listingsRouter.patch('/create/:id', async (c) => {
 
   const existing = await db.select().from(listings).where(
     and(eq(listings.id, id), eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'))
-  ).get();
+  ).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   await db.update(listings).set(parsed.data).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
-  const updated = await db.select().from(listings).where(eq(listings.id, id)).get();
+  const updated = await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]);
   return c.json(updated);
 });
 
@@ -348,7 +348,7 @@ listingsRouter.get('/:id', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  let listing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))).get();
+  let listing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-fetch details if missing description, images, or description looks like a page dump
@@ -371,7 +371,7 @@ listingsRouter.get('/:id', async (c) => {
     if (badDescription) cleanupFields.description = null;
     if (badLocation) cleanupFields.location = null;
     await db.update(listings).set(cleanupFields).where(eq(listings.id, id));
-    listing = (await db.select().from(listings).where(eq(listings.id, id)).get())!;
+    listing = (await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]))!;
   }
 
   return c.json({ ...listing, images });
@@ -404,11 +404,11 @@ listingsRouter.patch('/:id', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   await db.update(listings).set(parsed.data).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
-  const updated = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  const updated = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
 
   return c.json(updated);
 });
@@ -418,7 +418,7 @@ listingsRouter.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   await db.delete(listingImages).where(eq(listingImages.listingId, id));
@@ -435,7 +435,7 @@ listingsRouter.post('/:id/analyze', async (c) => {
   // Allow analysis of own listings + any sawbuck listing
   const listing = await db.select().from(listings).where(
     and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))
-  ).get();
+  ).then(r => r[0]);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Fire and forget — results/errors are persisted to DB
@@ -460,7 +460,7 @@ listingsRouter.get('/:id/price', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).get();
+  const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   const pricing = await calculatePricing(id);

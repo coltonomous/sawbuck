@@ -1,1 +1,0 @@
-CREATE INDEX `idx_listings_user_id` ON `listings` (`user_id`);

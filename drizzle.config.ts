@@ -1,10 +1,10 @@
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
-  dialect: 'sqlite',
+  dialect: 'postgresql',
   schema: './server/db/schema.ts',
   out: './drizzle',
   dbCredentials: {
-    url: './data/sawbuck.db',
+    url: process.env.DATABASE_URL || 'postgresql://postgres:sawbuck@localhost:5432/sawbuck',
   },
 });

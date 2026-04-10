@@ -32,11 +32,10 @@ export interface RetrievalContext {
  * Check whether the RAG knowledge base has any data.
  * Useful for feature-gating: skip retrieval if nothing has been ingested.
  */
-export function isAvailable(): boolean {
+export async function isAvailable(): Promise<boolean> {
   try {
-    return chunkCount() > 0;
+    return (await chunkCount()) > 0;
   } catch {
-    // sqlite-vec not loaded or tables don't exist — RAG not set up
     return false;
   }
 }
@@ -176,7 +175,7 @@ async function retrieveFormatted(
   formatter: (r: SearchResult) => string,
 ): Promise<RetrievalContext> {
   const queryVec = await embed(query);
-  const results = search(queryVec, k, type);
+  const results = await search(queryVec, k, type);
 
   // Filter out low-relevance results (distance > 1.2 for normalized cosine)
   const relevant = results.filter((r) => r.distance < 1.2);

@@ -1,1 +1,0 @@
-ALTER TABLE `refinishing_plans` ADD `rag_sources` text;

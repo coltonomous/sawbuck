@@ -20,7 +20,7 @@ comparablesRouter.post('/search', async (c) => {
   let params: CompSearchParams | null = null;
 
   if (listingId) {
-    const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
+    const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).then(r => r[0]);
     if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
     params = {
@@ -55,7 +55,7 @@ comparablesRouter.get('/:listingId', async (c) => {
   const listingId = parseInt(c.req.param('listingId'));
 
   // Verify listing ownership
-  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
+  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   const results = await db.select()

@@ -68,7 +68,7 @@ export function blendedMedian(soldPrices: number[], activePrices: number[]): num
 }
 
 export async function calculatePricing(listingId: number): Promise<PricingResult | null> {
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) return null;
 
   // Build structured search params

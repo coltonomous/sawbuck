@@ -34,7 +34,7 @@ preferencesRouter.get('/', async (c) => {
     shopSpace: users.shopSpace,
     experienceLevel: users.experienceLevel,
     stylePreferences: users.stylePreferences,
-  }).from(users).where(eq(users.id, user.id)).get();
+  }).from(users).where(eq(users.id, user.id)).then(r => r[0]);
 
   if (!row) return c.json({ error: 'User not found' }, 404);
 

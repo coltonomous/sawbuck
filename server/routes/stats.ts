@@ -1,160 +1,136 @@
 import { Hono } from 'hono';
-import { sqlite } from '../db/index.js';
+import { pool } from '../db/index.js';
 
-interface SummaryRow {
-  total_listings: number;
-  dismissed_count: number;
-  analyzed_count: number;
-  avg_asking_price: number | null;
-  first_scraped: string | null;
-  last_scraped: string | null;
+// Postgres COUNT returns string; parse numeric fields
+function parseNumbers(row: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    out[k] = typeof v === 'string' && /^-?\d+(\.\d+)?$/.test(v) ? parseFloat(v) : v;
+  }
+  return out;
 }
-
-interface ProjectSummaryRow {
-  total_projects: number;
-  total_profit: number | null;
-  avg_roi: number | null;
-  avg_flip_days: number | null;
-}
-
-interface BucketRow { bucket: string; count: number }
-interface PlatformRow { platform: string; count: number }
-interface FlipTimeRow { name: string; days: number }
-interface WeekRow { week: string; count: number }
-interface StatusRow { status: string; count: number }
-interface FurnitureTypeRow { type: string; count: number }
-interface ProfitRow { month: string; total_profit: number; count: number }
 
 export const statsRouter = new Hono();
 
-statsRouter.get('/', (c) => {
+statsRouter.get('/', async (c) => {
   const user = c.get('user');
   const userId = user.id;
 
-  const summary = sqlite.prepare(`
-    SELECT
-      COUNT(*) as total_listings,
-      COUNT(CASE WHEN status = 'dismissed' THEN 1 END) as dismissed_count,
-      COUNT(CASE WHEN deal_score IS NOT NULL THEN 1 END) as analyzed_count,
-      AVG(asking_price) as avg_asking_price,
-      MIN(scraped_at) as first_scraped,
-      MAX(scraped_at) as last_scraped
-    FROM listings
-    WHERE user_id = ?
-  `).get(userId) as SummaryRow;
+  const [
+    summaryResult,
+    projectSummaryResult,
+    profitResult,
+    platformResult,
+    flipResult,
+    scrapedResult,
+    priceResult,
+    dealScoreResult,
+    statusResult,
+    furnitureResult,
+  ] = await Promise.all([
+    pool.query(`
+      SELECT
+        COUNT(*) as total_listings,
+        COUNT(CASE WHEN status = 'dismissed' THEN 1 END) as dismissed_count,
+        COUNT(CASE WHEN deal_score IS NOT NULL THEN 1 END) as analyzed_count,
+        AVG(asking_price) as avg_asking_price,
+        MIN(scraped_at) as first_scraped,
+        MAX(scraped_at) as last_scraped
+      FROM listings WHERE user_id = $1
+    `, [userId]),
 
-  const projectSummary = sqlite.prepare(`
-    SELECT
-      COUNT(*) as total_projects,
-      SUM(CASE WHEN status = 'sold' THEN profit ELSE 0 END) as total_profit,
-      AVG(CASE WHEN status = 'sold' THEN roi_percentage END) as avg_roi,
-      AVG(CASE WHEN status = 'sold' THEN julianday(sold_date) - julianday(purchase_date) END) as avg_flip_days
-    FROM projects
-    WHERE user_id = ?
-  `).get(userId) as ProjectSummaryRow;
+    pool.query(`
+      SELECT
+        COUNT(*) as total_projects,
+        SUM(CASE WHEN status = 'sold' THEN profit ELSE 0 END) as total_profit,
+        AVG(CASE WHEN status = 'sold' THEN roi_percentage END) as avg_roi,
+        AVG(CASE WHEN status = 'sold' AND sold_date IS NOT NULL AND purchase_date IS NOT NULL
+          THEN EXTRACT(EPOCH FROM (sold_date::timestamp - purchase_date::timestamp)) / 86400 END) as avg_flip_days
+      FROM projects WHERE user_id = $1
+    `, [userId]),
 
-  const profitOverTime = sqlite.prepare(`
-    SELECT
-      strftime('%Y-%m', sold_date) as month,
-      SUM(profit) as total_profit,
-      COUNT(*) as count
-    FROM projects
-    WHERE status = 'sold' AND sold_date IS NOT NULL AND user_id = ?
-    GROUP BY strftime('%Y-%m', sold_date)
-    ORDER BY month
-  `).all(userId) as ProfitRow[];
+    pool.query(`
+      SELECT
+        TO_CHAR(sold_date::timestamp, 'YYYY-MM') as month,
+        SUM(profit) as total_profit,
+        COUNT(*) as count
+      FROM projects
+      WHERE status = 'sold' AND sold_date IS NOT NULL AND user_id = $1
+      GROUP BY TO_CHAR(sold_date::timestamp, 'YYYY-MM')
+      ORDER BY month
+    `, [userId]),
 
-  const dealsByPlatform = sqlite.prepare(`
-    SELECT
-      platform,
-      COUNT(*) as count
-    FROM listings
-    WHERE user_id = ?
-    GROUP BY platform
-    ORDER BY count DESC
-  `).all(userId) as PlatformRow[];
+    pool.query(`
+      SELECT platform, COUNT(*) as count
+      FROM listings WHERE user_id = $1
+      GROUP BY platform ORDER BY count DESC
+    `, [userId]),
 
-  const flipTimes = sqlite.prepare(`
-    SELECT
-      name,
-      CAST(julianday(sold_date) - julianday(purchase_date) AS INTEGER) as days
-    FROM projects
-    WHERE status = 'sold' AND sold_date IS NOT NULL AND purchase_date IS NOT NULL AND user_id = ?
-    ORDER BY sold_date DESC
-    LIMIT 20
-  `).all(userId) as FlipTimeRow[];
+    pool.query(`
+      SELECT name,
+        CAST(EXTRACT(EPOCH FROM (sold_date::timestamp - purchase_date::timestamp)) / 86400 AS INTEGER) as days
+      FROM projects
+      WHERE status = 'sold' AND sold_date IS NOT NULL AND purchase_date IS NOT NULL AND user_id = $1
+      ORDER BY sold_date DESC LIMIT 20
+    `, [userId]),
 
-  const scrapedOverTime = sqlite.prepare(`
-    SELECT
-      strftime('%Y-%m-%d', scraped_at, 'weekday 0', '-6 days') as week,
-      COUNT(*) as count
-    FROM listings
-    WHERE user_id = ?
-    GROUP BY week
-    ORDER BY week
-  `).all(userId) as WeekRow[];
+    pool.query(`
+      SELECT DATE_TRUNC('week', scraped_at::timestamp)::date::text as week, COUNT(*) as count
+      FROM listings WHERE user_id = $1
+      GROUP BY week ORDER BY week
+    `, [userId]),
 
-  const priceDistribution = sqlite.prepare(`
-    SELECT
-      CASE
-        WHEN asking_price < 50 THEN '< $50'
-        WHEN asking_price < 100 THEN '$50-99'
-        WHEN asking_price < 200 THEN '$100-199'
-        WHEN asking_price < 500 THEN '$200-499'
-        WHEN asking_price < 1000 THEN '$500-999'
-        ELSE '$1000+'
-      END as bucket,
-      COUNT(*) as count
-    FROM listings
-    WHERE asking_price IS NOT NULL AND user_id = ?
-    GROUP BY bucket
-    ORDER BY MIN(asking_price)
-  `).all(userId) as BucketRow[];
+    pool.query(`
+      SELECT
+        CASE
+          WHEN asking_price < 50 THEN '< $50'
+          WHEN asking_price < 100 THEN '$50-99'
+          WHEN asking_price < 200 THEN '$100-199'
+          WHEN asking_price < 500 THEN '$200-499'
+          WHEN asking_price < 1000 THEN '$500-999'
+          ELSE '$1000+'
+        END as bucket, COUNT(*) as count
+      FROM listings WHERE asking_price IS NOT NULL AND user_id = $1
+      GROUP BY bucket ORDER BY MIN(asking_price)
+    `, [userId]),
 
-  const dealScoreDistribution = sqlite.prepare(`
-    SELECT
-      CASE
-        WHEN deal_score < 1.0 THEN '< 1.0x'
-        WHEN deal_score < 1.5 THEN '1.0-1.4x'
-        WHEN deal_score < 2.0 THEN '1.5-1.9x'
-        WHEN deal_score < 2.5 THEN '2.0-2.4x'
-        WHEN deal_score < 3.0 THEN '2.5-2.9x'
-        ELSE '3.0x+'
-      END as bucket,
-      COUNT(*) as count
-    FROM listings
-    WHERE deal_score IS NOT NULL AND user_id = ?
-    GROUP BY bucket
-    ORDER BY MIN(deal_score)
-  `).all(userId) as BucketRow[];
+    pool.query(`
+      SELECT
+        CASE
+          WHEN deal_score < 1.0 THEN '< 1.0x'
+          WHEN deal_score < 1.5 THEN '1.0-1.4x'
+          WHEN deal_score < 2.0 THEN '1.5-1.9x'
+          WHEN deal_score < 2.5 THEN '2.0-2.4x'
+          WHEN deal_score < 3.0 THEN '2.5-2.9x'
+          ELSE '3.0x+'
+        END as bucket, COUNT(*) as count
+      FROM listings WHERE deal_score IS NOT NULL AND user_id = $1
+      GROUP BY bucket ORDER BY MIN(deal_score)
+    `, [userId]),
 
-  const statusBreakdown = sqlite.prepare(`
-    SELECT status, COUNT(*) as count
-    FROM listings
-    WHERE user_id = ?
-    GROUP BY status
-    ORDER BY count DESC
-  `).all(userId) as StatusRow[];
+    pool.query(`
+      SELECT status, COUNT(*) as count
+      FROM listings WHERE user_id = $1
+      GROUP BY status ORDER BY count DESC
+    `, [userId]),
 
-  const topFurnitureTypes = sqlite.prepare(`
-    SELECT furniture_type as type, COUNT(*) as count
-    FROM listings
-    WHERE furniture_type IS NOT NULL AND user_id = ?
-    GROUP BY furniture_type
-    ORDER BY count DESC
-    LIMIT 10
-  `).all(userId) as FurnitureTypeRow[];
+    pool.query(`
+      SELECT furniture_type as type, COUNT(*) as count
+      FROM listings WHERE furniture_type IS NOT NULL AND user_id = $1
+      GROUP BY furniture_type ORDER BY count DESC LIMIT 10
+    `, [userId]),
+  ]);
 
   return c.json({
-    summary,
-    projectSummary,
-    profitOverTime,
-    dealsByPlatform,
-    flipTimes,
-    scrapedOverTime,
-    priceDistribution,
-    dealScoreDistribution,
-    statusBreakdown,
-    topFurnitureTypes,
+    summary: parseNumbers(summaryResult.rows[0] || {}),
+    projectSummary: parseNumbers(projectSummaryResult.rows[0] || {}),
+    profitOverTime: profitResult.rows.map(parseNumbers),
+    dealsByPlatform: platformResult.rows.map(parseNumbers),
+    flipTimes: flipResult.rows.map(parseNumbers),
+    scrapedOverTime: scrapedResult.rows.map(parseNumbers),
+    priceDistribution: priceResult.rows.map(parseNumbers),
+    dealScoreDistribution: dealScoreResult.rows.map(parseNumbers),
+    statusBreakdown: statusResult.rows.map(parseNumbers),
+    topFurnitureTypes: furnitureResult.rows.map(parseNumbers),
   });
 });

@@ -21,8 +21,8 @@ export interface CleanupResult {
  */
 export async function cleanupOrphanedImages(): Promise<CleanupResult> {
   const { retentionDays } = config.images;
-  const userCutoff = sql`datetime('now', '-${sql.raw(String(retentionDays))} days')`;
-  const agentCutoff = sql`datetime('now', '-${sql.raw(String(agentConfig.agentImageRetentionDays))} days')`;
+  const userCutoff = sql`CURRENT_TIMESTAMP - INTERVAL '${sql.raw(String(retentionDays))} days'`;
+  const agentCutoff = sql`CURRENT_TIMESTAMP - INTERVAL '${sql.raw(String(agentConfig.agentImageRetentionDays))} days'`;
 
   // Find listing IDs that have an associated project — these are protected
   const projectListingIds = db
@@ -32,7 +32,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
   // Find old listings without projects that still have image files on disk
   // Agent listings (userId IS NULL) use shorter retention
   // Dismissed agent listings are cleaned immediately
-  const staleImages = db
+  const staleImages = await db
     .select({
       imageId: listingImages.id,
       listingId: listingImages.listingId,
@@ -53,10 +53,10 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
         )`,
       ),
     )
-    .all();
+;
 
   // Also clean up concept render images for dismissed or stale agent listings
-  const staleConceptPaths = db
+  const staleConceptPaths = await db
     .select({ localPath: conceptRenders.localPath })
     .from(conceptRenders)
     .innerJoin(listings, sql`${conceptRenders.listingId} = ${listings.id}`)
@@ -70,7 +70,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
         )`,
       ),
     )
-    .all();
+;
 
   for (const concept of staleConceptPaths) {
     if (concept.localPath) {
@@ -119,14 +119,14 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     }
 
     // Null out paths, mark as cleaned
-    db.update(listingImages)
+    await db.update(listingImages)
       .set({
         localPathOriginal: null,
         localPathResized: null,
         downloadStatus: 'cleaned',
       })
       .where(sql`${listingImages.id} = ${img.imageId}`)
-      .run();
+;
 
     cleanedListingIds.add(img.listingId);
   }

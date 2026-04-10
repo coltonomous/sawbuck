@@ -37,7 +37,7 @@ export async function evaluateWithSonnet(state: AgentState): Promise<Partial<Age
         userId: null, // shared agent listing
         triageSource: 'agent_sonnet',
         agentRunId: state.runId,
-      }).onConflictDoNothing().returning({ id: listings.id });
+      }).onConflictDoNothing({ target: [listings.platform, listings.externalId] }).returning({ id: listings.id });
 
       if (inserted.length === 0) {
         logger.info({ externalId: candidate.externalId }, 'Evaluate: listing already exists, skipping');

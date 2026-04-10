@@ -34,10 +34,9 @@ export async function createTestUser(role: 'user' | 'admin' = 'user'): Promise<T
 
   // If admin, promote the user
   if (role === 'admin') {
-    db.update(users)
+    await db.update(users)
       .set({ role: 'admin' })
-      .where(eq(users.id, userId))
-      .run();
+      .where(eq(users.id, userId));
   }
 
   // Sign in to get a valid session cookie

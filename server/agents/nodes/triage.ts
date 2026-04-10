@@ -64,7 +64,7 @@ const TRIAGE_BATCH_JSON_SCHEMA = {
 async function buildSystemPrompt(): Promise<string> {
   let prompt = TRIAGE_SYSTEM_PROMPT;
 
-  if (isAvailable()) {
+  if (await isAvailable()) {
     try {
       const ctx = await getProjectContext('furniture flip woodworking');
       if (ctx.chunkCount > 0) {

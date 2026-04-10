@@ -8,7 +8,7 @@ export async function getPrimaryImagePath(listingId: number): Promise<string | n
     .from(listingImages)
     .where(eq(listingImages.listingId, listingId))
     .limit(1)
-    .get();
+    .then(r => r[0]);
   return img ? (img.localPathResized || img.localPathOriginal || img.sourceUrl) : null;
 }
 
@@ -26,7 +26,7 @@ export async function getPrimaryImagePaths(listingIds: number[]): Promise<Map<nu
     .from(listingImages)
     .where(inArray(listingImages.listingId, listingIds))
     .orderBy(listingImages.listingId, listingImages.id)
-    .all();
+    ;
 
   const map = new Map<number, string>();
   for (const row of rows) {

@@ -110,7 +110,7 @@ export interface RefinishingResult {
 }
 
 export async function generateRefinishingPlan(listingId: number, projectId?: number): Promise<RefinishingResult | null> {
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
   logger.info({ listingId, title: listing.title }, 'Generating refinishing plan');

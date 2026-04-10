@@ -5,12 +5,8 @@ import { parsePlanSteps, type RefinishingProduct } from './refinishing.js';
 import { generateAllSearchUrls } from '../lib/search-urls.js';
 import logger from '../lib/logger.js';
 
-/**
- * Synchronous version — safe to call inside a better-sqlite3 transaction.
- * All DB operations here are synchronous under the hood (better-sqlite3).
- */
-export function generateMaterialsFromPlanSync(planId: number, projectId?: number): number {
-  const plan = db.select().from(refinishingPlans).where(eq(refinishingPlans.id, planId)).get();
+export async function generateMaterialsFromPlanSync(planId: number, projectId?: number): Promise<number> {
+  const [plan] = await db.select().from(refinishingPlans).where(eq(refinishingPlans.id, planId));
   if (!plan) throw new Error(`Plan ${planId} not found`);
 
   const steps = parsePlanSteps(plan.steps);
@@ -19,7 +15,6 @@ export function generateMaterialsFromPlanSync(planId: number, projectId?: number
     return 0;
   }
 
-  // Collect all products from all steps, dedup by brand+name
   const seen = new Set<string>();
   const allProducts: (RefinishingProduct & { category: string })[] = [];
 
@@ -28,18 +23,15 @@ export function generateMaterialsFromPlanSync(planId: number, projectId?: number
       const key = `${product.brand.toLowerCase()}:${product.name.toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
-
-      const category = inferCategory(product.name, step.title);
-      allProducts.push({ ...product, category });
+      allProducts.push({ ...product, category: inferCategory(product.name, step.title) });
     }
   }
 
-  // Insert materials with search URLs
   let inserted = 0;
   for (const product of allProducts) {
     const urls = generateAllSearchUrls(product.brand, product.name);
 
-    db.insert(materials).values({
+    await db.insert(materials).values({
       refinishingPlanId: planId,
       projectId: projectId ?? null,
       category: product.category,
@@ -51,7 +43,7 @@ export function generateMaterialsFromPlanSync(planId: number, projectId?: number
       amazonSearchUrl: urls.amazon,
       homeDepotSearchUrl: urls.homeDepot,
       lowesSearchUrl: urls.lowes,
-    }).run();
+    });
     inserted++;
   }
 
@@ -59,9 +51,7 @@ export function generateMaterialsFromPlanSync(planId: number, projectId?: number
   return inserted;
 }
 
-export async function generateMaterialsFromPlan(planId: number, projectId?: number): Promise<number> {
-  return generateMaterialsFromPlanSync(planId, projectId);
-}
+export { generateMaterialsFromPlanSync as generateMaterialsFromPlan };
 
 function inferCategory(productName: string, stepTitle: string): string {
   const name = productName.toLowerCase();

@@ -39,40 +39,39 @@ const dbUpdates: { imageId: number; set: any }[] = [];
 
 const mockDbState = {
   staleImages: [] as any[],
+  selectCallCount: 0,
 };
 
 vi.mock('../db/index.js', () => {
-  // Build a chainable proxy where .all() returns staleImages
-  // and .run() on update chains tracks the update
+  // Chainable mock that resolves to data when awaited
+  // Each chain method returns the builder; awaiting it resolves the Promise
   const makeSelectChain = () => {
-    const handler: ProxyHandler<object> = {
-      get(_t, prop) {
-        if (prop === 'all') return () => mockDbState.staleImages;
-        return () => new Proxy({}, handler);
-      },
+    const chain: any = {};
+    const methods = ['select', 'from', 'innerJoin', 'where', 'orderBy'];
+    for (const m of methods) {
+      chain[m] = (..._args: any[]) => chain;
+    }
+    // Track by await (then), not by select: first await = stale images, rest = []
+    chain.then = (resolve: any) => {
+      const idx = mockDbState.selectCallCount++;
+      resolve(idx === 0 ? mockDbState.staleImages : []);
     };
-    return new Proxy({}, handler);
+    chain.catch = () => chain;
+    return chain;
   };
 
   const makeUpdateChain = () => {
     let setPayload: any = null;
-    let whereImageId: number | null = null;
-    const handler: ProxyHandler<object> = {
-      get(_t, prop) {
-        if (prop === 'set') return (payload: any) => {
-          setPayload = payload;
-          return new Proxy({}, handler);
-        };
-        if (prop === 'where') return () => new Proxy({}, handler);
-        if (prop === 'run') return () => {
-          if (setPayload) {
-            dbUpdates.push({ imageId: whereImageId ?? -1, set: setPayload });
-          }
-        };
-        return () => new Proxy({}, handler);
-      },
+    const chain: any = {};
+    chain.update = () => chain;
+    chain.set = (payload: any) => { setPayload = { ...payload }; return chain; };
+    chain.where = () => chain;
+    chain.then = (resolve: any) => {
+      if (setPayload) dbUpdates.push({ imageId: -1, set: setPayload });
+      resolve(undefined);
     };
-    return new Proxy({}, handler);
+    chain.catch = () => chain;
+    return chain;
   };
 
   return {
@@ -119,6 +118,7 @@ vi.mock('../agents/config.js', () => ({
 beforeEach(async () => {
   vi.restoreAllMocks();
   mockDbState.staleImages = [];
+  mockDbState.selectCallCount = 0;
   fsOps.unlinked = [];
   fsOps.statted = [];
   dbUpdates.length = 0;

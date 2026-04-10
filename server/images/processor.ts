@@ -41,7 +41,7 @@ export async function processImage(originalPath: string, listingId: number, inde
 }
 
 export async function processListingImages(listingId: number): Promise<number> {
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
   const images = await db.select()

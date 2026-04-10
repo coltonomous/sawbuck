@@ -67,7 +67,7 @@ function getCompletedFlips(): CompletedFlip[] {
         isNotNull(projects.soldPrice),
       ),
     )
-    .all();
+    ;
 
   return rows;
 }
@@ -80,7 +80,7 @@ function getProjectMaterials(projectId: number): string[] {
     .select({ productName: materials.productName, brand: materials.brand })
     .from(materials)
     .where(eq(materials.projectId, projectId))
-    .all();
+    ;
 
   return rows.map((r) =>
     r.brand ? `${r.brand} ${r.productName}` : r.productName,
@@ -178,7 +178,7 @@ export async function tryIngestProject(projectId: number): Promise<void> {
       .from(projects)
       .innerJoin(listings, eq(projects.listingId, listings.id))
       .where(eq(projects.id, projectId))
-      .get();
+      .then(r => r[0]);
 
     if (!flip || !flip.soldPrice) return;
 

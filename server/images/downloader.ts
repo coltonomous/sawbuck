@@ -28,7 +28,7 @@ function validateImageUrl(url: string): boolean {
 }
 
 export async function downloadListingImages(listingId: number): Promise<number> {
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
   const images = await db.select()

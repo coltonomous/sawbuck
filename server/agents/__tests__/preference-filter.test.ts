@@ -153,7 +153,7 @@ async function queryAgentListings(
   return db.select({ id: listings.id, title: listings.title, externalId: listings.externalId })
     .from(listings)
     .where(and(...conditions))
-    .all();
+    ;
 }
 
 describe('User Preference Filtering', () => {
@@ -256,7 +256,7 @@ describe('User Preference Filtering', () => {
     const results = await db.select({ id: listings.id, title: listings.title, userId: listings.userId })
       .from(listings)
       .where(and(...conditions))
-      .all();
+      ;
 
     const titles = results.map((r) => r.title);
     // User's $999 listing should still be shown

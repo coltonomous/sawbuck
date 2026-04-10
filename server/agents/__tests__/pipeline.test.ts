@@ -161,7 +161,7 @@ describe('Agent Pipeline Integration', () => {
 
       // Verify DB insertion
       const dbListing = await db.select().from(listings)
-        .where(eq(listings.externalId, candidate.externalId)).get();
+        .where(eq(listings.externalId, candidate.externalId)).then(r => r[0]);
 
       expect(dbListing).toBeDefined();
       expect(dbListing!.userId).toBeNull();
@@ -196,7 +196,7 @@ describe('Agent Pipeline Integration', () => {
 
       // Verify DB record
       const dbRun = await db.select().from(agentRuns)
-        .where(eq(agentRuns.runId, runId)).get();
+        .where(eq(agentRuns.runId, runId)).then(r => r[0]);
 
       expect(dbRun).toBeDefined();
       expect(dbRun!.status).toBe('completed');
@@ -216,7 +216,7 @@ describe('Agent Pipeline Integration', () => {
       await summarizeRun(state);
 
       const dbRun = await db.select().from(agentRuns)
-        .where(eq(agentRuns.runId, runId)).get();
+        .where(eq(agentRuns.runId, runId)).then(r => r[0]);
 
       expect(dbRun!.status).toBe('failed');
       expect(dbRun!.errorsCount).toBe(1);
