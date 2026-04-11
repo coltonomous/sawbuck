@@ -1,19 +1,24 @@
-import { craigslistIntegration } from '../../integrations/craigslist/index.js';
+import { discover } from '../../integrations/craigslist/ingest.js';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
-export async function scrapeCategory(state: AgentState): Promise<Partial<AgentState>> {
-  try {
-    const results = await craigslistIntegration.ingest();
+// Vary the CL subcategory on each attempt
+const CATEGORIES = ['fua', 'fuo', 'fud']; // all furniture, by owner, by dealer
 
-    logger.info({ candidates: results.length }, 'Agent scrape node complete');
+export async function scrapeCategory(state: AgentState): Promise<Partial<AgentState>> {
+  const category = CATEGORIES[state.scrapeAttempts % CATEGORIES.length];
+
+  try {
+    const results = await discover(category);
+
+    logger.info({ candidates: results.length, category, attempt: state.scrapeAttempts + 1 }, 'Agent scrape node complete');
 
     return {
       scrapedCandidates: results,
       scrapeAttempts: state.scrapeAttempts + 1,
     };
   } catch (err) {
-    logger.error({ error: String(err) }, 'Agent scrape node failed');
+    logger.error({ error: String(err), category }, 'Agent scrape node failed');
     return {
       scrapedCandidates: [],
       scrapeAttempts: state.scrapeAttempts + 1,

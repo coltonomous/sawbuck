@@ -11,8 +11,15 @@ export const config = {
     baseDelayMs: 1000,
     maxAnalysisImages: 3,
     maxTokens: 1500,
-    // Default model for vision analysis and general use
-    // Override via AGENT_EVAL_MODEL env var in agent config
-    model: process.env.AGENT_EVAL_MODEL || 'qwen.qwen3-vl-235b-a22b',
+    // Vision model — reads from agent config (DB-backed, env fallback)
+    get model(): string {
+      // Lazy import to avoid circular dependency at startup
+      try {
+        const { getAgentConfig } = require('../agents/config.js');
+        return getAgentConfig().evaluationModel;
+      } catch {
+        return process.env.AGENT_EVAL_MODEL || 'qwen.qwen3-vl-235b-a22b';
+      }
+    },
   },
 };

@@ -7,7 +7,8 @@ import { AntiBlockingController } from '../../agents/anti-blocking.js';
 import type { ScrapedCandidate } from '../common/types.js';
 import logger from '../../lib/logger.js';
 
-const RSS_URL = (city: string) => `https://${city}.craigslist.org/search/fua?format=rss`;
+// CL furniture subcategories: fua = all, fuo = by owner, fud = by dealer
+const RSS_URL = (city: string, category = 'fua') => `https://${city}.craigslist.org/search/${category}?format=rss`;
 
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
@@ -87,9 +88,9 @@ function extractId(url: string): string {
  * Returns lightweight candidates (title, price, location, RSS description snippet).
  * No detail page fetches — just RSS data for triage.
  */
-export async function discover(): Promise<ScrapedCandidate[]> {
+export async function discover(category = 'fua'): Promise<ScrapedCandidate[]> {
   const city = agentConfig.targetCity;
-  const rssUrl = RSS_URL(city);
+  const rssUrl = RSS_URL(city, category);
 
   logger.info({ rssUrl }, 'CL integration: fetching RSS feed');
 

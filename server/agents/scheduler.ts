@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { agentPipeline } from './graph.js';
-import { agentConfig } from './config.js';
+import { agentConfig, refreshAgentConfig } from './config.js';
 import logger from '../lib/logger.js';
 
 let running = false;
@@ -13,6 +13,10 @@ async function runOnce(): Promise<void> {
   }
 
   running = true;
+
+  // Refresh config from DB before each run (picks up admin UI changes)
+  await refreshAgentConfig();
+
   const runId = crypto.randomUUID();
   const startedAt = new Date().toISOString();
 
@@ -40,13 +44,13 @@ export function startScheduler(): void {
     return;
   }
 
-  logger.info({ intervalMs: agentConfig.runIntervalMs }, 'Agent scheduler: starting');
+  const intervalMs = agentConfig.runIntervalMs;
+  logger.info({ intervalMs }, 'Agent scheduler: starting');
 
-  // Run immediately on start, then at interval
   runOnce();
 
-  timer = setInterval(runOnce, agentConfig.runIntervalMs);
-  timer.unref(); // allow graceful shutdown
+  timer = setInterval(runOnce, intervalMs);
+  timer.unref();
 }
 
 export function stopScheduler(): void {

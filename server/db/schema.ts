@@ -333,6 +333,16 @@ export const conceptRenders = pgTable('concept_renders', {
   index('idx_concept_renders_listing_id').on(table.listingId),
 ]);
 
+// ============================================================
+// App Settings (admin-editable, runtime config)
+// ============================================================
+
+export const appSettings = pgTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
 export const projectPhotos = pgTable('project_photos', {
   id: serial('id').primaryKey(),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),

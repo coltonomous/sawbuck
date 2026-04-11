@@ -1,50 +1,106 @@
-function envInt(key: string, fallback: number): number {
-  const val = process.env[key];
+import { db } from '../db/index.js';
+import { appSettings } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
+import logger from '../lib/logger.js';
+
+// In-memory cache of DB settings, refreshed periodically
+let settingsCache: Map<string, string> = new Map();
+let lastFetch = 0;
+const CACHE_TTL_MS = 60_000; // re-read DB every 60s
+
+async function refreshCache(): Promise<void> {
+  try {
+    const rows = await db.select().from(appSettings);
+    settingsCache = new Map(rows.map((r) => [r.key, r.value]));
+    lastFetch = Date.now();
+  } catch {
+    // DB not ready yet (startup) — use env/defaults
+  }
+}
+
+function cached(key: string): string | undefined {
+  return settingsCache.get(key);
+}
+
+// Resolution order: DB setting → env var → hardcoded default
+function resolve(dbKey: string, envKey: string, fallback: string): string {
+  return cached(dbKey) || process.env[envKey] || fallback;
+}
+
+function resolveInt(dbKey: string, envKey: string, fallback: number): number {
+  const val = cached(dbKey) || process.env[envKey];
   return val ? parseInt(val, 10) : fallback;
 }
 
-function envFloat(key: string, fallback: number): number {
-  const val = process.env[key];
+function resolveFloat(dbKey: string, envKey: string, fallback: number): number {
+  const val = cached(dbKey) || process.env[envKey];
   return val ? parseFloat(val) : fallback;
 }
 
-function envStr(key: string, fallback: string): string {
-  return process.env[key] || fallback;
+/** Refresh the settings cache. Called by scheduler before each run. */
+export async function refreshAgentConfig(): Promise<void> {
+  await refreshCache();
 }
 
-export const agentConfig = {
-  // Per-run caps
-  maxHaikuTriages: envInt('AGENT_MAX_TRIAGES', 50),
-  maxSonnetEvals: envInt('AGENT_MAX_EVALS', 10),
-  maxListingsRendered: envInt('AGENT_MAX_RENDERS', 5),
-  conceptsPerListing: envInt('AGENT_CONCEPTS_PER_LISTING', 1),
+/** Get current agent config (reads from cache, fast). */
+export function getAgentConfig() {
+  return {
+    // Per-run caps
+    maxHaikuTriages: resolveInt('agent.max_triages', 'AGENT_MAX_TRIAGES', 50),
+    maxSonnetEvals: resolveInt('agent.max_evals', 'AGENT_MAX_EVALS', 10),
+    maxListingsRendered: resolveInt('agent.max_renders', 'AGENT_MAX_RENDERS', 5),
+    conceptsPerListing: resolveInt('agent.concepts_per_listing', 'AGENT_CONCEPTS_PER_LISTING', 1),
 
-  // Quality gates
-  triageConfidenceThreshold: envFloat('AGENT_TRIAGE_THRESHOLD', 0.6),
-  dealScoreThreshold: envFloat('AGENT_DEAL_SCORE_THRESHOLD', 1.3),
-  flipRecommendationThreshold: ['strong_buy', 'buy'] as const,
+    // Quality gates
+    triageConfidenceThreshold: resolveFloat('agent.triage_threshold', 'AGENT_TRIAGE_THRESHOLD', 0.6),
+    dealScoreThreshold: resolveFloat('agent.deal_score_threshold', 'AGENT_DEAL_SCORE_THRESHOLD', 1.3),
+    flipRecommendationThreshold: ['strong_buy', 'buy'] as const,
 
-  // Anti-blocking (for detail page fetches)
-  minDelayBetweenRequestsMs: envInt('AGENT_MIN_DELAY_MS', 1500),
-  maxDelayBetweenRequestsMs: envInt('AGENT_MAX_DELAY_MS', 4000),
-  backoffBaseMs: 30_000,
-  backoffMaxMs: 600_000,
-  dailyRequestCap: envInt('AGENT_DAILY_REQUEST_CAP', 200),
+    // Anti-blocking
+    minDelayBetweenRequestsMs: resolveInt('agent.min_delay_ms', 'AGENT_MIN_DELAY_MS', 1500),
+    maxDelayBetweenRequestsMs: resolveInt('agent.max_delay_ms', 'AGENT_MAX_DELAY_MS', 4000),
+    backoffBaseMs: 30_000,
+    backoffMaxMs: 600_000,
+    dailyRequestCap: resolveInt('agent.daily_request_cap', 'AGENT_DAILY_REQUEST_CAP', 200),
 
-  // Scheduling
-  runIntervalMs: envInt('AGENT_RUN_INTERVAL_MS', 4 * 60 * 60 * 1000), // 4 hours = 6 runs/day
+    // Scheduling
+    runIntervalMs: resolveInt('agent.run_interval_ms', 'AGENT_RUN_INTERVAL_MS', 4 * 60 * 60 * 1000),
 
-  // Target
-  targetCity: envStr('AGENT_TARGET_CITY', 'seattle'),
+    // Target
+    targetCity: resolve('agent.target_city', 'AGENT_TARGET_CITY', 'seattle'),
 
-  // Models — defaults to Qwen on Bedrock
-  triageModel: envStr('AGENT_TRIAGE_MODEL', 'qwen.qwen3-32b'),
-  evaluationModel: envStr('AGENT_EVAL_MODEL', 'qwen.qwen3-vl-235b-a22b'),
+    // Models
+    triageModel: resolve('agent.triage_model', 'AGENT_TRIAGE_MODEL', 'qwen.qwen3-32b'),
+    evaluationModel: resolve('agent.eval_model', 'AGENT_EVAL_MODEL', 'qwen.qwen3-vl-235b-a22b'),
 
-  // fal.ai
-  falModel: envStr('AGENT_FAL_MODEL', 'fal-ai/flux/dev'),
-  conceptRenderSize: envInt('AGENT_CONCEPT_SIZE', 768),
+    // fal.ai
+    falModel: resolve('agent.fal_model', 'AGENT_FAL_MODEL', 'fal-ai/flux/dev'),
+    conceptRenderSize: resolveInt('agent.concept_size', 'AGENT_CONCEPT_SIZE', 768),
 
-  // Image retention
-  agentImageRetentionDays: envInt('AGENT_IMAGE_RETENTION_DAYS', 14),
-};
+    // Image retention
+    agentImageRetentionDays: resolveInt('agent.image_retention_days', 'AGENT_IMAGE_RETENTION_DAYS', 14),
+  };
+}
+
+// Live config — reads from DB cache on every property access
+// so changes take effect without restart
+export const agentConfig = new Proxy({} as ReturnType<typeof getAgentConfig>, {
+  get: (_target, prop) => (getAgentConfig() as any)[prop],
+});
+
+/** Update a setting in the DB (called from admin API). */
+export async function updateSetting(key: string, value: string): Promise<void> {
+  await db.insert(appSettings).values({ key, value, updatedAt: new Date().toISOString() })
+    .onConflictDoNothing({ target: appSettings.key })
+    .then(() =>
+      db.update(appSettings).set({ value, updatedAt: new Date().toISOString() }).where(eq(appSettings.key, key)),
+    );
+  // Refresh cache immediately
+  await refreshCache();
+}
+
+/** Get all settings from DB for admin display. */
+export async function getAllSettings(): Promise<Record<string, string>> {
+  const rows = await db.select().from(appSettings);
+  return Object.fromEntries(rows.map((r) => [r.key, r.value]));
+}

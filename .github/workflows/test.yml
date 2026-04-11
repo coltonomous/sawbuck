@@ -10,6 +10,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: sawbuck_test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/sawbuck_test
+
     steps:
       - uses: actions/checkout@v5
 
@@ -20,11 +37,11 @@ jobs:
 
       - run: npm ci
 
-      - name: Create data directory for SQLite
-        run: mkdir -p data
-
       - name: Push schema to test DB
-        run: npx drizzle-kit push
+        run: npx drizzle-kit push --force
+
+      - name: Enable pgvector
+        run: PGPASSWORD=test psql -h localhost -U postgres -d sawbuck_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
 
       - name: Build client
         run: cd client && npx vite build

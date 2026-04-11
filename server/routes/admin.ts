@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { db, pool } from '../db/index.js';
 import { users, listings } from '../db/schema.js';
 import { eq, count } from 'drizzle-orm';
+import { getAllSettings, updateSetting, getAgentConfig } from '../agents/config.js';
 
 const adminRouter = new Hono();
 
@@ -77,6 +78,25 @@ adminRouter.delete('/users/:id', async (c) => {
   }
 
   return c.json({ ok: true });
+});
+
+// GET /settings — get all agent config (current resolved values + DB overrides)
+adminRouter.get('/settings', async (c) => {
+  const dbSettings = await getAllSettings();
+  const resolved = getAgentConfig();
+  return c.json({ resolved, overrides: dbSettings });
+});
+
+// PATCH /settings — update agent config values
+adminRouter.patch('/settings', async (c) => {
+  const updates = await c.req.json<Record<string, string>>();
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (typeof value !== 'string' && typeof value !== 'number') continue;
+    await updateSetting(key, String(value));
+  }
+
+  return c.json({ ok: true, resolved: getAgentConfig() });
 });
 
 export { adminRouter };

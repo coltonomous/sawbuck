@@ -8,6 +8,24 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: sawbuck_test
+          POSTGRES_PASSWORD: test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    env:
+      DATABASE_URL: postgresql://postgres:test@localhost:5432/sawbuck_test
+
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -15,10 +33,10 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Create data directory for SQLite
-        run: mkdir -p data
       - name: Push schema to test DB
-        run: npx drizzle-kit push
+        run: npx drizzle-kit push --force
+      - name: Enable pgvector
+        run: PGPASSWORD=test psql -h localhost -U postgres -d sawbuck_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
       - name: Build client
         run: cd client && npx vite build
       - run: npx vitest run
@@ -33,7 +51,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Get runner IP
         id: ip
@@ -50,7 +68,7 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
           chmod 400 key.pem
 
-          rsync -avz --exclude node_modules --exclude .git --exclude .env \
+          rsync -avz --exclude node_modules --exclude .git --exclude .env --exclude data \
             -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
             ./ ec2-user@${{ secrets.EC2_HOST }}:/opt/sawbuck/
 
@@ -59,23 +77,24 @@ jobs:
 
           cd /opt/sawbuck
 
-          # Ensure env vars are in .env (anchored grep to avoid substring matches)
+          # Ensure required env vars are in .env (won't overwrite existing values)
           grep -q '^BETTER_AUTH_SECRET=' .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
           grep -q '^BETTER_AUTH_URL=' .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
+          grep -q '^DATABASE_URL=' .env 2>/dev/null || echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' >> .env
+          grep -q '^AWS_REGION=' .env 2>/dev/null || echo 'AWS_REGION=${{ secrets.AWS_REGION }}' >> .env
           grep -q '^ADMIN_EMAIL=' .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
-          grep -q '^ANTHROPIC_API_KEY=' .env 2>/dev/null || echo 'ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}' >> .env
-          docker compose down --remove-orphans --volumes 2>/dev/null || true
+
+          docker compose down --remove-orphans 2>/dev/null || true
           docker rm -f sawbuck-app-1 2>/dev/null || true
 
-          # Clean up before build to ensure enough disk space
           docker system prune -af
 
           docker compose build
           docker compose up -d
 
-          # Wait for health check (first boot: migrations + admin seed + server start)
+          # Wait for health check
           echo "Waiting for health check..."
           for i in \$(seq 1 45); do
             if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
@@ -89,11 +108,10 @@ jobs:
             echo "Health check failed" && docker compose logs --tail 50 && exit 1
           fi
 
-          # Re-ingest RAG knowledge base (products + guides from sources.json)
+          # Ingest RAG knowledge base
           echo "Ingesting RAG knowledge base..."
           docker compose exec -T app npx tsx scripts/ingest.ts --only products || echo "Product ingestion failed (non-fatal)"
           docker compose exec -T app npx tsx scripts/ingest.ts --only guides || echo "Guide ingestion failed (non-fatal)"
-          docker compose exec -T app npx tsx scripts/ingest.ts --stats || echo "Stats check failed (non-fatal)"
 
           echo "Deploy complete"
           EOF
