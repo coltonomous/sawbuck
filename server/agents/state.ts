@@ -83,6 +83,7 @@ export interface AgentState {
   sonnetEvaluated: number;
   conceptsRendered: number;
   scrapeAttempts: number;
+  seenExternalIds: string[]; // track IDs across retries to avoid re-triaging
   errors: AgentError[];
   summary: RunSummary | null;
 }
@@ -137,6 +138,10 @@ export const AgentAnnotation = Annotation.Root({
   scrapeAttempts: Annotation<number>({
     reducer: (_prev, next) => next,
     default: () => 0,
+  }),
+  seenExternalIds: Annotation<string[]>({
+    reducer: (prev, next) => [...new Set([...prev, ...next])],
+    default: () => [],
   }),
 
   errors: Annotation<AgentError[]>({

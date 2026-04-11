@@ -63,6 +63,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     conceptsRendered: 0,
     errors: [],
     scrapeAttempts: 1,
+    seenExternalIds: [],
     summary: null,
     ...overrides,
   };

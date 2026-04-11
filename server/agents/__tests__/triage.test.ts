@@ -45,6 +45,7 @@ function makeState(candidates: ScrapedCandidate[], overrides: Partial<AgentState
     sonnetEvaluated: 0,
     conceptsRendered: 0,
     scrapeAttempts: 1,
+    seenExternalIds: [],
     errors: [],
     summary: null,
     ...overrides,

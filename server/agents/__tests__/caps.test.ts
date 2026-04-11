@@ -40,6 +40,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     sonnetEvaluated: 0,
     conceptsRendered: 0,
     scrapeAttempts: 0,
+    seenExternalIds: [],
     errors: [],
     summary: null,
     ...overrides,

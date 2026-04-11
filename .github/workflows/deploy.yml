@@ -85,6 +85,7 @@ jobs:
           grep -q '^ADMIN_EMAIL=' .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
+          grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
 
           docker compose down --remove-orphans 2>/dev/null || true
           docker rm -f sawbuck-app-1 2>/dev/null || true
