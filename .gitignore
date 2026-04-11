@@ -1,15 +1,11 @@
 node_modules/
 dist/
 client/dist/
-data/sawbuck.db
-data/sawbuck.db-wal
-data/sawbuck.db-shm
 .DS_Store
 *.tsbuildinfo
-data/images/originals/
-data/images/resized/
-data/*.log
-data/fb-cookies.json
 .env
 .vite/
 .claude/settings.local.json
+
+# Data directory (volume-mounted, not in repo)
+data/
