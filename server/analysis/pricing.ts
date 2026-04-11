@@ -33,6 +33,25 @@ export function median(values: number[]): number {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/**
+ * Remove outliers using IQR (interquartile range) method.
+ * Values below Q1 - 1.5*IQR or above Q3 + 1.5*IQR are excluded.
+ * Returns the filtered array. If fewer than 4 values, returns as-is
+ * (not enough data for meaningful IQR).
+ */
+export function removeOutliers(values: number[]): number[] {
+  if (values.length < 4) return values;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  const lowerBound = q1 - 1.5 * iqr;
+  const upperBound = q3 + 1.5 * iqr;
+
+  return sorted.filter((v) => v >= lowerBound && v <= upperBound);
+}
+
 export function conditionMultiplier(conditionScore: number | null): number {
   const score = conditionScore ?? 5;
   if (score >= CONDITION_BASELINE) return Math.min(CONDITION_MAX_MULTIPLIER, 1.0 + (score - CONDITION_BASELINE) * CONDITION_ABOVE_FACTOR);
@@ -63,9 +82,19 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
     return null;
   }
 
-  const activePrices = comps.map(c => c.soldPrice);
+  const rawPrices = comps.map(c => c.soldPrice);
+  const activePrices = removeOutliers(rawPrices);
 
-  // All comps are active listings (Browse API) — apply 15% discount (asking > sold)
+  if (activePrices.length === 0) {
+    logger.info({ listingId, rawCount: rawPrices.length }, 'All comparables filtered as outliers');
+    return null;
+  }
+
+  if (activePrices.length < rawPrices.length) {
+    logger.info({ listingId, raw: rawPrices.length, filtered: activePrices.length }, 'Outlier comps removed from pricing');
+  }
+
+  // Active listings (Browse API) — apply 15% discount (asking > sold)
   const medianPrice = median(activePrices) * ACTIVE_DISCOUNT;
   const cm = conditionMultiplier(listing.conditionScore);
   const estimatedValue = Math.round(medianPrice * cm * 100) / 100;
