@@ -12,7 +12,7 @@ RUN cd client && npx vite build
 # Stage 2: Production server
 FROM node:22-slim AS production
 
-# Install build tools for native modules (sharp, better-sqlite3)
+# Install build tools for native modules (sharp)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
