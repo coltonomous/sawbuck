@@ -29,7 +29,6 @@ export interface AdminUser {
   email: string;
   image: string | null;
   role: 'user' | 'admin';
-  usageToday: number;
   listingCount: number;
   createdAt: string;
 }
@@ -392,7 +391,7 @@ export const api = {
 
   // Comparables
   searchComparables: (listingId: number) =>
-    request<{ comps: Comparable[]; blocked: boolean }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
+    request<{ comps: Comparable[] }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
   getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
 
   deleteListing: (id: number) =>

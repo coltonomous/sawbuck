@@ -10,7 +10,6 @@ import logger from '../lib/logger.js';
 const REFERERS: Record<string, string> = {
   craigslist: 'https://craigslist.org/',
   offerup: 'https://offerup.com/',
-  mercari: 'https://www.mercari.com/',
 };
 
 function getExtFromUrl(url: string): string {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { median, conditionMultiplier, blendedMedian } from './pricing.js';
+import { median, conditionMultiplier } from './pricing.js';
 
 describe('median', () => {
   it('returns 0 for empty array', () => {
@@ -62,37 +62,5 @@ describe('conditionMultiplier', () => {
 
   it('handles fractional scores', () => {
     expect(conditionMultiplier(8.5)).toBe(1.025);
-  });
-});
-
-describe('blendedMedian', () => {
-  it('uses sold median when >= 3 sold comps', () => {
-    const sold = [100, 120, 140];
-    const active = [200, 220];
-    expect(blendedMedian(sold, active)).toBe(120); // median of sold only
-  });
-
-  it('blends 70/30 when < 3 sold but both available', () => {
-    const sold = [100, 120]; // median = 110
-    const active = [200, 220]; // median = 210
-    const expected = 110 * 0.7 + 210 * 0.3; // 77 + 63 = 140
-    expect(blendedMedian(sold, active)).toBe(expected);
-  });
-
-  it('discounts active median 15% when only active available', () => {
-    const sold: number[] = [];
-    const active = [200, 220]; // median = 210
-    expect(blendedMedian(sold, active)).toBe(210 * 0.85);
-  });
-
-  it('returns 0 when both empty', () => {
-    expect(blendedMedian([], [])).toBe(0);
-  });
-
-  it('uses sold median when only sold available (< 3)', () => {
-    const sold = [100]; // median = 100
-    const active: number[] = [];
-    // Falls through to final return: soldMedian
-    expect(blendedMedian(sold, active)).toBe(100);
   });
 });

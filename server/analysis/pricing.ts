@@ -4,11 +4,8 @@ import { eq } from 'drizzle-orm';
 import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import logger from '../lib/logger.js';
 
-// Pricing algorithm tuning — these are domain constants, not runtime config
-const SOLD_WEIGHT = 0.7;
-const ACTIVE_WEIGHT = 0.3;
-const ACTIVE_DISCOUNT = 0.85; // active listings ask more than sold prices
-const MIN_SOLD_FOR_SOLD_ONLY = 3;
+// Pricing algorithm tuning
+const ACTIVE_DISCOUNT = 0.85; // active listings ask more than actual sale prices
 const CONDITION_BASELINE = 8;
 const CONDITION_ABOVE_FACTOR = 0.05;
 const CONDITION_BELOW_FACTOR = 0.1;
@@ -42,31 +39,6 @@ export function conditionMultiplier(conditionScore: number | null): number {
   return Math.max(CONDITION_MIN_MULTIPLIER, 1.0 - (CONDITION_BASELINE - score) * CONDITION_BELOW_FACTOR);
 }
 
-/**
- * Calculate a blended median price from sold and active comps.
- * - Sold-only (>= 3 sold): use sold median
- * - Both available: 70% sold median + 30% active median
- * - Active-only: active median discounted 15% (asking > actual)
- */
-export function blendedMedian(soldPrices: number[], activePrices: number[]): number {
-  const soldMedian = median(soldPrices);
-  const activeMedian = median(activePrices);
-
-  if (soldPrices.length >= MIN_SOLD_FOR_SOLD_ONLY) {
-    return soldMedian;
-  }
-
-  if (soldPrices.length > 0 && activePrices.length > 0) {
-    return soldMedian * SOLD_WEIGHT + activeMedian * ACTIVE_WEIGHT;
-  }
-
-  if (activePrices.length > 0) {
-    return activeMedian * ACTIVE_DISCOUNT;
-  }
-
-  return soldMedian; // May be 0 if both empty
-}
-
 export async function calculatePricing(listingId: number): Promise<PricingResult | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) return null;
@@ -91,10 +63,10 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
     return null;
   }
 
-  const soldPrices = comps.filter(c => c.source === 'ebay_sold' || c.source === 'ebay').map(c => c.soldPrice);
-  const activePrices = comps.filter(c => c.source === 'ebay_active').map(c => c.soldPrice);
+  const activePrices = comps.map(c => c.soldPrice);
 
-  const medianPrice = blendedMedian(soldPrices, activePrices);
+  // All comps are active listings (Browse API) — apply 15% discount (asking > sold)
+  const medianPrice = median(activePrices) * ACTIVE_DISCOUNT;
   const cm = conditionMultiplier(listing.conditionScore);
   const estimatedValue = Math.round(medianPrice * cm * 100) / 100;
 
@@ -121,7 +93,7 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
     comparableCount: comps.length,
     medianCompPrice: medianPrice,
     conditionMultiplier: cm,
-    soldCount: soldPrices.length,
+    soldCount: 0,
     activeCount: activePrices.length,
   };
 }

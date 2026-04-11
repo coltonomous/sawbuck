@@ -263,7 +263,6 @@ export default function Settings() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-xs text-gray-400">{u.listingCount} listings</span>
-                    <span className="text-xs text-gray-400">{u.usageToday} calls today</span>
                     {u.id === session?.user?.id ? (
                       <span className="text-xs text-amber-600 font-medium px-2 py-1">Admin</span>
                     ) : (

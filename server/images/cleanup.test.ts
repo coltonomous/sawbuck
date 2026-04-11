@@ -213,7 +213,7 @@ describe('cleanupOrphanedImages', () => {
       {
         imageId: 3,
         listingId: 300,
-        localPathOriginal: 'originals/mercari/300/0.jpg',
+        localPathOriginal: 'originals/craigslist/300/0.jpg',
         localPathResized: null,
         fileSizeBytes: null,
       },
@@ -230,16 +230,16 @@ describe('cleanupOrphanedImages', () => {
         imageId: 3,
         listingId: 300,
         localPathOriginal: null,
-        localPathResized: 'resized/mercari/300/0.webp',
+        localPathResized: 'resized/craigslist/300/0.webp',
         fileSizeBytes: 30000,
       },
     ];
 
     const result = await cleanupOrphanedImages();
     expect(result.filesDeleted).toBe(1);
-    expect(fsOps.unlinked).toEqual(['/app/data/images/resized/mercari/300/0.webp']);
+    expect(fsOps.unlinked).toEqual(['/app/data/images/resized/craigslist/300/0.webp']);
     // Original path was null — statSync should only be called for the resized file
-    expect(fsOps.statted).toEqual(['/app/data/images/resized/mercari/300/0.webp']);
+    expect(fsOps.statted).toEqual(['/app/data/images/resized/craigslist/300/0.webp']);
   });
 
   it('only deletes original file when resized path is null', async () => {
@@ -247,7 +247,7 @@ describe('cleanupOrphanedImages', () => {
       {
         imageId: 4,
         listingId: 400,
-        localPathOriginal: 'originals/facebook/400/0.jpg',
+        localPathOriginal: 'originals/craigslist/400/0.jpg',
         localPathResized: null,
         fileSizeBytes: 40000,
       },
@@ -255,7 +255,7 @@ describe('cleanupOrphanedImages', () => {
 
     const result = await cleanupOrphanedImages();
     expect(result.filesDeleted).toBe(1);
-    expect(fsOps.unlinked).toEqual(['/app/data/images/originals/facebook/400/0.jpg']);
+    expect(fsOps.unlinked).toEqual(['/app/data/images/originals/craigslist/400/0.jpg']);
   });
 
   it('counts distinct listings across multiple images', async () => {
