@@ -80,7 +80,6 @@ jobs:
           # Ensure required env vars are in .env (won't overwrite existing values)
           grep -q '^BETTER_AUTH_SECRET=' .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
           grep -q '^BETTER_AUTH_URL=' .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
-          grep -q '^DATABASE_URL=' .env 2>/dev/null || echo 'DATABASE_URL=${{ secrets.DATABASE_URL }}' >> .env
           grep -q '^AWS_REGION=' .env 2>/dev/null || echo 'AWS_REGION=${{ secrets.AWS_REGION }}' >> .env
           grep -q '^ADMIN_EMAIL=' .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
