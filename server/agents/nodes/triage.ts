@@ -15,9 +15,9 @@ You are looking for:
 
 Items that are good candidates: dressers, desks, tables, chairs, bookshelves, cabinets, credenzas, hutches, nightstands, benches, bed frames (wood), vanities, sideboards.
 
-Reject: particle board, IKEA flatpack, laminate, MDF-only construction, upholstered-only items (couches/sofas unless they have a wood frame worth salvaging), broken beyond reasonable repair, glass/metal-only furniture, appliances, non-furniture items.
+Reject: particle board, IKEA flatpack, laminate, MDF-only construction, upholstered-only items (couches/sofas unless they have a wood frame worth salvaging), broken beyond reasonable repair, glass/metal-only furniture, lamps/lighting, mirrors without wood frames, appliances, electronics, non-furniture items, crystal, brass-only, marble-only, or any item where wood is not the primary material.
 
-Be generous at this stage — if there is a reasonable chance the item is wood furniture with flip potential, pass it through. The next stage does detailed analysis with photos.
+When in doubt about material, look at the title and description carefully. "Metal desk", "glass table", "crystal lamp" = reject. Only pass items where wood is clearly the primary structural material.
 
 You will receive a batch of listings. Assess each one independently.`;
 

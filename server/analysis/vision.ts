@@ -53,7 +53,7 @@ Your job is to analyze photos of furniture listings and give the unfiltered trut
 
 Grade condition like a strict teacher: 7+ means genuinely good, not "good enough." A 5 means real problems. Don't hand out 8s and 9s to be encouraging.
 
-Use the submit_analysis tool to return your analysis.`;
+CRITICAL: Your flip_recommendation MUST be consistent with your refinishing_profit_verdict. If your verdict says "pass", "not worth it", "don't bother", or the profit is negative/negligible, the recommendation MUST be "pass". Do not soften a clear pass into "maybe". Reserve "maybe" for genuinely borderline cases where the numbers could work under favorable conditions.`;
 
 const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. Return a JSON object with these fields:
 
@@ -67,7 +67,7 @@ const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. R
   "notable_features": ["array of noteworthy features: dovetail joints, original hardware, unique design, solid wood construction, etc."],
   "damage_items": ["array of specific damage or wear: water ring on top, scratch on left side, missing drawer pull, etc."],
   "refinishing_potential": "high/medium/low — how much value could refinishing add",
-  "flip_recommendation": "strong_buy/buy/maybe/pass — overall recommendation for buying to flip",
+  "flip_recommendation": "strong_buy/buy/maybe/pass — MUST match your profit verdict. If the verdict says pass or the profit is negligible, this MUST be 'pass'. Only use 'maybe' for genuinely borderline cases.",
   "refinishing_profit_verdict": "1-3 sentence brutal verdict: will buying this piece, refinishing it, and reselling it actually turn a profit? Consider BOTH full refinishing AND simple restoration (cleaning, minor touch-ups, hardware swap, light sanding) — if a quick restore gets 80% of the value for 20% of the effort, recommend that over a full refinish. Factor in realistic material costs ($30-150 for refinish, $10-30 for restore), time investment (hobbyist rate ~$25/hr), and what pieces of this type/style actually sell for in each condition. If the margins are thin or negative, say so plainly. No sugarcoating."
 }`;
 
