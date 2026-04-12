@@ -90,8 +90,9 @@ jobs:
 
           docker compose down --remove-orphans 2>/dev/null || true
 
-          # Clean up old images only — don't nuke build cache or volumes
-          docker image prune -f
+          # Reclaim disk: remove all unused images and build cache (keeps volumes)
+          docker image prune -af
+          docker builder prune -af 2>/dev/null || true
 
           docker compose build
           docker compose up -d
