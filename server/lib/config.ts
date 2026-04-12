@@ -10,7 +10,7 @@ export const config = {
     maxRetries: 3,
     baseDelayMs: 1000,
     maxAnalysisImages: 3,
-    maxTokens: 1500,
+    maxTokens: 4000,
     // Default model — reads from agent config (DB-backed, env fallback)
     get model(): string {
       try {

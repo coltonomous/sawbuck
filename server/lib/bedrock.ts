@@ -37,6 +37,50 @@ export interface ImageInput {
 }
 
 /**
+ * Extract JSON from model text output, handling common LLM response patterns:
+ * - Qwen3 thinking tags: <think>...</think>{json}
+ * - Markdown code fences: ```json\n{...}\n```
+ * - Leading/trailing prose: "Here is the JSON:\n{...}\nLet me know..."
+ * - Clean JSON (ideal case)
+ */
+export function extractJson(raw: string): string {
+  let text = raw.trim();
+
+  // Strip Qwen3 thinking tags
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+
+  // Try markdown code fence
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) return fenceMatch[1].trim();
+
+  // Try to find a JSON object or array by matching balanced braces/brackets
+  const jsonStart = text.search(/[{\[]/);
+  if (jsonStart === -1) return text;
+
+  const opener = text[jsonStart];
+  const closer = opener === '{' ? '}' : ']';
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = jsonStart; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === opener) depth++;
+    else if (ch === closer) {
+      depth--;
+      if (depth === 0) return text.slice(jsonStart, i + 1);
+    }
+  }
+
+  // Couldn't find balanced braces — return from first brace to end (may be truncated)
+  return text.slice(jsonStart);
+}
+
+/**
  * Call Bedrock Converse API with optional images and return plain text.
  */
 export async function analyzeWithVision(
@@ -77,10 +121,9 @@ export async function analyzeWithVision(
 /**
  * Call Bedrock Converse API and extract structured JSON output.
  *
- * Qwen models on Bedrock don't support server-side tool use, so we
- * prompt the model to return JSON and parse it from the text response.
  * The JSON schema is included in the prompt for guidance, and the
- * result is validated with the provided zod schema.
+ * result is extracted from the text response and validated with zod.
+ * Handles Qwen3 thinking tags, markdown fences, and leading prose.
  */
 export async function analyzeWithVisionStructured<T>(
   images: ImageInput[],
@@ -105,8 +148,7 @@ export async function analyzeWithVisionStructured<T>(
       });
     }
 
-    // Include the JSON schema in the prompt so the model knows the expected shape
-    const jsonPrompt = prompt + `\n\nRespond with a JSON object matching this schema:\n${JSON.stringify(jsonSchema, null, 2)}\n\nIMPORTANT: Respond with ONLY the JSON object. No markdown, no explanation, no code fences.`;
+    const jsonPrompt = prompt + `\n\nRespond with a JSON object matching this schema:\n${JSON.stringify(jsonSchema, null, 2)}\n\nIMPORTANT: Respond with ONLY the JSON object. No markdown, no explanation, no code fences, no thinking.`;
     content.push({ text: jsonPrompt });
 
     const system: SystemContentBlock[] = systemPrompt ? [{ text: systemPrompt }] : [];
@@ -121,17 +163,13 @@ export async function analyzeWithVisionStructured<T>(
 
     const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
     const rawText = textBlock && 'text' in textBlock ? textBlock.text! : '';
-
-    // Parse JSON — handle markdown wrapping that models sometimes add
-    let jsonStr = rawText.trim();
-    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+    const jsonStr = extractJson(rawText);
 
     try {
       const parsed = JSON.parse(jsonStr);
       return zodSchema.parse(parsed);
     } catch (err) {
-      logger.error({ model: model ?? config.ai.model, rawText: rawText.slice(0, 500) }, 'Failed to parse structured response as JSON');
+      logger.error({ model: model ?? config.ai.model, rawText: rawText.slice(0, 500), extracted: jsonStr.slice(0, 500) }, 'Failed to parse structured response');
       throw new Error(`Failed to parse model response as JSON: ${(err as Error).message}`);
     }
   });
@@ -139,6 +177,7 @@ export async function analyzeWithVisionStructured<T>(
 
 /**
  * Plain text generation via Bedrock Converse API.
+ * Strips Qwen3 thinking tags from the response.
  */
 export async function generateText(
   prompt: string,
@@ -159,7 +198,9 @@ export async function generateText(
     }));
 
     const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
-    return textBlock && 'text' in textBlock ? textBlock.text! : '';
+    const raw = textBlock && 'text' in textBlock ? textBlock.text! : '';
+    // Strip thinking tags from text output too
+    return raw.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   });
 }
 

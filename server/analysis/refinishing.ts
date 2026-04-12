@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { listings, refinishingPlans } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { generateText } from '../lib/bedrock.js';
+import { generateText, extractJson } from '../lib/bedrock.js';
 import { getFullContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
 
@@ -141,10 +141,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
 
   const response = await generateText(prompt, SYSTEM_PROMPT, 3000);
 
-  // Parse JSON — handle markdown wrapping
-  let jsonStr = response.trim();
-  const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+  const jsonStr = extractJson(response);
 
   let plan: RefinishingPlan;
   try {
