@@ -7,19 +7,20 @@ import { listings } from '../db/schema.js';
 
 let userA: TestUser;
 let userB: TestUser;
+let suffix: string;
 
 beforeAll(async () => {
   userA = await createTestUser('user');
   userB = await createTestUser('user');
 
-  const suffix = crypto.randomUUID().slice(0, 6);
+  suffix = crypto.randomUUID().slice(0, 6);
 
   // Seed listings for each user
   await db.insert(listings).values({
     externalId: `test-a-${suffix}`,
     platform: 'craigslist',
     url: `https://craigslist.org/a-${suffix}`,
-    title: 'User A Dresser',
+    title: `User A Dresser ${suffix}`,
     askingPrice: 100,
     fingerprint: `fp-a-${suffix}`,
     userId: userA.id,
@@ -29,7 +30,7 @@ beforeAll(async () => {
     externalId: `test-b-${suffix}`,
     platform: 'craigslist',
     url: `https://craigslist.org/b-${suffix}`,
-    title: 'User B Table',
+    title: `User B Table ${suffix}`,
     askingPrice: 200,
     fingerprint: `fp-b-${suffix}`,
     userId: userB.id,
@@ -66,47 +67,43 @@ describe('Auth enforcement', () => {
 
 describe('User isolation', () => {
   it('user A only sees their own listings (plus sawbuck community listings)', async () => {
-    const res = await app.request('/api/listings?limit=50', {
+    // Filter to craigslist to avoid cross-test pollution from sawbuck listings
+    const res = await app.request('/api/listings?limit=50&platform=craigslist', {
       headers: authHeaders(userA),
     });
     const body = await res.json();
-    expect(body.listings.length).toBeGreaterThan(0);
-    // User A sees their own listings + any sawbuck listings from other users
-    expect(body.listings.every((l: any) => l.userId === userA.id || l.platform === 'sawbuck' || l.userId === null)).toBe(true);
-    expect(body.listings.some((l: any) => l.title === 'User A Dresser')).toBe(true);
-    expect(body.listings.some((l: any) => l.title === 'User B Table')).toBe(false);
+    // All craigslist listings should belong to user A
+    expect(body.listings.every((l: any) => l.userId === userA.id)).toBe(true);
+    expect(body.listings.some((l: any) => l.title === `User A Dresser ${suffix}`)).toBe(true);
+    expect(body.listings.some((l: any) => l.title === `User B Table ${suffix}`)).toBe(false);
   });
 
   it('user B only sees their own listings (plus sawbuck community listings)', async () => {
-    const res = await app.request('/api/listings?limit=50', {
+    const res = await app.request('/api/listings?limit=50&platform=craigslist', {
       headers: authHeaders(userB),
     });
     const body = await res.json();
-    expect(body.listings.length).toBeGreaterThan(0);
-    expect(body.listings.every((l: any) => l.userId === userB.id || l.platform === 'sawbuck' || l.userId === null)).toBe(true);
-    expect(body.listings.some((l: any) => l.title === 'User B Table')).toBe(true);
-    expect(body.listings.some((l: any) => l.title === 'User A Dresser')).toBe(false);
+    expect(body.listings.every((l: any) => l.userId === userB.id)).toBe(true);
+    expect(body.listings.some((l: any) => l.title === `User B Table ${suffix}`)).toBe(true);
+    expect(body.listings.some((l: any) => l.title === `User A Dresser ${suffix}`)).toBe(false);
   });
 
   it('user A cannot access user B listing by ID', async () => {
-    // Find user B's own listing ID (not shared/sawbuck)
-    const bRes = await app.request('/api/listings?limit=50', {
+    const bRes = await app.request('/api/listings?limit=50&platform=craigslist', {
       headers: authHeaders(userB),
     });
     const bBody = await bRes.json();
-    const bListing = bBody.listings.find((l: any) => l.userId === userB.id && l.platform !== 'sawbuck');
-    if (!bListing) return; // skip if no user B owned listings found
-    const bListingId = bListing.id;
+    const bListing = bBody.listings.find((l: any) => l.userId === userB.id);
+    if (!bListing) return;
 
-    // User A tries to access it
-    const res = await app.request(`/api/listings/${bListingId}`, {
+    const res = await app.request(`/api/listings/${bListing.id}`, {
       headers: authHeaders(userA),
     });
     expect(res.status).toBe(404);
   });
 
   it('user A cannot bulk-update user B listings', async () => {
-    const bRes = await app.request('/api/listings?limit=50', {
+    const bRes = await app.request('/api/listings?limit=50&platform=craigslist', {
       headers: authHeaders(userB),
     });
     const bBody = await bRes.json();
@@ -117,7 +114,6 @@ describe('User isolation', () => {
       headers: { ...authHeaders(userA), 'Content-Type': 'application/json' },
       body: JSON.stringify({ ids: [bListingId], updates: { status: 'dismissed' } }),
     });
-    // Should succeed (200) but not actually modify user B's listing
     expect(res.status).toBe(200);
 
     // Verify B's listing is unchanged
