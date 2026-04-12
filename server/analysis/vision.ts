@@ -116,8 +116,20 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
   logger.info({ listingId, imageCount: imageInputs.length }, 'Analyzing listing');
 
   let prompt = ANALYSIS_PROMPT;
-  if (listing.askingPrice) {
-    prompt += `\n\nThe seller is asking $${listing.askingPrice} for this piece. Factor this into your refinishing_profit_verdict.`;
+
+  // Include listing context — title and description often contain critical details
+  // (e.g. "set of 6", "solid oak", "needs reupholstering") not visible in photos
+  const contextParts: string[] = [];
+  if (listing.title) contextParts.push(`Listing title: "${listing.title}"`);
+  if (listing.description) contextParts.push(`Description: "${listing.description.slice(0, 500)}"`);
+  if (listing.askingPrice) contextParts.push(`Asking price: $${listing.askingPrice}`);
+  if (contextParts.length > 0) {
+    prompt += `\n\n--- LISTING CONTEXT ---\n${contextParts.join('\n')}\n--- END CONTEXT ---\n\nIMPORTANT: Cross-reference the photos with the title and description. They may contradict each other or contain critical details:
+- Quantities: title may say "set of 6" or "pair" but photos show only one item. Price and value ALL items, not just what's visible.
+- Count what you see: if photos show multiple chairs/items, count them and factor that into your assessment.
+- Materials: description may specify "solid oak" or "particle board" — trust text over visual guesses.
+- Hidden damage: description may disclose issues not visible in photos.
+Your analysis and profit verdict must account for the COMPLETE listing, not just the primary photo.`;
   }
 
   // Augment prompt with RAG context (past flips, product specs, technique guides)

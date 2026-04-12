@@ -88,7 +88,7 @@ All pipeline parameters are stored in the database and editable from the admin S
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `agent.triage_model` | `qwen.qwen3-32b` | Bedrock model ID for triage |
+| `agent.triage_model` | `qwen.qwen3-32b-v1:0` | Bedrock model ID for triage |
 | `agent.eval_model` | `qwen.qwen3-vl-235b-a22b` | Bedrock model ID for vision eval |
 | `agent.max_triages` | `50` | Max listings to triage per run |
 | `agent.max_evals` | `10` | Max listings to evaluate per run |
@@ -117,18 +117,25 @@ Settings can also be set via `AGENT_*` env vars as initial defaults before the D
 ## Agent Pipeline
 
 ```
-scrape (CL RSS) → triage (Qwen batch) → [retry if 0 pass] →
+scrape (CL HTML) → triage (Qwen batch) → [retry if 0 pass] →
 enrich (fetch detail pages) → reconcile (mark removed listings) →
 evaluate (Qwen VL vision + eBay pricing) →
-planOptions (refinishing summaries) → render (fal.ai concepts) → summarize
+  ├── pass → dismissed
+  ├── maybe → stays in feed
+  └── buy/strong_buy → planOptions → render → [loop if < 3 qualified]
+→ summarize
 ```
 
-- Retries vary CL subcategory on each attempt (all → by-owner → by-dealer)
+- Loops until 3+ qualified listings are fully processed (plans + renders) or caps exhausted
+- Paginates through CL search results across retries (page 0, 1, 2...)
 - Deduplicates against DB and within retries (no wasted triage tokens)
 - **Stale listing detection**: enrichment detects 404s and CL deletion notices; reconcile node probes existing DB listings missing from RSS and marks confirmed removals
+- Persistent cookie jar across all CL requests to reduce bot detection
 - Listings tied to a project are never marked removed or cleaned up
 - Agent-discovered listings visible to all users, filtered by preferences
 - Config refreshed from DB before each run
+
+For detailed architecture diagrams and data flows, see [docs/architecture.md](docs/architecture.md).
 
 ## Listing Lifecycle
 

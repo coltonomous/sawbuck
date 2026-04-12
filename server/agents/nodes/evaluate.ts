@@ -114,22 +114,26 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
 
       evaluated.push(evalCandidate);
 
-      // Check quality threshold
-      const passesRecommendation = (agentConfig.flipRecommendationThreshold as readonly string[]).includes(analysis.flip_recommendation);
-      // If no eBay creds, qualify on recommendation alone; otherwise require deal score too
-      const passesDealScore = pricing
-        ? (pricing.dealScore >= agentConfig.dealScoreThreshold)
-        : true;
+      // Check if the verdict text contradicts the enum (model says "pass" in prose but "maybe" in the field)
+      const verdictText = (analysis.refinishing_profit_verdict || '').toLowerCase();
+      const verdictSaysPass = /\bpass\b|not worth|don't bother|negative profit|won't profit/.test(verdictText);
+      const effectiveRecommendation = verdictSaysPass && analysis.flip_recommendation === 'maybe'
+        ? 'pass'
+        : analysis.flip_recommendation;
 
-      if (passesRecommendation && passesDealScore) {
+      const passesRecommendation2 = (agentConfig.flipRecommendationThreshold as readonly string[]).includes(effectiveRecommendation);
+      const passesDealScore2 = pricing ? (pricing.dealScore >= agentConfig.dealScoreThreshold) : true;
+
+      if (passesRecommendation2 && passesDealScore2) {
         qualified.push(evalCandidate);
-      } else {
-        // Not worth showing — dismiss so it doesn't clutter the feed
+      } else if (effectiveRecommendation === 'pass') {
+        // Clear pass — dismiss from feed
         await db.update(listings)
           .set({ status: 'dismissed' })
           .where(eq(listings.id, listingId));
-        logger.info({ listingId, recommendation: analysis.flip_recommendation }, 'Evaluate: dismissed (below quality threshold)');
+        logger.info({ listingId, recommendation: effectiveRecommendation, original: analysis.flip_recommendation }, 'Evaluate: dismissed (pass)');
       }
+      // 'maybe' listings stay as 'analyzed' — visible in feed for user to decide
 
       logger.info(
         { listingId, title: candidate.title, recommendation: analysis.flip_recommendation, dealScore: pricing?.dealScore },
