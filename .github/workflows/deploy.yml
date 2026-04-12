@@ -87,9 +87,9 @@ jobs:
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
 
           docker compose down --remove-orphans 2>/dev/null || true
-          docker rm -f sawbuck-app-1 2>/dev/null || true
 
-          docker system prune -af
+          # Clean up old images only — don't nuke build cache or volumes
+          docker image prune -f
 
           docker compose build
           docker compose up -d

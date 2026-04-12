@@ -1,17 +1,7 @@
-import { useState, useEffect } from 'react';
 import { useSession, signOut } from '../lib/auth';
-import { api } from '../api';
 
 export default function UserMenu() {
   const { data: session } = useSession();
-  const [usage, setUsage] = useState<{ used: number; limit: number } | null>(null);
-
-  useEffect(() => {
-    const fetchUsage = () => api.getClaudeUsage().then(setUsage).catch(() => {});
-    fetchUsage();
-    const interval = setInterval(fetchUsage, 30_000);
-    return () => clearInterval(interval);
-  }, []);
 
   if (!session) return null;
 
@@ -43,21 +33,6 @@ export default function UserMenu() {
           )}
         </div>
       </div>
-
-      {usage && user.role !== 'admin' && (
-        <div className="mb-2">
-          <div className="flex justify-between text-[10px] text-gray-500 mb-1">
-            <span>Analyses today</span>
-            <span>{usage.used}/{usage.limit}</span>
-          </div>
-          <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-amber-500 rounded-full transition-all"
-              style={{ width: `${Math.min((usage.used / usage.limit) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-      )}
 
       <button
         onClick={handleSignOut}
