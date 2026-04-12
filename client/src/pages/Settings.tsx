@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { api, type AdminUser, type AgentRun } from '../api';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
@@ -19,8 +20,18 @@ const STYLES = [
   'danish modern', 'colonial', 'craftsman', 'rustic', 'modern',
 ];
 
+type Tab = 'preferences' | 'users' | 'agent' | 'runs';
+
+const ADMIN_TABS: { key: Tab; label: string }[] = [
+  { key: 'preferences', label: 'Preferences' },
+  { key: 'users', label: 'Users' },
+  { key: 'agent', label: 'Agent Config' },
+  { key: 'runs', label: 'Agent Runs' },
+];
+
 export default function Settings() {
   const { data: session } = useSession();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [prefs, setPrefs] = useState<Preferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -34,17 +45,18 @@ export default function Settings() {
   const { toast } = useToast();
 
   const isAdmin = session?.user?.role === 'admin';
+  const rawTab = searchParams.get('tab') as Tab | null;
+  const tab: Tab = isAdmin && rawTab && ADMIN_TABS.some((t) => t.key === rawTab) ? rawTab : 'preferences';
 
-  const loadUsers = () => {
-    if (isAdmin) {
-      api.getUsers().then(setAdminUsers).catch(() => {});
-      api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
-      api.getAgentSettings().then(({ resolved, overrides }) => {
-        setAgentConfig(resolved);
-        setAgentOverrides(overrides);
-        setAgentDraft({});
-      }).catch(() => {});
-    }
+  const loadAdmin = () => {
+    if (!isAdmin) return;
+    api.getUsers().then(setAdminUsers).catch(() => {});
+    api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
+    api.getAgentSettings().then(({ resolved, overrides }) => {
+      setAgentConfig(resolved);
+      setAgentOverrides(overrides);
+      setAgentDraft({});
+    }).catch(() => {});
   };
 
   useEffect(() => {
@@ -52,10 +64,9 @@ export default function Settings() {
       .then(setPrefs)
       .catch((err) => toast('error', `Failed to load settings: ${err instanceof Error ? err.message : 'Unknown error'}`))
       .finally(() => setLoading(false));
-    loadUsers();
+    loadAdmin();
   }, []);
 
-  // Detect location from browser
   const detectLocation = () => {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
@@ -116,14 +127,34 @@ export default function Settings() {
   return (
     <div className="max-w-2xl">
       <h2 className="text-2xl font-bold text-gray-900 mb-1">Settings</h2>
-      <p className="text-sm text-gray-500 mb-6">Set your preferences to filter agent-discovered deals.</p>
+      <p className="text-sm text-gray-500 mb-4">
+        {isAdmin ? 'Manage preferences, users, and agent configuration.' : 'Set your preferences to filter agent-discovered deals.'}
+      </p>
 
-      {/* User Preferences */}
-      {prefs && (
-        <Card className="mb-5">
+      {/* Tab bar (admin only) */}
+      {isAdmin && (
+        <div className="flex gap-1 mb-6 border-b border-gray-200">
+          {ADMIN_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setSearchParams(t.key === 'preferences' ? {} : { tab: t.key })}
+              className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                tab === t.key
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Preferences tab */}
+      {tab === 'preferences' && prefs && (
+        <Card>
           <CardHeader>Deal Preferences</CardHeader>
           <div className="space-y-4">
-            {/* Location */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
               <div className="flex gap-2">
@@ -156,7 +187,6 @@ export default function Settings() {
               )}
             </div>
 
-            {/* Radius */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Search radius: {prefs.preferredRadiusMiles ?? 25} miles
@@ -171,7 +201,6 @@ export default function Settings() {
               />
             </div>
 
-            {/* Max budget */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Max budget</label>
               <input
@@ -184,7 +213,6 @@ export default function Settings() {
               {errors.maxBudget && <p className="text-xs text-red-500 mt-1">{errors.maxBudget}</p>}
             </div>
 
-            {/* Shop space */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Workshop space</label>
               <select
@@ -200,7 +228,6 @@ export default function Settings() {
               </select>
             </div>
 
-            {/* Experience level */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Experience level</label>
               <select
@@ -215,7 +242,6 @@ export default function Settings() {
               </select>
             </div>
 
-            {/* Style preferences */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Preferred styles</label>
               <div className="flex flex-wrap gap-2">
@@ -247,9 +273,9 @@ export default function Settings() {
         </Card>
       )}
 
-      {/* User management (admin only) */}
-      {isAdmin && (
-        <Card className="mb-5">
+      {/* Users tab (admin) */}
+      {tab === 'users' && isAdmin && (
+        <Card>
           <CardHeader>User Management</CardHeader>
           {adminUsers.length === 0 ? (
             <p className="text-sm text-gray-500">Loading users...</p>
@@ -282,7 +308,7 @@ export default function Settings() {
                           try {
                             await api.updateUserRole(u.id, role);
                             toast('success', `${u.name || u.email} set to ${role}`);
-                            loadUsers();
+                            loadAdmin();
                           } catch (err) {
                             toast('error', err instanceof Error ? err.message : 'Failed');
                           }
@@ -300,7 +326,7 @@ export default function Settings() {
                           try {
                             await api.deleteUser(u.id);
                             toast('success', 'User deleted');
-                            loadUsers();
+                            loadAdmin();
                           } catch (err) {
                             toast('error', err instanceof Error ? err.message : 'Failed');
                           }
@@ -318,8 +344,8 @@ export default function Settings() {
         </Card>
       )}
 
-      {/* Agent configuration (admin only) */}
-      {isAdmin && agentConfig && (
+      {/* Agent Config tab (admin) */}
+      {tab === 'agent' && isAdmin && agentConfig && (
         <AgentConfigCard
           config={agentConfig}
           overrides={agentOverrides}
@@ -361,8 +387,8 @@ export default function Settings() {
         />
       )}
 
-      {/* Agent run logs (admin only) */}
-      {isAdmin && (
+      {/* Agent Runs tab (admin) */}
+      {tab === 'runs' && isAdmin && (
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Agent Run History</h3>
@@ -371,7 +397,7 @@ export default function Settings() {
                 try {
                   await api.triggerAgentRun();
                   toast('success', 'Agent pipeline run started');
-                  setTimeout(loadUsers, 3000);
+                  setTimeout(loadAdmin, 3000);
                 } catch (err) {
                   toast('error', err instanceof Error ? err.message : 'Failed to start run');
                 }
@@ -444,39 +470,28 @@ export default function Settings() {
 // ─── Agent Config Card ──────────────────────────────────────────────
 
 interface ConfigField {
-  key: string;       // DB key like "agent.triage_model"
-  configKey: string;  // JS key like "triageModel"
+  key: string;
+  configKey: string;
   label: string;
   type: 'text' | 'number';
   group: string;
 }
 
 const CONFIG_FIELDS: ConfigField[] = [
-  // Models
   { key: 'agent.triage_model', configKey: 'triageModel', label: 'Triage model', type: 'text', group: 'Models' },
   { key: 'agent.eval_model', configKey: 'evaluationModel', label: 'Evaluation model (vision)', type: 'text', group: 'Models' },
   { key: 'agent.fal_model', configKey: 'falModel', label: 'fal.ai model', type: 'text', group: 'Models' },
-
-  // Per-run caps
   { key: 'agent.max_triages', configKey: 'maxTriages', label: 'Max triages per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.max_evals', configKey: 'maxEvals', label: 'Max evaluations per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.max_renders', configKey: 'maxListingsRendered', label: 'Max concept renders per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.concepts_per_listing', configKey: 'conceptsPerListing', label: 'Concepts per listing', type: 'number', group: 'Per-Run Caps' },
-
-  // Quality gates
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
-
-  // Scheduling & targeting
   { key: 'agent.run_interval_ms', configKey: 'runIntervalMs', label: 'Run interval (ms)', type: 'number', group: 'Scheduling' },
   { key: 'agent.target_city', configKey: 'targetCity', label: 'Target city', type: 'text', group: 'Scheduling' },
-
-  // Anti-blocking
   { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },
-
-  // Images
   { key: 'agent.concept_size', configKey: 'conceptRenderSize', label: 'Concept render size (px)', type: 'number', group: 'Images' },
   { key: 'agent.image_retention_days', configKey: 'agentImageRetentionDays', label: 'Image retention (days)', type: 'number', group: 'Images' },
 ];
@@ -510,7 +525,7 @@ function AgentConfigCard({
   });
 
   return (
-    <Card className="mb-5">
+    <Card>
       <CardHeader>Agent Configuration</CardHeader>
       <p className="text-xs text-gray-400 mb-4">
         Override agent defaults. Changes take effect on the next pipeline run. Clear a field to reset to default.
