@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type Listing } from '../api';
 import type { FormEvent } from 'react';
+import { useSession } from '../lib/auth';
 import { useBackgroundEnrich } from '../hooks/useBackgroundEnrich';
 import { SkeletonTable } from '../components/Skeleton';
 import BulkActionBar from '../components/BulkActionBar';
@@ -16,6 +17,7 @@ const PER_PAGE = 50;
 
 export default function Listings() {
   const navigate = useNavigate();
+  const { data: session } = useSession();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get('tab') === 'mine' ? 'mine' : 'all';
   const [listings, setListings] = useState<Listing[]>([]);
@@ -343,6 +345,7 @@ export default function Listings() {
       {selected.size > 0 && (
         <BulkActionBar
           selected={selected}
+          isAdmin={session?.user?.role === 'admin'}
           onClear={() => setSelected(new Set())}
           onDone={fetchListings}
         />

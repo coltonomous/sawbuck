@@ -3,11 +3,12 @@ import { useToast } from './Toast';
 
 interface Props {
   selected: Set<number>;
+  isAdmin?: boolean;
   onClear: () => void;
   onDone: () => void;
 }
 
-export default function BulkActionBar({ selected, onClear, onDone }: Props) {
+export default function BulkActionBar({ selected, isAdmin, onClear, onDone }: Props) {
   const count = selected.size;
   const { toast } = useToast();
 
@@ -19,6 +20,18 @@ export default function BulkActionBar({ selected, onClear, onDone }: Props) {
       onDone();
     } catch (err) {
       toast('error', `Bulk update failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!confirm(`Permanently delete ${count} listing${count !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    try {
+      await api.deleteAgentListings([...selected]);
+      toast('success', `${count} listing${count !== 1 ? 's' : ''} deleted`);
+      onClear();
+      onDone();
+    } catch (err) {
+      toast('error', `Delete failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -38,6 +51,14 @@ export default function BulkActionBar({ selected, onClear, onDone }: Props) {
         >
           Set Watching
         </button>
+        {isAdmin && (
+          <button
+            onClick={handleDelete}
+            className="px-3 py-1.5 bg-red-900 text-red-200 text-xs font-medium rounded-lg hover:bg-red-800 transition-colors"
+          >
+            Delete
+          </button>
+        )}
         <button
           onClick={onClear}
           className="px-3 py-1.5 bg-gray-700 text-gray-300 text-xs font-medium rounded-lg hover:bg-gray-600 transition-colors"
