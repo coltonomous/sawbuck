@@ -1,11 +1,13 @@
 import { z } from 'zod';
-import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
+import { analyzeWithVisionStructured, type ImageInput } from '../../lib/bedrock.js';
 import { isAvailable, getProjectContext } from '../../rag/retrieval.js';
 import { agentConfig } from '../config.js';
 import type { AgentState, TriagedCandidate, ScrapedCandidate } from '../state.js';
 import logger from '../../lib/logger.js';
 
-const BATCH_SIZE = 10; // listings per API call
+const BATCH_SIZE = 5;
+
+// ─── Pass 1: Text-only batch triage (cheap model) ─────────────────
 
 const TRIAGE_SYSTEM_PROMPT = `You are a furniture flip triage assistant. Your job is to quickly assess whether Craigslist listings are wood furniture with flip potential.
 
@@ -34,7 +36,6 @@ export const TriageBatchSchema = z.object({
   assessments: z.array(TriageItemSchema),
 });
 
-// Keep single-item schema for tests
 export const TriageSchema = TriageItemSchema.omit({ id: true });
 export type TriageOutput = z.infer<typeof TriageSchema>;
 
@@ -60,6 +61,30 @@ const TRIAGE_BATCH_JSON_SCHEMA = {
   },
   required: ['assessments'] as const,
 };
+
+// ─── Pass 2: Visual confirmation (vision model, one at a time) ────
+
+const VISUAL_CHECK_SYSTEM = `You are a quick visual checker for a furniture triage pipeline. You receive one photo from a Craigslist listing that was flagged as potential wood furniture by a text-only classifier.
+
+Your job: look at the photo and confirm or reject. Is this ACTUALLY wood furniture worth flipping?
+
+Answer with a JSON object. Be strict — if you can see it's not wood, or not furniture, or clearly not worth refinishing, reject it.`;
+
+const VisualCheckSchema = z.object({
+  confirmed: z.boolean().nullable().transform((v) => v ?? false),
+  reasoning: z.string().default(''),
+});
+
+const VISUAL_CHECK_JSON_SCHEMA = {
+  type: 'object' as const,
+  properties: {
+    confirmed: { type: 'boolean' as const, description: 'true if this is wood furniture worth evaluating further' },
+    reasoning: { type: 'string' as const, description: '1 sentence explanation' },
+  },
+  required: ['confirmed', 'reasoning'] as const,
+};
+
+// ─── Main triage function ─────────────────────────────────────────
 
 async function buildSystemPrompt(): Promise<string> {
   let prompt = TRIAGE_SYSTEM_PROMPT;
@@ -89,6 +114,29 @@ function buildBatchPrompt(candidates: ScrapedCandidate[]): string {
   return `Assess each of these ${candidates.length} listings:\n\n${listings.join('\n---\n')}`;
 }
 
+async function fetchImageAsBase64(url: string): Promise<ImageInput | null> {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { 'Accept': 'image/*' },
+    });
+    if (!res.ok) return null;
+    const buffer = Buffer.from(await res.arrayBuffer());
+    if (buffer.length === 0 || buffer.length > 5 * 1024 * 1024) return null;
+
+    const base64 = buffer.toString('base64');
+    // Detect format from first bytes
+    let mediaType: ImageInput['mediaType'] = 'image/jpeg';
+    if (buffer[0] === 0x89 && buffer[1] === 0x50) mediaType = 'image/png';
+    else if (buffer[0] === 0x52 && buffer[1] === 0x49) mediaType = 'image/webp';
+    else if (buffer[0] === 0x47 && buffer[1] === 0x49) mediaType = 'image/gif';
+
+    return { base64, mediaType };
+  } catch {
+    return null;
+  }
+}
+
 export async function triageCandidates(state: AgentState): Promise<Partial<AgentState>> {
   const candidates = state.scrapedCandidates;
   const maxToTriage = Math.min(
@@ -103,11 +151,11 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
 
   const systemPrompt = await buildSystemPrompt();
   const triaged: TriagedCandidate[] = [];
-  const passed: TriagedCandidate[] = [];
+  const textPassed: Array<{ candidate: ScrapedCandidate; triage: TriagedCandidate }> = [];
   const errors: AgentState['errors'] = [];
   let count = 0;
 
-  // Process in batches to reduce API calls (50 listings = 5 calls instead of 50)
+  // ── Pass 1: Text-only batch classification ──────────────────────
   const toProcess = candidates.slice(0, maxToTriage);
   for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
     const batch = toProcess.slice(i, i + BATCH_SIZE);
@@ -125,7 +173,6 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
         agentConfig.triageModel,
       );
 
-      // Map results back to candidates by ID
       const resultMap = new Map(result.assessments.map((a) => [a.id, a]));
 
       for (const candidate of batch) {
@@ -146,24 +193,78 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
           },
         };
         triaged.push(triagedCandidate);
+        count++;
 
         if (
           assessment.is_wood_furniture &&
           assessment.has_flip_potential &&
           assessment.confidence_score >= agentConfig.triageConfidenceThreshold
         ) {
-          passed.push(triagedCandidate);
+          textPassed.push({ candidate, triage: triagedCandidate });
         }
-
-        count++;
       }
     } catch (err) {
-      logger.warn({ batchSize: batch.length, error: String(err) }, 'Triage: batch failed');
-      errors.push({ node: 'triage', message: `Batch of ${batch.length}: ${String(err)}`, timestamp: new Date().toISOString() });
+      logger.warn({ batchSize: batch.length, error: String(err) }, 'Triage pass 1: batch failed');
+      errors.push({ node: 'triage', message: `Pass 1 batch of ${batch.length}: ${String(err)}`, timestamp: new Date().toISOString() });
     }
   }
 
-  logger.info({ triaged: count, passed: passed.length, total: candidates.length, apiCalls: Math.ceil(toProcess.length / BATCH_SIZE) }, 'Triage node complete');
+  logger.info({ triaged: count, textPassed: textPassed.length }, 'Triage pass 1 complete');
+
+  // ── Pass 2: Visual confirmation for text-passed candidates ──────
+  // Only items with images get the visual check. Items without images
+  // pass through (they'll be caught by the full evaluate node later).
+  const passed: TriagedCandidate[] = [];
+
+  for (const { candidate, triage } of textPassed) {
+    const imageUrl = candidate.imageUrls[0];
+    if (!imageUrl) {
+      // No image available — let it through, evaluate will catch bad ones
+      passed.push(triage);
+      continue;
+    }
+
+    try {
+      const image = await fetchImageAsBase64(imageUrl);
+      if (!image) {
+        // Image fetch failed — let it through
+        passed.push(triage);
+        continue;
+      }
+
+      const prompt = `Title: "${candidate.title}"\nPrice: ${candidate.askingPrice != null ? '$' + candidate.askingPrice : 'not listed'}\n\nIs this actually wood furniture worth evaluating for a flip?`;
+
+      const check = await analyzeWithVisionStructured(
+        [image],
+        prompt,
+        VISUAL_CHECK_JSON_SCHEMA,
+        VisualCheckSchema,
+        'visual_check',
+        'Confirm or reject this as wood furniture',
+        VISUAL_CHECK_SYSTEM,
+        agentConfig.evaluationModel,
+      );
+
+      if (check.confirmed) {
+        passed.push(triage);
+        logger.debug({ externalId: candidate.externalId, reasoning: check.reasoning }, 'Triage pass 2: confirmed');
+      } else {
+        logger.info({ externalId: candidate.externalId, title: candidate.title, reasoning: check.reasoning }, 'Triage pass 2: rejected');
+      }
+    } catch (err) {
+      // Visual check failed — let it through rather than dropping a good candidate
+      passed.push(triage);
+      logger.warn({ externalId: candidate.externalId, error: String(err) }, 'Triage pass 2: check failed, passing through');
+    }
+  }
+
+  logger.info({
+    triaged: count,
+    textPassed: textPassed.length,
+    visualConfirmed: passed.length,
+    rejected: textPassed.length - passed.length,
+    apiCalls: Math.ceil(toProcess.length / BATCH_SIZE) + textPassed.length,
+  }, 'Triage node complete');
 
   return {
     triagedCandidates: triaged,

@@ -120,14 +120,17 @@ describe('triageCandidates', () => {
   });
 
   it('batches listings to reduce API calls', async () => {
-    // 15 candidates should result in 2 API calls (batch of 10 + batch of 5)
+    // 15 candidates with no images = 3 batches of 5, no pass-2 visual checks
     const candidates = Array.from({ length: 15 }, (_, i) =>
       makeCandidate({ externalId: `batch-${i}`, title: `Item ${i}` }),
     );
 
     mockAnalyze
       .mockResolvedValueOnce(makeBatchResponse(
-        candidates.slice(0, 10).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
+        candidates.slice(0, 5).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
+      ))
+      .mockResolvedValueOnce(makeBatchResponse(
+        candidates.slice(5, 10).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
       ))
       .mockResolvedValueOnce(makeBatchResponse(
         candidates.slice(10, 15).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
@@ -135,9 +138,9 @@ describe('triageCandidates', () => {
 
     const result = await triageCandidates(makeState(candidates));
 
-    expect(mockAnalyze).toHaveBeenCalledTimes(2); // 2 batches, not 15 individual calls
+    expect(mockAnalyze).toHaveBeenCalledTimes(3); // 3 batches of 5
     expect(result.triagedCandidates).toHaveLength(15);
-    expect(result.passedTriage).toHaveLength(15);
+    expect(result.passedTriage).toHaveLength(15); // no images = skip pass 2
   });
 
   it('respects the max cap', async () => {
@@ -157,21 +160,21 @@ describe('triageCandidates', () => {
   });
 
   it('handles batch errors gracefully', async () => {
-    const candidates = Array.from({ length: 15 }, (_, i) =>
+    const candidates = Array.from({ length: 10 }, (_, i) =>
       makeCandidate({ externalId: `err-${i}`, title: `Item ${i}` }),
     );
 
     mockAnalyze
       .mockResolvedValueOnce(makeBatchResponse(
-        candidates.slice(0, 10).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
+        candidates.slice(0, 5).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
       ))
       .mockRejectedValueOnce(new Error('API error'));
 
     const result = await triageCandidates(makeState(candidates));
 
-    expect(result.triagedCandidates).toHaveLength(10); // first batch succeeded
+    expect(result.triagedCandidates).toHaveLength(5); // first batch succeeded
     expect(result.errors).toHaveLength(1); // second batch failed
-    expect(result.triageCount).toBe(10);
+    expect(result.triageCount).toBe(5);
   });
 });
 
