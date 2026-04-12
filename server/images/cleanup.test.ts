@@ -7,19 +7,18 @@ const fsOps = {
   statted: [] as string[],
 };
 
-// Mock fs
-vi.mock('fs', () => ({
+// Mock fs/promises
+vi.mock('fs/promises', () => ({
   default: {
-    statSync: vi.fn((path: string) => {
+    stat: vi.fn(async (path: string) => {
       fsOps.statted.push(path);
       return { size: 50000 };
     }),
-    unlinkSync: vi.fn((path: string) => {
+    unlink: vi.fn(async (path: string) => {
       fsOps.unlinked.push(path);
     }),
-    existsSync: vi.fn(() => false),
-    readdirSync: vi.fn(() => []),
-    rmdirSync: vi.fn(),
+    readdir: vi.fn(async () => []),
+    rmdir: vi.fn(async () => {}),
   },
 }));
 
@@ -39,40 +38,39 @@ const dbUpdates: { imageId: number; set: any }[] = [];
 
 const mockDbState = {
   staleImages: [] as any[],
+  selectCallCount: 0,
 };
 
 vi.mock('../db/index.js', () => {
-  // Build a chainable proxy where .all() returns staleImages
-  // and .run() on update chains tracks the update
+  // Chainable mock that resolves to data when awaited
+  // Each chain method returns the builder; awaiting it resolves the Promise
   const makeSelectChain = () => {
-    const handler: ProxyHandler<object> = {
-      get(_t, prop) {
-        if (prop === 'all') return () => mockDbState.staleImages;
-        return () => new Proxy({}, handler);
-      },
+    const chain: any = {};
+    const methods = ['select', 'from', 'innerJoin', 'where', 'orderBy'];
+    for (const m of methods) {
+      chain[m] = (..._args: any[]) => chain;
+    }
+    // Track by await (then), not by select: first await = stale images, rest = []
+    chain.then = (resolve: any) => {
+      const idx = mockDbState.selectCallCount++;
+      resolve(idx === 0 ? mockDbState.staleImages : []);
     };
-    return new Proxy({}, handler);
+    chain.catch = () => chain;
+    return chain;
   };
 
   const makeUpdateChain = () => {
     let setPayload: any = null;
-    let whereImageId: number | null = null;
-    const handler: ProxyHandler<object> = {
-      get(_t, prop) {
-        if (prop === 'set') return (payload: any) => {
-          setPayload = payload;
-          return new Proxy({}, handler);
-        };
-        if (prop === 'where') return () => new Proxy({}, handler);
-        if (prop === 'run') return () => {
-          if (setPayload) {
-            dbUpdates.push({ imageId: whereImageId ?? -1, set: setPayload });
-          }
-        };
-        return () => new Proxy({}, handler);
-      },
+    const chain: any = {};
+    chain.update = () => chain;
+    chain.set = (payload: any) => { setPayload = { ...payload }; return chain; };
+    chain.where = () => chain;
+    chain.then = (resolve: any) => {
+      if (setPayload) dbUpdates.push({ imageId: -1, set: setPayload });
+      resolve(undefined);
     };
-    return new Proxy({}, handler);
+    chain.catch = () => chain;
+    return chain;
   };
 
   return {
@@ -89,7 +87,7 @@ vi.mock('../db/index.js', () => {
 });
 
 vi.mock('../db/schema.js', () => ({
-  listings: { id: 'id', scrapedAt: 'scraped_at' },
+  listings: { id: 'id', scrapedAt: 'scraped_at', userId: 'user_id', status: 'status' },
   listingImages: {
     id: 'id', listingId: 'listing_id',
     localPathOriginal: 'local_path_original',
@@ -97,6 +95,7 @@ vi.mock('../db/schema.js', () => ({
     fileSizeBytes: 'file_size_bytes',
   },
   projects: { listingId: 'listing_id' },
+  conceptRenders: { listingId: 'listing_id', localPath: 'local_path' },
 }));
 
 vi.mock('../lib/paths.js', () => ({
@@ -109,27 +108,33 @@ vi.mock('../lib/config.js', () => ({
   },
 }));
 
+vi.mock('../agents/config.js', () => ({
+  agentConfig: {
+    agentImageRetentionDays: 14,
+  },
+}));
+
 beforeEach(async () => {
   vi.restoreAllMocks();
   mockDbState.staleImages = [];
+  mockDbState.selectCallCount = 0;
   fsOps.unlinked = [];
   fsOps.statted = [];
   dbUpdates.length = 0;
   loggedMessages.info = [];
   loggedMessages.warn = [];
 
-  // Re-apply fs mocks after restoreAllMocks
-  const fs = await import('fs');
-  vi.spyOn(fs.default, 'statSync').mockImplementation((path: any) => {
+  // Re-apply fs/promises mocks after restoreAllMocks
+  const fs = await import('fs/promises');
+  vi.spyOn(fs.default, 'stat').mockImplementation(async (path: any) => {
     fsOps.statted.push(path);
     return { size: 50000 } as any;
   });
-  vi.spyOn(fs.default, 'unlinkSync').mockImplementation((path: any) => {
+  vi.spyOn(fs.default, 'unlink').mockImplementation(async (path: any) => {
     fsOps.unlinked.push(path);
   });
-  vi.spyOn(fs.default, 'existsSync').mockReturnValue(false);
-  vi.spyOn(fs.default, 'readdirSync').mockReturnValue([]);
-  vi.spyOn(fs.default, 'rmdirSync').mockImplementation(() => {});
+  vi.spyOn(fs.default, 'readdir').mockResolvedValue([] as any);
+  vi.spyOn(fs.default, 'rmdir').mockImplementation(async () => {});
 });
 
 describe('cleanupOrphanedImages', () => {
@@ -166,9 +171,9 @@ describe('cleanupOrphanedImages', () => {
     ]);
   });
 
-  it('does NOT call unlinkSync when statSync throws ENOENT', async () => {
-    const fs = await import('fs');
-    (fs.default.statSync as any).mockImplementation((path: string) => {
+  it('does NOT call unlink when stat throws ENOENT', async () => {
+    const fs = await import('fs/promises');
+    (fs.default.stat as any).mockImplementation(async (path: string) => {
       fsOps.statted.push(path);
       const err: any = new Error('ENOENT');
       err.code = 'ENOENT';
@@ -188,14 +193,14 @@ describe('cleanupOrphanedImages', () => {
     const result = await cleanupOrphanedImages();
     expect(result.filesDeleted).toBe(0);
     expect(result.listingsCleaned).toBe(1);
-    // statSync was attempted but unlinkSync was never called
+    // stat was attempted but unlink was never called
     expect(fsOps.statted).toEqual(['/app/data/images/originals/offerup/200/0.jpg']);
     expect(fsOps.unlinked).toEqual([]);
   });
 
   it('logs warning for non-ENOENT fs errors', async () => {
-    const fs = await import('fs');
-    (fs.default.statSync as any).mockImplementation((path: string) => {
+    const fs = await import('fs/promises');
+    (fs.default.stat as any).mockImplementation(async (path: string) => {
       fsOps.statted.push(path);
       const err: any = new Error('EACCES: permission denied');
       err.code = 'EACCES';
@@ -206,7 +211,7 @@ describe('cleanupOrphanedImages', () => {
       {
         imageId: 3,
         listingId: 300,
-        localPathOriginal: 'originals/mercari/300/0.jpg',
+        localPathOriginal: 'originals/craigslist/300/0.jpg',
         localPathResized: null,
         fileSizeBytes: null,
       },
@@ -223,16 +228,16 @@ describe('cleanupOrphanedImages', () => {
         imageId: 3,
         listingId: 300,
         localPathOriginal: null,
-        localPathResized: 'resized/mercari/300/0.webp',
+        localPathResized: 'resized/craigslist/300/0.webp',
         fileSizeBytes: 30000,
       },
     ];
 
     const result = await cleanupOrphanedImages();
     expect(result.filesDeleted).toBe(1);
-    expect(fsOps.unlinked).toEqual(['/app/data/images/resized/mercari/300/0.webp']);
+    expect(fsOps.unlinked).toEqual(['/app/data/images/resized/craigslist/300/0.webp']);
     // Original path was null — statSync should only be called for the resized file
-    expect(fsOps.statted).toEqual(['/app/data/images/resized/mercari/300/0.webp']);
+    expect(fsOps.statted).toEqual(['/app/data/images/resized/craigslist/300/0.webp']);
   });
 
   it('only deletes original file when resized path is null', async () => {
@@ -240,7 +245,7 @@ describe('cleanupOrphanedImages', () => {
       {
         imageId: 4,
         listingId: 400,
-        localPathOriginal: 'originals/facebook/400/0.jpg',
+        localPathOriginal: 'originals/craigslist/400/0.jpg',
         localPathResized: null,
         fileSizeBytes: 40000,
       },
@@ -248,7 +253,7 @@ describe('cleanupOrphanedImages', () => {
 
     const result = await cleanupOrphanedImages();
     expect(result.filesDeleted).toBe(1);
-    expect(fsOps.unlinked).toEqual(['/app/data/images/originals/facebook/400/0.jpg']);
+    expect(fsOps.unlinked).toEqual(['/app/data/images/originals/craigslist/400/0.jpg']);
   });
 
   it('counts distinct listings across multiple images', async () => {

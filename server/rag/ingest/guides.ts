@@ -154,7 +154,7 @@ export async function ingestGuides(
 
   logger.info({ count: sources.length }, 'Ingesting guide sources');
 
-  clearChunks('guide');
+  await clearChunks('guide');
 
   const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = [];
   let failed = 0;
@@ -199,7 +199,7 @@ export async function ingestGuides(
   }
 
   const embeddings = await embedBatch(allChunks.map((c) => c.content));
-  const inserted = upsertChunks(allChunks, embeddings);
+  const inserted = await upsertChunks(allChunks, embeddings);
 
   logger.info({ inserted, failed }, 'Guide ingestion complete');
   return { ingested: inserted, failed };

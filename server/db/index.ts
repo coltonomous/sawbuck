@@ -1,11 +1,11 @@
-import Database, { type Database as DatabaseType } from 'better-sqlite3';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import pg from 'pg';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './schema.js';
-import { DB_PATH } from '../lib/paths.js';
 
-const sqlite: DatabaseType = new Database(DB_PATH);
-sqlite.pragma('journal_mode = WAL');
-sqlite.pragma('foreign_keys = ON');
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required. Set it in your environment or .env file.');
+}
 
-export const db = drizzle(sqlite, { schema });
-export { sqlite };
+export const pool = new pg.Pool({ connectionString });
+export const db = drizzle(pool, { schema });

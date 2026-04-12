@@ -17,7 +17,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { warmup } from '../server/rag/embeddings.js';
-import { chunkCount, getDb } from '../server/rag/store.js';
+import { chunkCount, initStore } from '../server/rag/store.js';
 import { ingestProjects } from '../server/rag/ingest/projects.js';
 import { ingestProducts, type ProductSource } from '../server/rag/ingest/products.js';
 import { ingestGuides, type GuideSource } from '../server/rag/ingest/guides.js';
@@ -34,12 +34,12 @@ function loadSources(): Sources {
   return JSON.parse(raw);
 }
 
-function printStats() {
+async function printStats() {
   console.log('\n📊 Knowledge Base Stats:');
-  console.log(`   Projects:  ${chunkCount('project')} chunks`);
-  console.log(`   Products:  ${chunkCount('product')} chunks`);
-  console.log(`   Guides:    ${chunkCount('guide')} chunks`);
-  console.log(`   Total:     ${chunkCount()} chunks\n`);
+  console.log(`   Projects:  ${await chunkCount('project')} chunks`);
+  console.log(`   Products:  ${await chunkCount('product')} chunks`);
+  console.log(`   Guides:    ${await chunkCount('guide')} chunks`);
+  console.log(`   Total:     ${await chunkCount()} chunks\n`);
 }
 
 async function main() {
@@ -47,11 +47,11 @@ async function main() {
   const only = args.includes('--only') ? args[args.indexOf('--only') + 1] : null;
   const statsOnly = args.includes('--stats');
 
-  // Initialize sqlite-vec tables
-  getDb();
+  // Initialize pgvector tables
+  await initStore();
 
   if (statsOnly) {
-    printStats();
+    await printStats();
     process.exit(0);
   }
 
@@ -80,7 +80,7 @@ async function main() {
     console.log(`   ${results.guides.ingested} guide chunks ingested, ${results.guides.failed} failed\n`);
   }
 
-  printStats();
+  await printStats();
   console.log('Done.');
   process.exit(0);
 }

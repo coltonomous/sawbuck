@@ -7,7 +7,7 @@ const isProd = process.env.NODE_ENV === 'production';
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
-    provider: 'sqlite',
+    provider: 'pg',
     schema: {
       user: schema.users,
       session: schema.sessions,
@@ -48,11 +48,47 @@ export const auth = betterAuth({
         defaultValue: 'user',
         input: false,
       },
-      dailyClaudeLimit: {
+      preferredLatitude: {
         type: 'number',
-        defaultValue: 20,
+        required: false,
         input: false,
-        fieldName: 'dailyClaudeLimit',
+        fieldName: 'preferredLatitude',
+      },
+      preferredLongitude: {
+        type: 'number',
+        required: false,
+        input: false,
+        fieldName: 'preferredLongitude',
+      },
+      preferredRadiusMiles: {
+        type: 'number',
+        defaultValue: 25,
+        input: false,
+        fieldName: 'preferredRadiusMiles',
+      },
+      maxBudget: {
+        type: 'number',
+        required: false,
+        input: false,
+        fieldName: 'maxBudget',
+      },
+      shopSpace: {
+        type: 'string',
+        required: false,
+        input: false,
+        fieldName: 'shopSpace',
+      },
+      experienceLevel: {
+        type: 'string',
+        required: false,
+        input: false,
+        fieldName: 'experienceLevel',
+      },
+      stylePreferences: {
+        type: 'string',
+        required: false,
+        input: false,
+        fieldName: 'stylePreferences',
       },
     },
   },

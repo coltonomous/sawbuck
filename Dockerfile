@@ -12,7 +12,7 @@ RUN cd client && npx vite build
 # Stage 2: Production server
 FROM node:22-slim AS production
 
-# Install build tools for native modules (sharp, better-sqlite3)
+# Install build tools for native modules (sharp)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
     rm -rf /var/lib/apt/lists/*
@@ -23,14 +23,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm install drizzle-kit
 
-# Install Playwright Chromium + system dependencies
-# Use shared path so the non-root app user can access the browsers
-ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright
 # Cache HuggingFace models in the data volume so they persist across rebuilds
 ENV HF_HOME=/app/data/.cache/huggingface
-RUN npx playwright install --with-deps chromium || \
-    (sleep 5 && npx playwright install --with-deps chromium) || \
-    (sleep 10 && npx playwright install --with-deps chromium)
 
 # Copy server code
 COPY server/ ./server/
@@ -43,7 +37,7 @@ COPY --from=client-build /app/client/dist/ ./client/dist/
 COPY shared/ ./shared/
 
 # Create data directory (will be overridden by volume mount)
-RUN mkdir -p /app/data/images/originals /app/data/images/resized
+RUN mkdir -p /app/data/images/originals /app/data/images/resized /app/data/images/concepts
 
 EXPOSE 3001
 

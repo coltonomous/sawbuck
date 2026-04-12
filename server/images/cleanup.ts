@@ -1,10 +1,11 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../db/index.js';
-import { listings, listingImages, projects } from '../db/schema.js';
-import { sql, and, lt, isNotNull, notInArray } from 'drizzle-orm';
+import { listings, listingImages, projects, conceptRenders } from '../db/schema.js';
+import { sql, and, lt, isNotNull, notInArray, isNull, eq } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
+import { agentConfig } from '../agents/config.js';
 import logger from '../lib/logger.js';
 
 export interface CleanupResult {
@@ -20,7 +21,8 @@ export interface CleanupResult {
  */
 export async function cleanupOrphanedImages(): Promise<CleanupResult> {
   const { retentionDays } = config.images;
-  const cutoff = sql`datetime('now', '-${sql.raw(String(retentionDays))} days')`;
+  const userCutoff = sql`CURRENT_TIMESTAMP - INTERVAL '${sql.raw(String(retentionDays))} days'`;
+  const agentCutoff = sql`CURRENT_TIMESTAMP - INTERVAL '${sql.raw(String(agentConfig.agentImageRetentionDays))} days'`;
 
   // Find listing IDs that have an associated project — these are protected
   const projectListingIds = db
@@ -28,7 +30,9 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     .from(projects);
 
   // Find old listings without projects that still have image files on disk
-  const staleImages = db
+  // Agent listings (userId IS NULL) use shorter retention
+  // Dismissed agent listings are cleaned immediately
+  const staleImages = await db
     .select({
       imageId: listingImages.id,
       listingId: listingImages.listingId,
@@ -40,12 +44,39 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     .innerJoin(listings, sql`${listingImages.listingId} = ${listings.id}`)
     .where(
       and(
-        lt(listings.scrapedAt, cutoff),
         notInArray(listings.id, projectListingIds),
         sql`(${listingImages.localPathOriginal} IS NOT NULL OR ${listingImages.localPathResized} IS NOT NULL)`,
+        sql`(
+          (${listings.userId} IS NOT NULL AND ${listings.scrapedAt} < ${userCutoff})
+          OR (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
+          OR (${listings.userId} IS NULL AND ${listings.status} IN ('dismissed', 'removed'))
+        )`,
       ),
     )
-    .all();
+;
+
+  // Also clean up concept render images for dismissed or stale agent listings
+  const staleConceptPaths = await db
+    .select({ localPath: conceptRenders.localPath })
+    .from(conceptRenders)
+    .innerJoin(listings, sql`${conceptRenders.listingId} = ${listings.id}`)
+    .where(
+      and(
+        notInArray(listings.id, projectListingIds),
+        isNotNull(conceptRenders.localPath),
+        sql`(
+          (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
+          OR (${listings.userId} IS NULL AND ${listings.status} IN ('dismissed', 'removed'))
+        )`,
+      ),
+    )
+;
+
+  for (const concept of staleConceptPaths) {
+    if (concept.localPath) {
+      await fs.unlink(concept.localPath).catch(() => {});
+    }
+  }
 
   if (staleImages.length === 0) {
     logger.info('No orphaned images to clean up');
@@ -61,8 +92,8 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     if (img.localPathOriginal) {
       const fullPath = path.join(IMAGES_DIR, img.localPathOriginal);
       try {
-        const stat = fs.statSync(fullPath);
-        fs.unlinkSync(fullPath);
+        const stat = await fs.stat(fullPath);
+        await fs.unlink(fullPath);
         bytesFreed += stat.size;
         filesDeleted++;
       } catch (err: any) {
@@ -76,8 +107,8 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     if (img.localPathResized) {
       const fullPath = path.join(IMAGES_DIR, img.localPathResized);
       try {
-        const stat = fs.statSync(fullPath);
-        fs.unlinkSync(fullPath);
+        const stat = await fs.stat(fullPath);
+        await fs.unlink(fullPath);
         bytesFreed += stat.size;
         filesDeleted++;
       } catch (err: any) {
@@ -88,14 +119,14 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     }
 
     // Null out paths, mark as cleaned
-    db.update(listingImages)
+    await db.update(listingImages)
       .set({
         localPathOriginal: null,
         localPathResized: null,
-        downloadStatus: 'cleaned' as any,
+        downloadStatus: 'cleaned',
       })
       .where(sql`${listingImages.id} = ${img.imageId}`)
-      .run();
+;
 
     cleanedListingIds.add(img.listingId);
   }
@@ -106,13 +137,14 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
       // Listing images are stored as {subdir}/{platform}/{listingId}/
       // We don't know the platform here, so scan both subdirs
       const base = path.join(IMAGES_DIR, subdir);
-      if (!fs.existsSync(base)) continue;
-      for (const platform of fs.readdirSync(base)) {
+      let platforms: string[];
+      try { platforms = await fs.readdir(base); } catch { continue; }
+      for (const platform of platforms) {
         const dir = path.join(base, platform, String(listingId));
         try {
-          const entries = fs.readdirSync(dir);
+          const entries = await fs.readdir(dir);
           if (entries.length === 0) {
-            fs.rmdirSync(dir);
+            await fs.rmdir(dir);
           }
         } catch {
           // Directory doesn't exist or not empty — fine

@@ -1,7 +1,7 @@
 // Canonical source for all enums, lookup maps, and display constants.
 // Imported by both server/ and client/.
 
-export const PLATFORMS = ['craigslist', 'offerup', 'mercari', 'ebay', 'facebook', 'sawbuck'] as const;
+export const PLATFORMS = ['craigslist', 'offerup', 'ebay', 'sawbuck'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
 export const LISTING_STATUSES = ['new', 'analyzed', 'watching', 'acquired', 'dismissed'] as const;
@@ -33,8 +33,6 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   craigslist: 'Craigslist',
   offerup: 'OfferUp',
   ebay: 'eBay',
-  mercari: 'Mercari',
-  facebook: 'FB Marketplace',
   sawbuck: 'Sawbuck',
 };
 
@@ -44,8 +42,6 @@ export const PLATFORM_BADGE_COLORS: Record<Platform, string> = {
   craigslist: 'bg-purple-100 text-purple-700',
   offerup: 'bg-teal-100 text-teal-700',
   ebay: 'bg-blue-100 text-blue-700',
-  mercari: 'bg-orange-100 text-orange-700',
-  facebook: 'bg-sky-100 text-sky-700',
   sawbuck: 'bg-amber-100 text-amber-700',
 };
 
@@ -53,8 +49,6 @@ export const PLATFORM_DOT_COLORS: Record<Platform, string> = {
   craigslist: 'bg-purple-500',
   offerup: 'bg-teal-500',
   ebay: 'bg-blue-500',
-  mercari: 'bg-orange-500',
-  facebook: 'bg-sky-500',
   sawbuck: 'bg-amber-500',
 };
 

@@ -113,6 +113,7 @@ export default function MaterialsList({
                   </td>
                   <td className="px-2 py-2.5 w-28">
                     <input
+                      key={`${mat.id}-${mat.actualPrice}`}
                       type="number"
                       step="0.01"
                       placeholder={mat.estimatedPrice?.toFixed(2) ?? '-'}

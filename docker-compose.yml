@@ -1,4 +1,15 @@
 services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: sawbuck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sawbuck}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
   app:
     build: .
     ports:
@@ -7,17 +18,12 @@ services:
       - .env
     environment:
       - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-sawbuck}@postgres:5432/sawbuck
     volumes:
-      - ./data:/app/data
+      - ./data/images:/app/data/images
+    depends_on:
+      - postgres
     restart: unless-stopped
 
-  # Optional: run the scraper on a schedule inside Docker
-  # Uncomment to enable automated scraping every 3 hours
-  # cron:
-  #   build: .
-  #   env_file:
-  #     - .env
-  #   volumes:
-  #     - ./data:/app/data
-  #   entrypoint: ["sh", "-c", "while true; do npx tsx scripts/cron-runner.ts; sleep 10800; done"]
-  #   restart: unless-stopped
+volumes:
+  postgres_data:

@@ -61,6 +61,7 @@ export default function Listings() {
 
   const fetchListings = useCallback(() => {
     setLoading(true);
+    setSelected(new Set());
     const params: Record<string, string> = {
       page: String(page),
       limit: String(PER_PAGE),
@@ -227,7 +228,7 @@ export default function Listings() {
         <EmptyState
           icon={<SearchIcon />}
           title="No listings found"
-          subtitle={<>Run a scraper from the <a href="/" className="text-blue-600 hover:underline">Dashboard</a> or configure searches in Settings.</>}
+          subtitle="The agent is searching for deals. Check back soon!"
         />
       ) : (
         <>

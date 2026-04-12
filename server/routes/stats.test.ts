@@ -15,7 +15,7 @@ beforeAll(async () => {
   const suffix = crypto.randomUUID().slice(0, 6);
 
   // Seed different data for each user
-  db.insert(listings).values({
+  await db.insert(listings).values({
     externalId: `stats-a-1-${suffix}`,
     platform: 'craigslist',
     url: `https://craigslist.org/stats-a1-${suffix}`,
@@ -23,9 +23,9 @@ beforeAll(async () => {
     askingPrice: 100,
     fingerprint: `fp-stats-a-1-${suffix}`,
     userId: userA.id,
-  }).run();
+  });
 
-  db.insert(listings).values({
+  await db.insert(listings).values({
     externalId: `stats-a-2-${suffix}`,
     platform: 'offerup',
     url: `https://offerup.com/stats-a2-${suffix}`,
@@ -33,17 +33,17 @@ beforeAll(async () => {
     askingPrice: 250,
     fingerprint: `fp-stats-a-2-${suffix}`,
     userId: userA.id,
-  }).run();
+  });
 
-  db.insert(listings).values({
+  await db.insert(listings).values({
     externalId: `stats-b-1-${suffix}`,
-    platform: 'mercari',
-    url: `https://mercari.com/stats-b1-${suffix}`,
+    platform: 'ebay',
+    url: `https://ebay.com/stats-b1-${suffix}`,
     title: 'Stats User B Listing',
     askingPrice: 500,
     fingerprint: `fp-stats-b-1-${suffix}`,
     userId: userB.id,
-  }).run();
+  });
 });
 
 describe('Stats user isolation', () => {
@@ -64,7 +64,7 @@ describe('Stats user isolation', () => {
 
     // Verify platform breakdown only contains user A's platforms
     const platforms = body.dealsByPlatform.map((p: any) => p.platform);
-    expect(platforms).not.toContain('mercari'); // That's user B's listing
+    expect(platforms).not.toContain('ebay'); // That's user B's listing
   });
 
   it('user B sees only their listing count', async () => {
@@ -77,9 +77,9 @@ describe('Stats user isolation', () => {
     // User B has 1 listing seeded above
     expect(body.summary.total_listings).toBeGreaterThanOrEqual(1);
 
-    // User B should see mercari, not craigslist (from user A)
+    // User B should see ebay, not craigslist/offerup (from user A)
     const platforms = body.dealsByPlatform.map((p: any) => p.platform);
-    expect(platforms).toContain('mercari');
+    expect(platforms).toContain('ebay');
     expect(platforms).not.toContain('craigslist');
     expect(platforms).not.toContain('offerup');
   });

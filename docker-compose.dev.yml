@@ -1,8 +1,6 @@
 # Dev override — mounts source code for hot reload.
-# Usage: ./up.sh  (pass --build when deps change)
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 services:
-  caddy:
-    profiles: [disabled]
   app:
     build:
       context: .
@@ -12,6 +10,7 @@ services:
       - "5173:5173"
     environment:
       - NODE_ENV=development
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-sawbuck}@postgres:5432/sawbuck
     volumes:
       - ./server:/app/server
       - ./drizzle:/app/drizzle
@@ -20,11 +19,11 @@ services:
       - ./client/vite.config.ts:/app/client/vite.config.ts
       - ./client/tsconfig.json:/app/client/tsconfig.json
       - ./shared:/app/shared
-      - ./data:/app/data
+      - ./data/images:/app/data/images
     entrypoint: ["sh", "-c"]
     command:
       - |
-        npx drizzle-kit migrate &&
+        npx drizzle-kit push &&
         npx concurrently -n server,client -c blue,green \
           "npx tsx watch server/index.ts" \
           "cd client && npx vite --host 0.0.0.0"

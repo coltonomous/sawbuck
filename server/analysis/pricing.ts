@@ -1,14 +1,11 @@
 import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
+import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import logger from '../lib/logger.js';
 
-// Pricing algorithm tuning — these are domain constants, not runtime config
-const SOLD_WEIGHT = 0.7;
-const ACTIVE_WEIGHT = 0.3;
-const ACTIVE_DISCOUNT = 0.85; // active listings ask more than sold prices
-const MIN_SOLD_FOR_SOLD_ONLY = 3;
+// Pricing algorithm tuning
+const ACTIVE_DISCOUNT = 0.85; // active listings ask more than actual sale prices
 const CONDITION_BASELINE = 8;
 const CONDITION_ABOVE_FACTOR = 0.05;
 const CONDITION_BELOW_FACTOR = 0.1;
@@ -36,39 +33,33 @@ export function median(values: number[]): number {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
+/**
+ * Remove outliers using IQR (interquartile range) method.
+ * Values below Q1 - 1.5*IQR or above Q3 + 1.5*IQR are excluded.
+ * Returns the filtered array. If fewer than 4 values, returns as-is
+ * (not enough data for meaningful IQR).
+ */
+export function removeOutliers(values: number[]): number[] {
+  if (values.length < 4) return values;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const q1 = sorted[Math.floor(sorted.length * 0.25)];
+  const q3 = sorted[Math.floor(sorted.length * 0.75)];
+  const iqr = q3 - q1;
+  const lowerBound = q1 - 1.5 * iqr;
+  const upperBound = q3 + 1.5 * iqr;
+
+  return sorted.filter((v) => v >= lowerBound && v <= upperBound);
+}
+
 export function conditionMultiplier(conditionScore: number | null): number {
   const score = conditionScore ?? 5;
   if (score >= CONDITION_BASELINE) return Math.min(CONDITION_MAX_MULTIPLIER, 1.0 + (score - CONDITION_BASELINE) * CONDITION_ABOVE_FACTOR);
   return Math.max(CONDITION_MIN_MULTIPLIER, 1.0 - (CONDITION_BASELINE - score) * CONDITION_BELOW_FACTOR);
 }
 
-/**
- * Calculate a blended median price from sold and active comps.
- * - Sold-only (>= 3 sold): use sold median
- * - Both available: 70% sold median + 30% active median
- * - Active-only: active median discounted 15% (asking > actual)
- */
-export function blendedMedian(soldPrices: number[], activePrices: number[]): number {
-  const soldMedian = median(soldPrices);
-  const activeMedian = median(activePrices);
-
-  if (soldPrices.length >= MIN_SOLD_FOR_SOLD_ONLY) {
-    return soldMedian;
-  }
-
-  if (soldPrices.length > 0 && activePrices.length > 0) {
-    return soldMedian * SOLD_WEIGHT + activeMedian * ACTIVE_WEIGHT;
-  }
-
-  if (activePrices.length > 0) {
-    return activeMedian * ACTIVE_DISCOUNT;
-  }
-
-  return soldMedian; // May be 0 if both empty
-}
-
 export async function calculatePricing(listingId: number): Promise<PricingResult | null> {
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) return null;
 
   // Build structured search params
@@ -91,10 +82,20 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
     return null;
   }
 
-  const soldPrices = comps.filter(c => c.source === 'ebay_sold' || c.source === 'ebay').map(c => c.soldPrice);
-  const activePrices = comps.filter(c => c.source === 'ebay_active').map(c => c.soldPrice);
+  const rawPrices = comps.map(c => c.soldPrice);
+  const activePrices = removeOutliers(rawPrices);
 
-  const medianPrice = blendedMedian(soldPrices, activePrices);
+  if (activePrices.length === 0) {
+    logger.info({ listingId, rawCount: rawPrices.length }, 'All comparables filtered as outliers');
+    return null;
+  }
+
+  if (activePrices.length < rawPrices.length) {
+    logger.info({ listingId, raw: rawPrices.length, filtered: activePrices.length }, 'Outlier comps removed from pricing');
+  }
+
+  // Active listings (Browse API) — apply 15% discount (asking > sold)
+  const medianPrice = median(activePrices) * ACTIVE_DISCOUNT;
   const cm = conditionMultiplier(listing.conditionScore);
   const estimatedValue = Math.round(medianPrice * cm * 100) / 100;
 
@@ -102,10 +103,11 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
   const refinishedMultiplier = conditionMultiplier(REFINISHED_CONDITION_SCORE);
   const estimatedRefinishedValue = Math.round(medianPrice * refinishedMultiplier * 100) / 100;
 
-  const askingPrice = listing.askingPrice || 0;
-  const dealScore = askingPrice > 0
+  const askingPrice = listing.askingPrice;
+  // Free or unpriced listings with positive estimated value are the best possible deals
+  const dealScore = askingPrice != null && askingPrice > 0
     ? Math.round((estimatedValue / askingPrice) * 100) / 100
-    : 0;
+    : estimatedValue > 0 ? 99 : 0;
 
   // Update the listing
   await db.update(listings).set({
@@ -121,7 +123,7 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
     comparableCount: comps.length,
     medianCompPrice: medianPrice,
     conditionMultiplier: cm,
-    soldCount: soldPrices.length,
+    soldCount: 0,
     activeCount: activePrices.length,
   };
 }

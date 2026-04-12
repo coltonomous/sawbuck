@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { median, conditionMultiplier, blendedMedian } from './pricing.js';
+import { median, conditionMultiplier, removeOutliers } from './pricing.js';
 
 describe('median', () => {
   it('returns 0 for empty array', () => {
@@ -65,34 +65,39 @@ describe('conditionMultiplier', () => {
   });
 });
 
-describe('blendedMedian', () => {
-  it('uses sold median when >= 3 sold comps', () => {
-    const sold = [100, 120, 140];
-    const active = [200, 220];
-    expect(blendedMedian(sold, active)).toBe(120); // median of sold only
+describe('removeOutliers', () => {
+  it('returns as-is for fewer than 4 values', () => {
+    expect(removeOutliers([10, 20, 30])).toEqual([10, 20, 30]);
   });
 
-  it('blends 70/30 when < 3 sold but both available', () => {
-    const sold = [100, 120]; // median = 110
-    const active = [200, 220]; // median = 210
-    const expected = 110 * 0.7 + 210 * 0.3; // 77 + 63 = 140
-    expect(blendedMedian(sold, active)).toBe(expected);
+  it('removes extreme high outlier', () => {
+    const prices = [50, 55, 60, 65, 70, 10000];
+    const filtered = removeOutliers(prices);
+    expect(filtered).not.toContain(10000);
+    expect(filtered.length).toBe(5);
   });
 
-  it('discounts active median 15% when only active available', () => {
-    const sold: number[] = [];
-    const active = [200, 220]; // median = 210
-    expect(blendedMedian(sold, active)).toBe(210 * 0.85);
+  it('removes extreme low outlier', () => {
+    const prices = [1, 200, 220, 240, 260, 280];
+    const filtered = removeOutliers(prices);
+    expect(filtered).not.toContain(1);
   });
 
-  it('returns 0 when both empty', () => {
-    expect(blendedMedian([], [])).toBe(0);
+  it('keeps values within normal range', () => {
+    const prices = [100, 120, 130, 140, 150, 160];
+    const filtered = removeOutliers(prices);
+    expect(filtered).toEqual([100, 120, 130, 140, 150, 160]);
   });
 
-  it('uses sold median when only sold available (< 3)', () => {
-    const sold = [100]; // median = 100
-    const active: number[] = [];
-    // Falls through to final return: soldMedian
-    expect(blendedMedian(sold, active)).toBe(100);
+  it('handles all same values', () => {
+    const prices = [50, 50, 50, 50];
+    expect(removeOutliers(prices)).toEqual([50, 50, 50, 50]);
+  });
+
+  it('filters the $10k vs $50 scenario', () => {
+    const prices = [40, 45, 50, 55, 60, 10000];
+    const filtered = removeOutliers(prices);
+    expect(filtered).not.toContain(10000);
+    expect(median(filtered)).toBeLessThan(100);
   });
 });

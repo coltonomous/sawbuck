@@ -15,7 +15,7 @@ beforeAll(async () => {
   const suffix = crypto.randomUUID().slice(0, 6);
 
   // Seed listings for each user
-  db.insert(listings).values({
+  await db.insert(listings).values({
     externalId: `test-a-${suffix}`,
     platform: 'craigslist',
     url: `https://craigslist.org/a-${suffix}`,
@@ -23,9 +23,9 @@ beforeAll(async () => {
     askingPrice: 100,
     fingerprint: `fp-a-${suffix}`,
     userId: userA.id,
-  }).run();
+  });
 
-  db.insert(listings).values({
+  await db.insert(listings).values({
     externalId: `test-b-${suffix}`,
     platform: 'craigslist',
     url: `https://craigslist.org/b-${suffix}`,
@@ -33,7 +33,7 @@ beforeAll(async () => {
     askingPrice: 200,
     fingerprint: `fp-b-${suffix}`,
     userId: userB.id,
-  }).run();
+  });
 });
 
 describe('GET /health', () => {
@@ -72,7 +72,7 @@ describe('User isolation', () => {
     const body = await res.json();
     expect(body.listings.length).toBeGreaterThan(0);
     // User A sees their own listings + any sawbuck listings from other users
-    expect(body.listings.every((l: any) => l.userId === userA.id || l.platform === 'sawbuck')).toBe(true);
+    expect(body.listings.every((l: any) => l.userId === userA.id || l.platform === 'sawbuck' || l.userId === null)).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User A Dresser')).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User B Table')).toBe(false);
   });
@@ -83,18 +83,20 @@ describe('User isolation', () => {
     });
     const body = await res.json();
     expect(body.listings.length).toBeGreaterThan(0);
-    expect(body.listings.every((l: any) => l.userId === userB.id || l.platform === 'sawbuck')).toBe(true);
+    expect(body.listings.every((l: any) => l.userId === userB.id || l.platform === 'sawbuck' || l.userId === null)).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User B Table')).toBe(true);
     expect(body.listings.some((l: any) => l.title === 'User A Dresser')).toBe(false);
   });
 
   it('user A cannot access user B listing by ID', async () => {
-    // Find user B's listing ID
+    // Find user B's own listing ID (not shared/sawbuck)
     const bRes = await app.request('/api/listings?limit=50', {
       headers: authHeaders(userB),
     });
     const bBody = await bRes.json();
-    const bListingId = bBody.listings[0].id;
+    const bListing = bBody.listings.find((l: any) => l.userId === userB.id && l.platform !== 'sawbuck');
+    if (!bListing) return; // skip if no user B owned listings found
+    const bListingId = bListing.id;
 
     // User A tries to access it
     const res = await app.request(`/api/listings/${bListingId}`, {

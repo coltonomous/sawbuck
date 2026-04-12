@@ -2,8 +2,7 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { comparables, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { searchEbayComps, type CompSearchParams } from '../scrapers/ebay-comps.js';
-import { closeBrowser } from '../scrapers/browser-pool.js';
+import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import { searchComparablesSchema } from '../lib/validation.js';
 
 export const comparablesRouter = new Hono();
@@ -21,7 +20,7 @@ comparablesRouter.post('/search', async (c) => {
   let params: CompSearchParams | null = null;
 
   if (listingId) {
-    const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
+    const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).then(r => r[0]);
     if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
     params = {
@@ -42,11 +41,9 @@ comparablesRouter.post('/search', async (c) => {
   }
 
   try {
-    const { comps, blocked } = await searchEbayComps(params, listingId);
-    await closeBrowser();
-    return c.json({ comps, blocked });
+    const { comps } = await searchEbayComps(params, listingId);
+    return c.json({ comps });
   } catch (err: unknown) {
-    await closeBrowser();
     const message = err instanceof Error ? err.message : 'Unknown error';
     return c.json({ error: message }, 500);
   }
@@ -58,7 +55,7 @@ comparablesRouter.get('/:listingId', async (c) => {
   const listingId = parseInt(c.req.param('listingId'));
 
   // Verify listing ownership
-  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
+  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   const results = await db.select()

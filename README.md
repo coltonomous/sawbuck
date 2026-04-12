@@ -2,177 +2,164 @@
 
 **Buy low. Sand. Sell high.**
 
-AI-powered furniture flipping — find underpriced pieces on Craigslist, OfferUp, Mercari, eBay, and Facebook Marketplace. Analyze condition and value with Claude's vision API. Plan refinishing projects, source materials, and track profit from acquisition to sale.
+AI-powered furniture flipping — an autonomous agent discovers underpriced wood furniture on Craigslist, evaluates flip potential with AI vision analysis, generates refinishing concepts, and surfaces only the best deals.
 
 ## What It Does
 
-- **Deal Finder** — scrapes listing platforms on a schedule, deduplicates across sources, filters irrelevant results, and surfaces the best deals by price-to-value ratio. Users can also paste a direct listing URL to import items the scraper missed
-- **Vision Analysis** — sends listing photos to Claude for furniture type/style identification, condition scoring, wood species detection, and a blunt profit verdict on whether refinishing is worth the effort
-- **eBay Comparables** — pulls sold comps via Playwright scraper with CAPTCHA detection and multi-query fallback, supplements with eBay Browse API active listings when blocked. Pricing engine blends sold and active data with source-aware weighting
-- **Refinishing Plans** — generates step-by-step refinishing instructions with specific product recommendations, realistic time/cost estimates, and expected resale prices
-- **Materials Sourcing** — builds shopping lists with links to Amazon, Home Depot, and Lowe's
-- **Project Tracking** — tracks the full lifecycle from acquisition through refinishing to sale, with before/during/after photos and ROI calculations
-- **Knowledge Base (RAG)** — on-device retrieval-augmented generation using local embeddings (all-MiniLM-L6-v2) and sqlite-vec. Completed flips, product specs, and refinishing guides are chunked, embedded, and stored in the same SQLite database. Vision analysis and refinishing plans are grounded in real outcomes and manufacturer data instead of relying solely on Claude's training data
-- **Analytics** — dashboard with deal flow metrics, profit tracking, and platform performance
+- **Autonomous Agent** — LangGraph pipeline runs on a schedule: discovers listings via Craigslist RSS, triages with Qwen (batch classification), evaluates with AI vision analysis, generates concept renders via fal.ai, reconciles stale listings, and writes results to a shared feed
+- **Vision Analysis** — sends listing photos to AI for furniture type/style identification, condition scoring (1-10), wood species detection, and a blunt profit verdict
+- **Refinishing Concepts** — generates "before vs. after" concept images at varying difficulty levels (quick clean, sand & refinish, full transformation) with cost/time estimates
+- **eBay Pricing** — pulls active comparables via eBay Browse API, applies IQR outlier filtering and condition-adjusted median pricing with a 15% active-listing discount, calculates deal score
+- **User Preferences** — location radius, budget, shop space, experience level, and style preferences filter the shared deal feed per-user
+- **Refinishing Plans** — detailed step-by-step instructions with product recommendations, time/cost estimates (generated on-demand when user selects a concept)
+- **Project Tracking** — full lifecycle from acquisition through refinishing to sale, with before/during/after photos and ROI calculations
+- **Knowledge Base (RAG)** — on-device embeddings (all-MiniLM-L6-v2) with pgvector. Past flips, product specs, and technique guides ground AI analysis in real data
+- **Analytics** — deal flow metrics, profit tracking, platform performance
 
 ## Tech Stack
 
 | Layer | Tech |
 |-------|------|
 | Server | Hono, Node.js, TypeScript |
-| Database | SQLite via Drizzle ORM |
-| Scraping | Playwright (browser pool with stealth + request interception) |
-| AI | Claude Sonnet (vision + text) |
+| Database | PostgreSQL via Drizzle ORM |
+| Agent Pipeline | LangGraph (@langchain/langgraph) |
+| AI Models | Qwen3 VL 235B + Qwen3 32B via AWS Bedrock |
+| Image Generation | fal.ai (Flux) |
 | Embeddings | all-MiniLM-L6-v2 via @xenova/transformers (on-device, 384-dim) |
-| Vector Search | sqlite-vec (KNN on the same SQLite database) |
-| eBay API | Browse API v1 (OAuth client credentials) |
+| Vector Search | pgvector |
+| eBay API | Browse API v1 (OAuth) |
 | Client | React 19, Vite, Tailwind CSS v4 |
 | Maps | Leaflet / react-leaflet |
-| Charts | Recharts |
+| Auth | better-auth (email/password + Google OAuth) |
 
 ## Setup
 
 ```bash
 git clone https://github.com/coltonomous/sawbuck.git
 cd sawbuck
+cp .env.example .env
+# Edit .env with your credentials
+```
+
+### Docker (recommended)
+
+```bash
+docker compose up --build -d
+```
+
+Starts PostgreSQL (with pgvector) and the app. On first boot:
+- Schema is created automatically via `drizzle-kit push`
+- RAG knowledge base bootstraps (downloads embedding model ~80MB)
+- Agent scheduler starts after 10s (if `AWS_REGION` is set)
+
+### Local development
+
+```bash
+# Start Postgres
+docker compose up -d postgres
+
+# Install deps and push schema
 npm install
-npx playwright install chromium
-```
+DATABASE_URL=postgresql://postgres:sawbuck@localhost:5432/sawbuck npx drizzle-kit push --force
 
-Create a `.env` file:
-
-```
-# Optional — server-side fallback. If not set, users enter their own key in Settings.
-# ANTHROPIC_API_KEY=sk-ant-...
-
-# Optional — enables eBay Browse API for active listing comps
-# Register at https://developer.ebay.com to get credentials
-EBAY_CLIENT_ID=
-EBAY_CLIENT_SECRET=
-```
-
-For local development with your own key, uncomment `ANTHROPIC_API_KEY`. In production, leave it unset — users provide their own key via Settings, stored in their browser's localStorage and sent per-request over HTTPS.
-
-Initialize the database and run migrations:
-
-```bash
-npm run db:migrate
-npm run init
-```
-
-Load sample listings so you can poke around without scraping anything:
-
-```bash
-npm run seed
-```
-
-This inserts 8 furniture listings (mix of analyzed and unanalyzed), eBay comparables, and a few search configs. No API keys needed.
-
-## Development
-
-```bash
+# Start dev servers (API :3001 + Vite :5173)
 npm run dev
 ```
 
-Starts the API server on `:3001` and Vite dev server on `:5173` concurrently.
+## Configuration
 
-## Tests
+### Secrets (`.env` file or GitHub repo secrets)
 
-```bash
-npm test
-```
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `AWS_REGION` | Yes | AWS region for Bedrock (e.g. `us-west-2`) |
+| `AWS_ACCESS_KEY_ID` | If not using IAM role | Bedrock credentials |
+| `AWS_SECRET_ACCESS_KEY` | If not using IAM role | Bedrock credentials |
+| `BETTER_AUTH_SECRET` | Yes | Auth encryption key (32+ chars) |
+| `FAL_KEY` | Optional | fal.ai API key for concept renders |
+| `EBAY_CLIENT_ID` | Optional | eBay Browse API credentials |
+| `EBAY_CLIENT_SECRET` | Optional | eBay Browse API credentials |
+| `GOOGLE_CLIENT_ID` | Optional | Google OAuth |
+| `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth |
 
-Pricing logic, fingerprint hashing, scraper parsing, and API route smoke tests. CI runs on every push to `main`.
+### Agent config (admin UI, no deploy needed)
+
+All pipeline parameters are stored in the database and editable from the admin Settings page. Changes take effect on the next pipeline run.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `agent.triage_model` | `qwen.qwen3-32b` | Bedrock model ID for triage |
+| `agent.eval_model` | `qwen.qwen3-vl-235b-a22b` | Bedrock model ID for vision eval |
+| `agent.max_triages` | `50` | Max listings to triage per run |
+| `agent.max_evals` | `10` | Max listings to evaluate per run |
+| `agent.max_renders` | `5` | Max listings to render concepts for |
+| `agent.run_interval_ms` | `14400000` | Run interval (4 hours) |
+| `agent.target_city` | `seattle` | Craigslist city |
+| `agent.triage_threshold` | `0.6` | Min confidence to pass triage |
+| `agent.deal_score_threshold` | `1.3` | Min deal score to qualify |
+
+Settings can also be set via `AGENT_*` env vars as initial defaults before the DB is populated.
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
 | `npm run dev` | Start server + client in dev mode |
-| `npm run dev:server` | Start API server only |
-| `npm run dev:client` | Start Vite dev server only |
 | `npm run build` | Build client for production |
 | `npm start` | Run production server |
 | `npm test` | Run test suite |
-| `npm run seed` | Load sample data |
-| `npm run scrape` | Run all active scrapers once |
-| `npm run db:generate` | Generate a new migration from schema changes |
-| `npm run db:migrate` | Apply migrations |
+| `npm run agent` | Run agent pipeline once (manual trigger) |
+| `npm run db:push` | Push schema to database |
 | `npm run db:studio` | Open Drizzle Studio |
-| `npm run ingest` | Seed RAG knowledge base (products + guides + projects) |
-| `npm run ingest -- --only products` | Ingest product specs only |
-| `npm run ingest -- --only guides` | Ingest technique guides only |
-| `npm run ingest -- --stats` | Show knowledge base chunk counts |
+| `npm run ingest` | Populate RAG knowledge base |
+| `npm run cleanup:images` | Run image retention cleanup |
 
-## Docker
+## Agent Pipeline
 
-Production:
-
-```bash
-docker compose up --build -d
+```
+scrape (CL RSS) → triage (Qwen batch) → [retry if 0 pass] →
+enrich (fetch detail pages) → reconcile (mark removed listings) →
+evaluate (Qwen VL vision + eBay pricing) →
+planOptions (refinishing summaries) → render (fal.ai concepts) → summarize
 ```
 
-The app container exposes port 3001. A shared Caddy reverse proxy (managed separately via [coltonomous/infra](https://github.com/coltonomous/infra)) routes `sawbuck.coltonomous.com` to the app. TLS is handled by Cloudflare + Cloudflare Origin CA cert.
+- Retries vary CL subcategory on each attempt (all → by-owner → by-dealer)
+- Deduplicates against DB and within retries (no wasted triage tokens)
+- **Stale listing detection**: enrichment detects 404s and CL deletion notices; reconcile node probes existing DB listings missing from RSS and marks confirmed removals
+- Listings tied to a project are never marked removed or cleaned up
+- Agent-discovered listings visible to all users, filtered by preferences
+- Config refreshed from DB before each run
 
-Listing images, the SQLite database, and the HuggingFace model cache persist in `./data/`. On first startup, the server automatically downloads the embedding model (~80 MB) and seeds the knowledge base from [sources.json](server/rag/sources.json). Subsequent restarts skip ingestion if data already exists.
+## Listing Lifecycle
 
-Development (hot reload):
+| Status | Set by | Meaning |
+|--------|--------|---------|
+| `new` | Scrape/import | Just discovered, not yet analyzed |
+| `analyzed` | Vision analysis | AI analysis complete |
+| `watching` | User | Bookmarked for later |
+| `acquired` | Project creation | User bought the piece |
+| `dismissed` | User | Not interested |
+| `removed` | Reconcile node | Source listing confirmed gone (404 or CL deletion notice) |
 
-```bash
-./up.sh        # start dev containers (pass --build when deps change)
-./down.sh      # stop containers
-```
-
-Runs the API on `:3001` and Vite dev server on `:5173` with source code mounted for hot reload.
-
-## API Routes
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/listings` | List all scraped listings |
-| GET | `/api/listings/:id` | Listing detail with images and analysis |
-| POST | `/api/listings/import` | Import a listing by pasting its URL |
-| PATCH | `/api/listings/:id` | Update listing status |
-| PATCH | `/api/listings/bulk` | Bulk update listing statuses |
-| POST | `/api/listings/:id/analyze` | Run Claude vision analysis |
-| GET | `/api/listings/:id/price` | Calculate pricing from comps |
-| POST | `/api/comparables/search` | Search eBay sold + active comps |
-| GET | `/api/comparables/:listingId` | Get stored comps for a listing |
-| GET | `/api/scrapers/status` | Platform settings and search configs |
-| POST | `/api/scrapers/run` | Trigger a scrape run |
-| GET | `/api/scrapers/run/stream` | SSE stream of scrape progress |
-| GET/POST | `/api/projects` | Project CRUD |
-| POST | `/api/projects/:id/refinish` | Generate refinishing plan |
-| POST | `/api/projects/:id/listing-text` | Generate marketplace listing copy |
-| GET | `/api/stats` | Dashboard analytics |
-
-## How Pricing Works
-
-1. Searches eBay for sold comparables using multi-query strategy (style+type, wood+type, type alone, title keywords)
-2. If the Playwright scraper is blocked (CAPTCHA/redirect), falls back to eBay Browse API active listings
-3. Calculates blended median: sold-only if >= 3 sold comps, 70/30 sold/active blend if both, active-only discounted 15%
-4. Applies condition multiplier: score of 8 = baseline, each point below -10%, each point above +5%
-5. Deal score = estimated value / asking price
+Removed listings are excluded from the browse feed but remain accessible by direct URL. Users can still create projects from removed listings (the seller took it down after selling to you). Image cleanup treats `removed` the same as `dismissed`.
 
 ## Project Structure
 
 ```
 server/
-  app.ts                # Hono app setup (routes, middleware)
-  index.ts              # Server entry (listen + shutdown)
-  db/                   # Drizzle schema and connection
+  agents/               # LangGraph pipeline: graph, nodes, state, config, scheduler
+  integrations/         # Platform integrations (Craigslist RSS + fetch)
+  analysis/             # Vision analysis, pricing, refinishing plans
+  rag/                  # Knowledge base: embeddings, pgvector store, retrieval
   routes/               # API route handlers
-  scrapers/             # Platform scrapers + manager
-  analysis/             # Vision, pricing, refinishing, sourcing
-  rag/                  # Knowledge base: embeddings, vector store, retrieval, ingestion
-  lib/                  # Claude client, eBay API client
-  images/               # Download + resize pipeline
+  lib/                  # Bedrock client, eBay API, utilities
+  images/               # Download, resize, cleanup pipeline
+  db/                   # Drizzle schema and Postgres connection
 client/
   src/
-    pages/              # Dashboard, Listings, ListingDetail, Settings, Projects, Analytics
-    components/         # ComparablesList, RefinishingPlan, ROICalculator, etc.
+    pages/              # Dashboard, Listings, Projects, Analytics, Settings
+    components/         # UI components
     api.ts              # API client
 shared/                 # Constants shared between server and client
-scripts/                # CLI utilities (init, cron, test helpers)
-drizzle/                # SQL migrations
+scripts/                # CLI utilities (agent runner, ingest, cleanup)
 ```

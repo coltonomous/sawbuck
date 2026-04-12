@@ -1,1 +1,0 @@
-ALTER TABLE `listings` ADD `matched_search_terms` text;

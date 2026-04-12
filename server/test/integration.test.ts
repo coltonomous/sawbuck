@@ -10,9 +10,9 @@ function uniqueSuffix() {
   return crypto.randomUUID().slice(0, 8);
 }
 
-function seedListing(userId: string, overrides: Record<string, any> = {}) {
+async function seedListing(userId: string, overrides: Record<string, any> = {}) {
   const suffix = uniqueSuffix();
-  db.insert(listings).values({
+  await db.insert(listings).values({
     externalId: `test-${suffix}`,
     platform: 'craigslist',
     url: `https://craigslist.org/${suffix}`,
@@ -21,12 +21,13 @@ function seedListing(userId: string, overrides: Record<string, any> = {}) {
     fingerprint: `fp-${suffix}`,
     userId,
     ...overrides,
-  }).run();
-  return db.select().from(listings).where(eq(listings.externalId, `test-${suffix}`)).get()!;
+  });
+  const [row] = await db.select().from(listings).where(eq(listings.externalId, `test-${suffix}`));
+  return row!;
 }
 
-function seedAnalyzedListing(userId: string) {
-  return seedListing(userId, {
+async function seedAnalyzedListing(userId: string) {
+  return await seedListing(userId, {
     status: 'analyzed',
     furnitureType: 'dresser',
     furnitureStyle: 'mid-century modern',
@@ -112,11 +113,10 @@ describe('Auth', () => {
     expect(res.status).toBeGreaterThanOrEqual(400);
   });
 
-  it('new users get role=user and dailyClaudeLimit=20', async () => {
+  it('new users get role=user by default', async () => {
     const user = await createTestUser('user');
-    const dbUser = db.select().from(users).where(eq(users.id, user.id)).get()!;
+    const dbUser = await db.select().from(users).where(eq(users.id, user.id)).then(r => r[0])!;
     expect(dbUser.role).toBe('user');
-    expect(dbUser.dailyClaudeLimit).toBe(20);
   });
 });
 
@@ -134,7 +134,7 @@ describe('Sawbuck listing visibility', () => {
     viewer = await createTestUser('user');
 
     // Seed a sawbuck listing directly in DB (avoids multipart complexity)
-    const listing = seedListing(owner.id, { platform: 'sawbuck', url: '', title: 'Sawbuck Oak Table' });
+    const listing = await seedListing(owner.id, { platform: 'sawbuck', url: '', title: 'Sawbuck Oak Table' });
     listingId = listing.id;
   });
 
@@ -151,7 +151,7 @@ describe('Sawbuck listing visibility', () => {
   });
 
   it('sawbuck listings appear in other users feeds', async () => {
-    const res = await app.request('/api/listings?platform=sawbuck', { headers: authHeaders(viewer) });
+    const res = await app.request('/api/listings?platform=sawbuck&limit=100', { headers: authHeaders(viewer) });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.listings.some((l: any) => l.id === listingId)).toBe(true);
@@ -186,7 +186,7 @@ describe('Sawbuck listing visibility', () => {
   });
 
   it('owner can delete their listing', async () => {
-    const toDelete = seedListing(owner.id, { platform: 'sawbuck', url: '' });
+    const toDelete = await seedListing(owner.id, { platform: 'sawbuck', url: '' });
 
     const res = await app.request(`/api/listings/${toDelete.id}`, {
       method: 'DELETE',
@@ -194,13 +194,13 @@ describe('Sawbuck listing visibility', () => {
     });
     expect(res.status).toBe(200);
 
-    const check = db.select().from(listings).where(eq(listings.id, toDelete.id)).get();
+    const check = await db.select().from(listings).where(eq(listings.id, toDelete.id)).then(r => r[0]);
     expect(check).toBeUndefined();
   });
 
   it('scraped listings from other users are not visible', async () => {
     const otherUser = await createTestUser('user');
-    seedListing(otherUser.id, { title: 'Hidden Scraped Listing' });
+    await seedListing(otherUser.id, { title: 'Hidden Scraped Listing' });
 
     const res = await app.request('/api/listings?limit=500', { headers: authHeaders(owner) });
     const body = await res.json();
@@ -261,25 +261,17 @@ describe('Sawbuck listing creation', () => {
   });
 
   it('creates listing with valid data and photo', async () => {
+    // Build a FormData with a real JPEG (minimal valid JPEG: SOI + EOI markers)
+    const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9]);
+    const formData = new FormData();
+    formData.append('title', 'Integration Test Dresser');
+    formData.append('askingPrice', '250');
+    formData.append('photos', new Blob([jpegBytes], { type: 'image/jpeg' }), 'test.jpg');
+
     const res = await app.request('/api/listings/create', {
       method: 'POST',
-      headers: { ...authHeaders(user), 'Content-Type': 'multipart/form-data; boundary=---boundary' },
-      body: [
-        '-----boundary',
-        'Content-Disposition: form-data; name="title"',
-        '',
-        'Integration Test Dresser',
-        '-----boundary',
-        'Content-Disposition: form-data; name="askingPrice"',
-        '',
-        '250',
-        '-----boundary',
-        'Content-Disposition: form-data; name="photos"; filename="test.jpg"',
-        'Content-Type: image/jpeg',
-        '',
-        'fake-image-data',
-        '-----boundary--',
-      ].join('\r\n'),
+      headers: authHeaders(user),
+      body: formData,
     });
     expect(res.status).toBe(201);
     const body = await res.json();
@@ -302,7 +294,7 @@ describe('Project lifecycle', () => {
   });
 
   it('creates a project from an analyzed listing', async () => {
-    const listing = seedAnalyzedListing(user.id);
+    const listing = await seedAnalyzedListing(user.id);
 
     const res = await app.request('/api/projects', {
       method: 'POST',
@@ -320,12 +312,12 @@ describe('Project lifecycle', () => {
     expect(body.purchasePrice).toBe(200);
 
     // Listing status should update to acquired
-    const dbListing = db.select().from(listings).where(eq(listings.id, listing.id)).get()!;
+    const dbListing = await db.select().from(listings).where(eq(listings.id, listing.id)).then(r => r[0])!;
     expect(dbListing.status).toBe('acquired');
   });
 
   it('retrieves project with listing data', async () => {
-    const listing = seedAnalyzedListing(user.id);
+    const listing = await seedAnalyzedListing(user.id);
     const createRes = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
@@ -341,7 +333,7 @@ describe('Project lifecycle', () => {
   });
 
   it('updates project status and financials', async () => {
-    const listing = seedAnalyzedListing(user.id);
+    const listing = await seedAnalyzedListing(user.id);
     const createRes = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
@@ -371,7 +363,7 @@ describe('Project lifecycle', () => {
   });
 
   it('blocks refinishing plan for unanalyzed listing', async () => {
-    const listing = seedListing(user.id); // no furnitureType
+    const listing = await seedListing(user.id); // no furnitureType
 
     const createRes = await app.request('/api/projects', {
       method: 'POST',
@@ -390,7 +382,7 @@ describe('Project lifecycle', () => {
   });
 
   it('project appears in pipeline', async () => {
-    const listing = seedAnalyzedListing(user.id);
+    const listing = await seedAnalyzedListing(user.id);
     const createRes = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
@@ -405,7 +397,7 @@ describe('Project lifecycle', () => {
   });
 
   it('other users cannot access the project', async () => {
-    const listing = seedAnalyzedListing(user.id);
+    const listing = await seedAnalyzedListing(user.id);
     const createRes = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
@@ -419,7 +411,7 @@ describe('Project lifecycle', () => {
   });
 
   it('deleting project reverts listing to analyzed status', async () => {
-    const listing = seedAnalyzedListing(user.id);
+    const listing = await seedAnalyzedListing(user.id);
     const createRes = await app.request('/api/projects', {
       method: 'POST',
       headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
@@ -434,7 +426,7 @@ describe('Project lifecycle', () => {
     expect(res.status).toBe(200);
 
     // Listing should revert to 'analyzed' since it has furnitureType
-    const dbListing = db.select().from(listings).where(eq(listings.id, listing.id)).get()!;
+    const dbListing = await db.select().from(listings).where(eq(listings.id, listing.id)).then(r => r[0])!;
     expect(dbListing.status).toBe('analyzed');
   });
 });
@@ -466,7 +458,6 @@ describe('Admin operations', () => {
     const adminEntry = body.find((u: any) => u.id === admin.id);
     expect(adminEntry).toBeDefined();
     expect(adminEntry.role).toBe('admin');
-    expect(adminEntry).toHaveProperty('usageToday');
     expect(adminEntry).toHaveProperty('listingCount');
   });
 
@@ -480,9 +471,8 @@ describe('Admin operations', () => {
       body: JSON.stringify({ role: 'admin' }),
     });
     expect(promoteRes.status).toBe(200);
-    let dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
+    let dbUser = await db.select().from(users).where(eq(users.id, target.id)).then(r => r[0])!;
     expect(dbUser.role).toBe('admin');
-    expect(dbUser.dailyClaudeLimit).toBe(999999);
 
     // Demote
     const demoteRes = await app.request(`/api/admin/users/${target.id}/role`, {
@@ -491,9 +481,8 @@ describe('Admin operations', () => {
       body: JSON.stringify({ role: 'user' }),
     });
     expect(demoteRes.status).toBe(200);
-    dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
+    dbUser = await db.select().from(users).where(eq(users.id, target.id)).then(r => r[0])!;
     expect(dbUser.role).toBe('user');
-    expect(dbUser.dailyClaudeLimit).toBe(20);
   });
 
   it('prevents admin from demoting themselves', async () => {
@@ -523,22 +512,9 @@ describe('Admin operations', () => {
     expect(res.status).toBe(400);
   });
 
-  it('updates user Claude limit', async () => {
-    const target = await createTestUser('user');
-    const res = await app.request(`/api/admin/users/${target.id}/limit`, {
-      method: 'PATCH',
-      headers: { ...authHeaders(admin), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ limit: 50 }),
-    });
-    expect(res.status).toBe(200);
-
-    const dbUser = db.select().from(users).where(eq(users.id, target.id)).get()!;
-    expect(dbUser.dailyClaudeLimit).toBe(50);
-  });
-
   it('deletes user and cascades all data', async () => {
     const victim = await createTestUser('user');
-    const listing = seedListing(victim.id);
+    const listing = await seedListing(victim.id);
 
     const res = await app.request(`/api/admin/users/${victim.id}`, {
       method: 'DELETE',
@@ -546,8 +522,8 @@ describe('Admin operations', () => {
     });
     expect(res.status).toBe(200);
 
-    expect(db.select().from(users).where(eq(users.id, victim.id)).get()).toBeUndefined();
-    expect(db.select().from(listings).where(eq(listings.userId, victim.id)).all()).toHaveLength(0);
+    expect(await db.select().from(users).where(eq(users.id, victim.id)).then(r => r[0])).toBeUndefined();
+    expect(await db.select().from(listings).where(eq(listings.userId, victim.id))).toHaveLength(0);
   });
 
   it('returns 404 when deleting nonexistent user', async () => {

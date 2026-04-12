@@ -1,10 +1,11 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { Hono } from 'hono';
-import { db, sqlite } from '../db/index.js';
+import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
+import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
@@ -34,10 +35,10 @@ projectsRouter.get('/', async (c) => {
 projectsRouter.get('/:id', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
-  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
 
   const plans = await db.select()
     .from(refinishingPlans)
@@ -65,24 +66,24 @@ projectsRouter.post('/', async (c) => {
   }
   const { listingId, name, purchasePrice, purchaseDate, purchaseNotes } = parsed.data;
 
-  // Verify the listing belongs to this user
-  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).get();
+  // Verify the listing is accessible: user's own, or agent-discovered (shared)
+  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), or(eq(listings.userId, user.id), isNull(listings.userId)))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
-  const project = sqlite.transaction(() => {
-    const [created] = db.insert(projects).values({
+  const project = await db.transaction(async (tx) => {
+    const [created] = await tx.insert(projects).values({
       listingId,
       name,
       purchasePrice,
-      purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+      purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
       purchaseNotes,
       userId: user.id,
-    }).returning().all();
+    }).returning();
 
-    db.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId)).run();
+    await tx.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId));
 
     return created;
-  })();
+  });
 
   return c.json(project, 201);
 });
@@ -97,23 +98,24 @@ projectsRouter.patch('/:id', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const existing = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const existing = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-set soldDate when marking as sold (if not already set)
   const updates: Record<string, unknown> = {
     ...parsed.data,
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(),
   };
+  if (parsed.data.purchaseDate) updates.purchaseDate = new Date(parsed.data.purchaseDate);
   if (parsed.data.status === 'sold' && !existing.soldDate) {
-    updates.soldDate = new Date().toISOString().split('T')[0];
+    updates.soldDate = new Date();
   }
 
   await db.update(projects).set(updates).where(eq(projects.id, id));
 
   await recalculateFinancials(id);
 
-  const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
+  const updated = await db.select().from(projects).where(eq(projects.id, id)).then(r => r[0]);
   if (!updated) return c.json({ error: 'Not found' }, 404);
 
   // Auto-ingest into RAG knowledge base when project is sold
@@ -128,29 +130,29 @@ projectsRouter.patch('/:id', async (c) => {
 projectsRouter.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   // Delete photo files first (outside transaction — file I/O isn't rollbackable)
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   for (const photo of photos) {
     const filePath = path.join(IMAGES_DIR, photo.localPath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await fs.unlink(filePath).catch(() => {});
   }
 
   // Delete all DB records atomically
-  sqlite.transaction(() => {
-    db.delete(projectPhotos).where(eq(projectPhotos.projectId, id)).run();
-    db.delete(materials).where(eq(materials.projectId, id)).run();
-    db.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id)).run();
-    db.delete(projects).where(eq(projects.id, id)).run();
+  await db.transaction(async (tx) => {
+    await tx.delete(projectPhotos).where(eq(projectPhotos.projectId, id));
+    await tx.delete(materials).where(eq(materials.projectId, id));
+    await tx.delete(refinishingPlans).where(eq(refinishingPlans.projectId, id));
+    await tx.delete(projects).where(eq(projects.id, id));
 
-    const listing = db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+    const [listing] = await tx.select().from(listings).where(eq(listings.id, project.listingId));
     if (listing) {
-      const newStatus = listing.furnitureType ? 'analyzed' : 'new';
-      db.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId)).run();
+      const newStatus: 'analyzed' | 'new' = listing.furnitureType ? 'analyzed' : 'new';
+      await tx.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId));
     }
-  })();
+  });
 
   return c.json({ ok: true });
 });
@@ -159,11 +161,11 @@ projectsRouter.delete('/:id', async (c) => {
 projectsRouter.post('/:id/refinish', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   // Check if the listing has been analyzed first
-  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
   if (listing && !listing.furnitureType) {
     return c.json({ error: 'Analyze the listing with Claude first — the refinishing plan needs furniture type, condition, and wood data to be useful.' }, 422);
   }
@@ -178,16 +180,14 @@ projectsRouter.post('/:id/refinish', async (c) => {
       .where(eq(refinishingPlans.projectId, id));
     const storedPlan = storedPlans[storedPlans.length - 1];
 
-    sqlite.transaction(() => {
-      if (storedPlan) {
-        generateMaterialsFromPlanSync(storedPlan.id, id);
-      }
+    if (storedPlan) {
+      await generateMaterialsFromPlanSync(storedPlan.id, id);
+    }
 
-      db.update(projects).set({
-        status: 'refinishing',
-        updatedAt: new Date().toISOString(),
-      }).where(eq(projects.id, id)).run();
-    })();
+    await db.update(projects).set({
+      status: 'refinishing',
+      updatedAt: new Date(),
+    }).where(eq(projects.id, id));
 
     return c.json({
       plan: result.plan,
@@ -211,14 +211,14 @@ projectsRouter.post('/:id/listing-text', async (c) => {
   const parsed = generateListingTextSchema.safeParse(raw);
   const regenerate = parsed.success ? parsed.data.regenerate : false;
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   if (project.listingText && !regenerate) {
     return c.json({ text: project.listingText });
   }
 
-  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).get();
+  const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
   const plans = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id));
   const plan = plans[plans.length - 1] ?? null;
   const mats = await getMaterialsForProject(id);
@@ -272,7 +272,7 @@ projectsRouter.get('/:id/refinish', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const plans = await db.select()
@@ -290,7 +290,7 @@ projectsRouter.get('/:id/materials', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const mats = await getMaterialsForProject(id);
@@ -308,14 +308,14 @@ projectsRouter.patch('/:id/materials/:materialId', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   await db.update(materials).set(parsed.data).where(eq(materials.id, materialId));
 
   await recalculateFinancials(projectId);
 
-  const updated = await db.select().from(materials).where(eq(materials.id, materialId)).get();
+  const updated = await db.select().from(materials).where(eq(materials.id, materialId)).then(r => r[0]);
   return c.json(updated);
 });
 
@@ -329,23 +329,26 @@ projectsRouter.patch('/:id/costs', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const existing = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const existing = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const updates: Record<string, unknown> = { ...parsed.data };
+  // Convert date strings from client to Date objects
+  if (updates.soldDate) updates.soldDate = new Date(updates.soldDate as string);
+  if (updates.listedDate) updates.listedDate = new Date(updates.listedDate as string);
   // Auto-set soldDate when soldPrice is provided (if not already set)
   if (updates.soldPrice && !updates.soldDate && !existing.soldDate) {
-    updates.soldDate = new Date().toISOString().split('T')[0];
+    updates.soldDate = new Date();
   }
   if (Object.keys(updates).length > 0) {
     await db.update(projects).set({
       ...updates,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     }).where(eq(projects.id, id));
     await recalculateFinancials(id);
   }
 
-  const updated = await db.select().from(projects).where(eq(projects.id, id)).get();
+  const updated = await db.select().from(projects).where(eq(projects.id, id)).then(r => r[0]);
 
   // Auto-ingest when sold price is set and project is marked sold
   if (updated?.status === 'sold' && updated.soldPrice) {
@@ -356,7 +359,7 @@ projectsRouter.patch('/:id/costs', async (c) => {
 });
 
 async function recalculateFinancials(projectId: number) {
-  const project = await db.select().from(projects).where(eq(projects.id, projectId)).get();
+  const project = await db.select().from(projects).where(eq(projects.id, projectId)).then(r => r[0]);
   if (!project) return;
 
   const mats = await getMaterialsForProject(projectId);
@@ -386,7 +389,7 @@ projectsRouter.get('/:id/photos', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
@@ -396,7 +399,7 @@ projectsRouter.get('/:id/photos', async (c) => {
 projectsRouter.post('/:id/photos', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   const formData = await c.req.formData();
@@ -411,17 +414,23 @@ projectsRouter.post('/:id/photos', async (c) => {
     return c.json({ error: 'type must be before, during, or after' }, 400);
   }
 
-  const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
-  fs.mkdirSync(projectDir, { recursive: true });
+  let validated;
+  try {
+    validated = await validateUpload(file);
+  } catch (err) {
+    if (err instanceof UploadError) return c.json({ error: err.message }, 400);
+    throw err;
+  }
 
-  const ext = path.extname(file.name) || '.jpg';
+  const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
+  await fs.mkdir(projectDir, { recursive: true });
+
   const timestamp = Date.now();
-  const filename = `${photoType}-${timestamp}${ext}`;
+  const filename = `${photoType}-${timestamp}${validated.ext}`;
   const filePath = path.join(projectDir, filename);
   const relativePath = path.join('projects', String(id), filename);
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  fs.writeFileSync(filePath, buffer);
+  await fs.writeFile(filePath, validated.buffer);
 
   const [photo] = await db.insert(projectPhotos).values({
     projectId: id,
@@ -437,15 +446,15 @@ projectsRouter.delete('/:id/photos/:photoId', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).get();
+  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const photoId = parseInt(c.req.param('photoId'));
-  const photo = await db.select().from(projectPhotos).where(eq(projectPhotos.id, photoId)).get();
+  const photo = await db.select().from(projectPhotos).where(eq(projectPhotos.id, photoId)).then(r => r[0]);
 
   if (photo) {
     const filePath = path.join(IMAGES_DIR, photo.localPath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await fs.unlink(filePath).catch(() => {});
     await db.delete(projectPhotos).where(eq(projectPhotos.id, photoId));
   }
 
@@ -463,7 +472,7 @@ projectsRouter.get('/pipeline/all', async (c) => {
   const enriched = await Promise.all(allProjects.map(async (project) => {
     const [primaryImagePath, listing] = await Promise.all([
       getPrimaryImagePath(project.listingId),
-      db.select().from(listings).where(eq(listings.id, project.listingId)).get(),
+      db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]),
     ]);
 
     return {

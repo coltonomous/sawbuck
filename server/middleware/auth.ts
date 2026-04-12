@@ -23,18 +23,16 @@ export async function requireAuth(c: Context, next: Next) {
 }
 
 export async function requireAdmin(c: Context, next: Next) {
-  const session = await auth.api.getSession({
-    headers: c.req.raw.headers,
-  });
+  // requireAuth already ran and set the user on the context
+  const user = c.get('user');
 
-  if (!session) {
+  if (!user) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  if (session.user.role !== 'admin') {
+  if (user.role !== 'admin') {
     return c.json({ error: 'Forbidden' }, 403);
   }
 
-  c.set('user', session.user as AuthUser);
   await next();
 }

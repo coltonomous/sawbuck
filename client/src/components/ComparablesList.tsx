@@ -8,7 +8,6 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [blocked, setBlocked] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -23,25 +22,20 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
   const handleSearch = async () => {
     setLoading(true);
     setError(null);
-    setBlocked(false);
     try {
       const response = await api.searchComparables(listingId);
-      // Handle both old array format and new { comps, blocked } format
       const arr = Array.isArray(response) ? response : (response.comps ?? []);
       setComps(arr);
       setSearched(true);
-      setBlocked(response.blocked ?? false);
-      toast('success', `Found ${arr.length} comparable${arr.length !== 1 ? 's' : ''}${response.blocked ? ' (scraper blocked, using active listings)' : ''}`);
+      toast('success', `Found ${arr.length} comparable${arr.length !== 1 ? 's' : ''}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     }
     setLoading(false);
   };
 
-  const soldComps = comps.filter(c => c.source === 'ebay_sold' || c.source === 'ebay' || !c.source);
-  const activeComps = comps.filter(c => c.source === 'ebay_active');
+  const activeComps = comps.filter(c => c.source === 'ebay_active' || !c.source);
 
-  const soldPrices = soldComps.map(c => c.soldPrice).filter(Boolean);
   const activePrices = activeComps.map(c => c.soldPrice).filter(Boolean);
   const calcMedian = (prices: number[]) => {
     if (prices.length === 0) return 0;
@@ -67,36 +61,18 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
       </div>
 
       {error && <p className="text-sm text-red-500 mb-3">{error}</p>}
-      {blocked && (
-        <p className="text-xs text-amber-600 bg-amber-50 rounded px-2 py-1 mb-3">
-          Sold listings scraper was blocked — showing active listing data instead.
-        </p>
-      )}
-
       {comps.length > 0 && (
         <>
           <div className="flex gap-4 mb-4 p-3 bg-gray-50 rounded-lg flex-wrap">
-            {soldPrices.length > 0 && (
-              <>
-                <div>
-                  <span className="text-[11px] text-gray-500 uppercase">Sold avg</span>
-                  <p className="text-lg font-semibold text-green-700">${calcAvg(soldPrices).toFixed(0)}</p>
-                </div>
-                <div>
-                  <span className="text-[11px] text-gray-500 uppercase">Sold median</span>
-                  <p className="text-lg font-semibold text-green-700">${calcMedian(soldPrices).toFixed(0)}</p>
-                </div>
-              </>
-            )}
             {activePrices.length > 0 && (
               <>
                 <div>
-                  <span className="text-[11px] text-gray-500 uppercase">Active avg</span>
-                  <p className="text-lg font-semibold text-amber-600">${calcAvg(activePrices).toFixed(0)}</p>
+                  <span className="text-[11px] text-gray-500 uppercase">Avg price</span>
+                  <p className="text-lg font-semibold text-green-700">${calcAvg(activePrices).toFixed(0)}</p>
                 </div>
                 <div>
-                  <span className="text-[11px] text-gray-500 uppercase">Active median</span>
-                  <p className="text-lg font-semibold text-amber-600">${calcMedian(activePrices).toFixed(0)}</p>
+                  <span className="text-[11px] text-gray-500 uppercase">Median price</span>
+                  <p className="text-lg font-semibold text-green-700">${calcMedian(activePrices).toFixed(0)}</p>
                 </div>
               </>
             )}

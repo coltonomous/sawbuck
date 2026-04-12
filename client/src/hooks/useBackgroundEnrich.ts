@@ -8,7 +8,7 @@ interface EnrichUpdate {
 
 /**
  * Background-enriches listings that are missing details (images, description).
- * Fetches detail pages one at a time to avoid overwhelming the browser pool.
+ * Fetches listing details one at a time to avoid overwhelming the API.
  * Calls onUpdate with the enriched listing data so the UI can update in place.
  */
 export function useBackgroundEnrich(

@@ -1,26 +1,44 @@
 import { Hono } from 'hono';
-import { db, sqlite } from '../db/index.js';
-import { users, sessions, listings, projects, claudeUsage } from '../db/schema.js';
-import { eq, and, count, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { db } from '../db/index.js';
+import { users, listings } from '../db/schema.js';
+import { eq, count } from 'drizzle-orm';
+import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
+import { triggerRun } from '../agents/scheduler.js';
+
+const VALID_SETTINGS = new Set([
+  'agent.max_triages',
+  'agent.max_evals',
+  'agent.max_renders',
+  'agent.concepts_per_listing',
+  'agent.triage_threshold',
+  'agent.deal_score_threshold',
+  'agent.min_delay_ms',
+  'agent.max_delay_ms',
+  'agent.daily_request_cap',
+  'agent.run_interval_ms',
+  'agent.target_city',
+  'agent.triage_model',
+  'agent.eval_model',
+  'agent.fal_model',
+  'agent.concept_size',
+  'agent.image_retention_days',
+]);
+
+const settingsUpdateSchema = z.record(z.string(), z.string()).refine(
+  (obj) => Object.keys(obj).every((key) => VALID_SETTINGS.has(key)),
+  { message: 'Unknown setting key' },
+);
 
 const adminRouter = new Hono();
 
-// GET / — list all users with usage stats
 adminRouter.get('/users', async (c) => {
-  const allUsers = db.select().from(users).all();
+  const allUsers = await db.select().from(users);
 
-  const today = new Date().toISOString().split('T')[0];
-  const usageToday = db.select({
-    userId: claudeUsage.userId,
-    callCount: claudeUsage.callCount,
-  }).from(claudeUsage).where(eq(claudeUsage.date, today)).all();
-
-  const usageMap = new Map(usageToday.map(u => [u.userId, u.callCount]));
-
-  const listingCounts = db.select({
+  const listingCounts = await db.select({
     userId: listings.userId,
     count: count(),
-  }).from(listings).groupBy(listings.userId).all();
+  }).from(listings).groupBy(listings.userId);
 
   const listingMap = new Map(listingCounts.map(l => [l.userId, l.count]));
 
@@ -30,14 +48,11 @@ adminRouter.get('/users', async (c) => {
     email: u.email,
     image: u.image,
     role: u.role,
-    dailyClaudeLimit: u.dailyClaudeLimit,
-    usageToday: usageMap.get(u.id) ?? 0,
     listingCount: listingMap.get(u.id) ?? 0,
     createdAt: u.createdAt,
   })));
 });
 
-// PATCH /users/:id/role — update user role
 adminRouter.patch('/users/:id/role', async (c) => {
   const id = c.req.param('id');
   const { role } = await c.req.json<{ role: 'user' | 'admin' }>();
@@ -46,75 +61,69 @@ adminRouter.patch('/users/:id/role', async (c) => {
     return c.json({ error: 'Invalid role' }, 400);
   }
 
-  // Prevent demoting yourself
   const currentUser = c.get('user');
   if (id === currentUser.id && role !== 'admin') {
     return c.json({ error: 'Cannot demote yourself' }, 400);
   }
 
-  db.update(users).set({
-    role,
-    dailyClaudeLimit: role === 'admin' ? 999999 : 20,
-    updatedAt: new Date(),
-  }).where(eq(users.id, id)).run();
-
+  await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, id));
   return c.json({ ok: true });
 });
 
-// PATCH /users/:id/limit — update daily Claude limit
-adminRouter.patch('/users/:id/limit', async (c) => {
-  const id = c.req.param('id');
-  const { limit } = await c.req.json<{ limit: number }>();
-
-  if (typeof limit !== 'number' || limit < 0) {
-    return c.json({ error: 'Invalid limit' }, 400);
-  }
-
-  db.update(users).set({
-    dailyClaudeLimit: limit,
-    updatedAt: new Date(),
-  }).where(eq(users.id, id)).run();
-
-  return c.json({ ok: true });
-});
-
-// DELETE /users/:id — delete user and all their data
 adminRouter.delete('/users/:id', async (c) => {
   const id = c.req.param('id');
 
-  // Prevent deleting yourself
   const currentUser = c.get('user');
   if (id === currentUser.id) {
     return c.json({ error: 'Cannot delete yourself' }, 400);
   }
 
-  const user = db.select().from(users).where(eq(users.id, id)).get();
+  const user = await db.select().from(users).where(eq(users.id, id)).then(r => r[0]);
   if (!user) return c.json({ error: 'User not found' }, 404);
 
-  // Manual cascade — deployed DB may not have ON DELETE CASCADE on all FKs
-  try {
-    sqlite.transaction(() => {
-      // Delete in dependency order (deepest children first)
-      sqlite.prepare('DELETE FROM materials WHERE refinishing_plan_id IN (SELECT id FROM refinishing_plans WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?))').run(id);
-      sqlite.prepare('DELETE FROM listing_images WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)').run(id);
-      sqlite.prepare('DELETE FROM project_photos WHERE project_id IN (SELECT id FROM projects WHERE user_id = ?)').run(id);
-      sqlite.prepare('DELETE FROM refinishing_plans WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)').run(id);
-      sqlite.prepare('DELETE FROM comparables WHERE listing_id IN (SELECT id FROM listings WHERE user_id = ?)').run(id);
-      sqlite.prepare('DELETE FROM projects WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM listings WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM scrape_runs WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM search_configs WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM background_jobs WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM claude_usage WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM accounts WHERE user_id = ?').run(id);
-      sqlite.prepare('DELETE FROM users WHERE id = ?').run(id);
-    })();
-  } catch (err: any) {
-    return c.json({ error: `Failed to delete user: ${err.message}` }, 500);
-  }
+  // FK cascades handle all dependent records:
+  // users → sessions, accounts, listings, projects, searchConfigs, scrapeRuns, backgroundJobs, comparables, refinishingPlans
+  // listings → listingImages, refinishingPlans, comparables, conceptRenders, projects
+  // projects → projectPhotos, and sets null on refinishingPlans.projectId, materials.projectId
+  // refinishingPlans → materials
+  await db.delete(users).where(eq(users.id, id));
 
   return c.json({ ok: true });
+});
+
+// GET /settings — get all agent config (current resolved values + DB overrides)
+adminRouter.get('/settings', async (c) => {
+  const dbSettings = await getAllSettings();
+  const resolved = getAgentConfig();
+  return c.json({ resolved, overrides: dbSettings });
+});
+
+// PATCH /settings — update agent config values
+adminRouter.patch('/settings', async (c) => {
+  const body = await c.req.json();
+  const parsed = settingsUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+
+  for (const [key, value] of Object.entries(parsed.data)) {
+    if (value === '') {
+      await deleteSetting(key);
+    } else {
+      await updateSetting(key, value);
+    }
+  }
+
+  return c.json({ ok: true, resolved: getAgentConfig() });
+});
+
+// POST /agent/run — manually trigger an agent pipeline run
+adminRouter.post('/agent/run', async (c) => {
+  const started = triggerRun();
+  if (!started) {
+    return c.json({ error: 'A run is already in progress' }, 409);
+  }
+  return c.json({ ok: true, message: 'Agent pipeline run started' });
 });
 
 export { adminRouter };
