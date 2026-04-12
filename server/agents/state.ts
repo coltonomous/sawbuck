@@ -63,6 +63,7 @@ export interface RunSummary {
   scraped: number;
   triaged: number;
   passedTriage: number;
+  reconciled: number;
   evaluated: number;
   qualified: number;
   rendered: number;
@@ -79,8 +80,10 @@ export interface AgentState {
   qualifiedListings: EvaluatedCandidate[];
   listingsWithOptions: ListingWithOptions[];
   conceptRenders: ConceptRenderResult[];
-  haikuTriaged: number;
-  sonnetEvaluated: number;
+  removedIds: string[]; // externalIds of listings confirmed gone (404)
+  reconciledCount: number;
+  triageCount: number;
+  evalCount: number;
   conceptsRendered: number;
   scrapeAttempts: number;
   seenExternalIds: string[]; // track IDs across retries to avoid re-triaging
@@ -122,12 +125,21 @@ export const AgentAnnotation = Annotation.Root({
     default: () => [],
   }),
 
-  // Counters
-  haikuTriaged: Annotation<number>({
+  removedIds: Annotation<string[]>({
+    reducer: (prev, next) => [...new Set([...prev, ...next])],
+    default: () => [],
+  }),
+  reconciledCount: Annotation<number>({
     reducer: (_prev, next) => next,
     default: () => 0,
   }),
-  sonnetEvaluated: Annotation<number>({
+
+  // Counters
+  triageCount: Annotation<number>({
+    reducer: (_prev, next) => next,
+    default: () => 0,
+  }),
+  evalCount: Annotation<number>({
     reducer: (_prev, next) => next,
     default: () => 0,
   }),

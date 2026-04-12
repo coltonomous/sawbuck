@@ -7,18 +7,19 @@ export async function enrichPassed(state: AgentState): Promise<Partial<AgentStat
   const passed = state.passedTriage;
 
   if (passed.length === 0) {
-    return { passedTriage: [] };
+    return { passedTriage: [], removedIds: [] };
   }
 
   logger.info({ count: passed.length }, 'Enrich node: fetching detail pages for triage-passed candidates');
 
   try {
-    const enriched = await enrich(passed);
-    return { passedTriage: enriched };
+    const { enriched, removedIds } = await enrich(passed);
+    return { passedTriage: enriched, removedIds };
   } catch (err) {
     logger.error({ error: String(err) }, 'Enrich node failed');
     return {
       passedTriage: passed, // keep RSS data on failure
+      removedIds: [],
       errors: [{ node: 'enrich', message: String(err), timestamp: new Date().toISOString() }],
     };
   }

@@ -78,9 +78,9 @@ export const listings = pgTable('listings', {
   latitude: real('latitude'),
   longitude: real('longitude'),
   sellerName: text('seller_name'),
-  postedAt: text('posted_at'),
-  scrapedAt: text('scraped_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  status: text('status', { enum: ['new', 'analyzed', 'watching', 'acquired', 'dismissed'] }).notNull().default('new'),
+  postedAt: timestamp('posted_at'),
+  scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
+  status: text('status', { enum: ['new', 'analyzed', 'watching', 'acquired', 'dismissed', 'removed'] }).notNull().default('new'),
 
   furnitureType: text('furniture_type'),
   furnitureStyle: text('furniture_style'),
@@ -89,7 +89,7 @@ export const listings = pgTable('listings', {
   woodSpecies: text('wood_species'),
   woodConfidence: real('wood_confidence'),
   analysisRaw: text('analysis_raw'),
-  analyzedAt: text('analyzed_at'),
+  analyzedAt: timestamp('analyzed_at'),
 
   estimatedValue: real('estimated_value'),
   estimatedRefinishedValue: real('estimated_refinished_value'),
@@ -99,7 +99,7 @@ export const listings = pgTable('listings', {
   fingerprint: text('fingerprint'),
   analysisError: text('analysis_error'),
 
-  triageSource: text('triage_source', { enum: ['manual', 'agent_haiku', 'agent_sonnet'] }),
+  triageSource: text('triage_source', { enum: ['manual', 'agent_triage', 'agent_eval'] }),
   agentRunId: text('agent_run_id'),
 
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
@@ -127,7 +127,7 @@ export const listingImages = pgTable('listing_images', {
   analysisStatus: text('analysis_status', { enum: ['pending', 'analyzed', 'skipped', 'failed'] }).notNull().default('pending'),
   analysisResult: text('analysis_result'),
   isPrimary: boolean('is_primary').notNull().default(false),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_listing_images_listing_id').on(table.listingId),
   index('idx_listing_images_download_status').on(table.downloadStatus),
@@ -142,8 +142,8 @@ export const searchConfigs = pgTable('search_configs', {
   minPrice: real('min_price'),
   maxPrice: real('max_price'),
   isActive: boolean('is_active').notNull().default(true),
-  lastRunAt: text('last_run_at'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  lastRunAt: timestamp('last_run_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 });
 
@@ -156,8 +156,8 @@ export const scrapeRuns = pgTable('scrape_runs', {
   id: serial('id').primaryKey(),
   platform: text('platform').notNull(),
   searchConfigId: integer('search_config_id').references(() => searchConfigs.id),
-  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  completedAt: text('completed_at'),
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
   listingsFound: integer('listings_found').default(0),
   listingsNew: integer('listings_new').default(0),
   listingsDuplicate: integer('listings_duplicate').default(0),
@@ -173,12 +173,12 @@ export const comparables = pgTable('comparables', {
   sourceUrl: text('source_url'),
   title: text('title').notNull(),
   soldPrice: real('sold_price').notNull(),
-  soldDate: text('sold_date'),
+  soldDate: timestamp('sold_date'),
   condition: text('condition'),
   furnitureType: text('furniture_type'),
   furnitureStyle: text('furniture_style'),
   searchQuery: text('search_query'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_comparables_listing_id').on(table.listingId),
@@ -192,7 +192,7 @@ export const comparables = pgTable('comparables', {
 export const refinishingPlans = pgTable('refinishing_plans', {
   id: serial('id').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
-  projectId: integer('project_id'),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   styleRecommendation: text('style_recommendation'),
   description: text('description'),
   steps: text('steps').notNull(),
@@ -206,7 +206,7 @@ export const refinishingPlans = pgTable('refinishing_plans', {
   ragSourcesUsed: integer('rag_sources_used').default(0),
   ragSourceTitles: text('rag_source_titles'),
   ragSources: text('rag_sources'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_refinishing_plans_listing_id').on(table.listingId),
@@ -219,7 +219,7 @@ export const refinishingPlans = pgTable('refinishing_plans', {
 export const materials = pgTable('materials', {
   id: serial('id').primaryKey(),
   refinishingPlanId: integer('refinishing_plan_id').notNull().references(() => refinishingPlans.id, { onDelete: 'cascade' }),
-  projectId: integer('project_id'),
+  projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   category: text('category').notNull(),
   productName: text('product_name').notNull(),
   brand: text('brand'),
@@ -232,7 +232,7 @@ export const materials = pgTable('materials', {
   homeDepotSearchUrl: text('home_depot_search_url'),
   lowesSearchUrl: text('lowes_search_url'),
   notes: text('notes'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_materials_plan_id').on(table.refinishingPlanId),
   index('idx_materials_project_id').on(table.projectId),
@@ -249,17 +249,17 @@ export const projects = pgTable('projects', {
   status: text('status', { enum: ['acquired', 'refinishing', 'listed', 'sold', 'abandoned'] }).notNull().default('acquired'),
 
   purchasePrice: real('purchase_price').notNull(),
-  purchaseDate: text('purchase_date'),
+  purchaseDate: timestamp('purchase_date'),
   purchaseNotes: text('purchase_notes'),
   totalMaterialCost: real('total_material_cost').default(0),
   hoursInvested: real('hours_invested').default(0),
   hourlyRate: real('hourly_rate').default(25),
 
   listedPrice: real('listed_price'),
-  listedDate: text('listed_date'),
+  listedDate: timestamp('listed_date'),
   listedPlatform: text('listed_platform'),
   soldPrice: real('sold_price'),
-  soldDate: text('sold_date'),
+  soldDate: timestamp('sold_date'),
   sellingFees: real('selling_fees').default(0),
   shippingCost: real('shipping_cost').default(0),
 
@@ -269,8 +269,8 @@ export const projects = pgTable('projects', {
 
   notes: text('notes'),
   listingText: text('listing_text'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_projects_status').on(table.status),
@@ -287,8 +287,8 @@ export const backgroundJobs = pgTable('background_jobs', {
   status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
   result: text('result'),
   error: text('error'),
-  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  completedAt: text('completed_at'),
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
   index('idx_background_jobs_status').on(table.status),
@@ -301,8 +301,8 @@ export const backgroundJobs = pgTable('background_jobs', {
 export const agentRuns = pgTable('agent_runs', {
   id: serial('id').primaryKey(),
   runId: text('run_id').notNull().unique(),
-  startedAt: text('started_at').notNull().default(sql`CURRENT_TIMESTAMP`),
-  completedAt: text('completed_at'),
+  startedAt: timestamp('started_at').notNull().defaultNow(),
+  completedAt: timestamp('completed_at'),
   status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
   scraped: integer('scraped').default(0),
   triaged: integer('triaged').default(0),
@@ -328,7 +328,7 @@ export const conceptRenders = pgTable('concept_renders', {
   prompt: text('prompt').notNull(),
   renderedImageUrl: text('rendered_image_url'),
   localPath: text('local_path'),
-  createdAt: text('created_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_concept_renders_listing_id').on(table.listingId),
 ]);
@@ -340,7 +340,7 @@ export const conceptRenders = pgTable('concept_renders', {
 export const appSettings = pgTable('app_settings', {
   key: text('key').primaryKey(),
   value: text('value').notNull(),
-  updatedAt: text('updated_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
 export const projectPhotos = pgTable('project_photos', {
@@ -349,7 +349,7 @@ export const projectPhotos = pgTable('project_photos', {
   photoType: text('photo_type', { enum: ['before', 'during', 'after'] }).notNull(),
   localPath: text('local_path').notNull(),
   caption: text('caption'),
-  takenAt: text('taken_at').notNull().default(sql`CURRENT_TIMESTAMP`),
+  takenAt: timestamp('taken_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_project_photos_project_id').on(table.projectId),
 ]);

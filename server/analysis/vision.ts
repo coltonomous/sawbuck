@@ -176,7 +176,7 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
         rag_source_titles: ragSourceTitles,
         rag_sources: ragSources,
       }),
-      analyzedAt: new Date().toISOString(),
+      analyzedAt: new Date(),
       status: 'analyzed',
       analysisError: null,
     }).where(eq(listings.id, listingId));

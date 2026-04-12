@@ -46,8 +46,8 @@ export async function refreshAgentConfig(): Promise<void> {
 export function getAgentConfig() {
   return {
     // Per-run caps
-    maxHaikuTriages: resolveInt('agent.max_triages', 'AGENT_MAX_TRIAGES', 50),
-    maxSonnetEvals: resolveInt('agent.max_evals', 'AGENT_MAX_EVALS', 10),
+    maxTriages: resolveInt('agent.max_triages', 'AGENT_MAX_TRIAGES', 50),
+    maxEvals: resolveInt('agent.max_evals', 'AGENT_MAX_EVALS', 10),
     maxListingsRendered: resolveInt('agent.max_renders', 'AGENT_MAX_RENDERS', 5),
     conceptsPerListing: resolveInt('agent.concepts_per_listing', 'AGENT_CONCEPTS_PER_LISTING', 1),
 
@@ -90,11 +90,11 @@ export const agentConfig = new Proxy({} as ReturnType<typeof getAgentConfig>, {
 
 /** Update a setting in the DB (called from admin API). */
 export async function updateSetting(key: string, value: string): Promise<void> {
-  await db.insert(appSettings).values({ key, value, updatedAt: new Date().toISOString() })
-    .onConflictDoNothing({ target: appSettings.key })
-    .then(() =>
-      db.update(appSettings).set({ value, updatedAt: new Date().toISOString() }).where(eq(appSettings.key, key)),
-    );
+  await db.insert(appSettings).values({ key, value, updatedAt: new Date() })
+    .onConflictDoUpdate({
+      target: appSettings.key,
+      set: { value, updatedAt: new Date() },
+    });
   // Refresh cache immediately
   await refreshCache();
 }

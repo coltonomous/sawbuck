@@ -8,6 +8,7 @@ export async function summarizeRun(state: AgentState): Promise<Partial<AgentStat
     scraped: state.scrapedCandidates.length,
     triaged: state.triagedCandidates.length,
     passedTriage: state.passedTriage.length,
+    reconciled: state.reconciledCount,
     evaluated: state.evaluatedCandidates.length,
     qualified: state.qualifiedListings.length,
     rendered: state.conceptRenders.length,
@@ -18,8 +19,8 @@ export async function summarizeRun(state: AgentState): Promise<Partial<AgentStat
   try {
     await db.insert(agentRuns).values({
       runId: state.runId,
-      startedAt: state.startedAt,
-      completedAt: new Date().toISOString(),
+      startedAt: new Date(state.startedAt),
+      completedAt: new Date(),
       status: state.errors.length > 0 && summary.evaluated === 0 ? 'failed' : 'completed',
       scraped: summary.scraped,
       triaged: summary.triaged,

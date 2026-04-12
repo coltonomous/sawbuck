@@ -138,12 +138,18 @@ export async function discover(category = 'fua'): Promise<ScrapedCandidate[]> {
   });
 }
 
+export interface EnrichResult {
+  enriched: ScrapedCandidate[];
+  removedIds: string[]; // externalIds of listings confirmed gone (404)
+}
+
 /**
  * Phase 2: Enrich candidates that passed triage with full detail page data.
  * Fetches individual listing pages for descriptions, images, and lat/lng.
+ * Listings that return 404 are flagged as removed.
  */
-export async function enrich(candidates: ScrapedCandidate[]): Promise<ScrapedCandidate[]> {
-  if (candidates.length === 0) return [];
+export async function enrich(candidates: ScrapedCandidate[]): Promise<EnrichResult> {
+  if (candidates.length === 0) return { enriched: [], removedIds: [] };
 
   const antiBlocking = new AntiBlockingController({
     minDelayBetweenRequestsMs: agentConfig.minDelayBetweenRequestsMs,
@@ -152,6 +158,7 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<ScrapedCan
   });
 
   const enriched: ScrapedCandidate[] = [];
+  const removedIds: string[] = [];
 
   for (const candidate of candidates) {
     try {
@@ -159,7 +166,10 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<ScrapedCan
       const detail = await fetchDetailPage(candidate.url);
       antiBlocking.onSuccess();
 
-      if (detail) {
+      if (detail === 'removed') {
+        logger.info({ externalId: candidate.externalId, url: candidate.url }, 'CL integration: listing removed (404)');
+        removedIds.push(candidate.externalId);
+      } else if (detail) {
         enriched.push({
           ...candidate,
           description: detail.description || candidate.description,
@@ -168,7 +178,7 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<ScrapedCan
           longitude: detail.longitude ?? candidate.longitude,
         });
       } else {
-        enriched.push(candidate); // keep RSS data on failure
+        enriched.push(candidate); // keep RSS data on non-404 failure
       }
     } catch (err) {
       antiBlocking.onError(err);
@@ -177,16 +187,18 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<ScrapedCan
     }
   }
 
-  logger.info({ total: enriched.length }, 'CL integration: enrichment complete');
-  return enriched;
+  logger.info({ enriched: enriched.length, removed: removedIds.length }, 'CL integration: enrichment complete');
+  return { enriched, removedIds };
 }
 
-async function fetchDetailPage(url: string): Promise<{
+type DetailResult = {
   description: string;
   imageUrls: string[];
   latitude?: number;
   longitude?: number;
-} | null> {
+};
+
+async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | null> {
   try {
     const res = await fetch(url, {
       headers: {
@@ -196,9 +208,15 @@ async function fetchDetailPage(url: string): Promise<{
       },
     });
 
+    if (res.status === 404) return 'removed';
     if (!res.ok) return null;
 
     const html = await res.text();
+
+    // CL sometimes returns 200 with a deletion notice instead of 404
+    if (html.includes('This posting has been deleted') || html.includes('This posting has expired')) {
+      return 'removed';
+    }
 
     const descMatch = html.match(/<section id="postingbody"[^>]*>([\s\S]*?)<\/section>/i);
     let description = '';

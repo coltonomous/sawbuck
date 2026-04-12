@@ -13,7 +13,7 @@ vi.mock('../../rag/retrieval.js', () => ({
 }));
 
 import { analyzeWithVisionStructured } from '../../lib/claude.js';
-import { triageWithHaiku } from '../nodes/triage.js';
+import { triageCandidates } from '../nodes/triage.js';
 import type { AgentState, ScrapedCandidate } from '../state.js';
 
 const mockAnalyze = vi.mocked(analyzeWithVisionStructured);
@@ -41,10 +41,12 @@ function makeState(candidates: ScrapedCandidate[], overrides: Partial<AgentState
     qualifiedListings: [],
     listingsWithOptions: [],
     conceptRenders: [],
-    haikuTriaged: 0,
-    sonnetEvaluated: 0,
+    triageCount: 0,
+    evalCount: 0,
     conceptsRendered: 0,
     scrapeAttempts: 1,
+    removedIds: [],
+    reconciledCount: 0,
     seenExternalIds: [],
     errors: [],
     summary: null,
@@ -66,7 +68,7 @@ function makeBatchResponse(assessments: Array<{ id: string; wood: boolean; flip:
   };
 }
 
-describe('triageWithHaiku', () => {
+describe('triageCandidates', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -77,7 +79,7 @@ describe('triageWithHaiku', () => {
       { id: candidate.externalId, wood: true, flip: true, confidence: 0.9, type: 'dresser' },
     ]));
 
-    const result = await triageWithHaiku(makeState([candidate]));
+    const result = await triageCandidates(makeState([candidate]));
 
     expect(result.passedTriage).toHaveLength(1);
     expect(result.triagedCandidates).toHaveLength(1);
@@ -90,7 +92,7 @@ describe('triageWithHaiku', () => {
       { id: candidate.externalId, wood: false, flip: false, confidence: 0.95 },
     ]));
 
-    const result = await triageWithHaiku(makeState([candidate]));
+    const result = await triageCandidates(makeState([candidate]));
 
     expect(result.passedTriage).toHaveLength(0);
     expect(result.triagedCandidates).toHaveLength(1);
@@ -102,7 +104,7 @@ describe('triageWithHaiku', () => {
       { id: candidate.externalId, wood: false, flip: false, confidence: 0.85 },
     ]));
 
-    const result = await triageWithHaiku(makeState([candidate]));
+    const result = await triageCandidates(makeState([candidate]));
     expect(result.passedTriage).toHaveLength(0);
   });
 
@@ -112,7 +114,7 @@ describe('triageWithHaiku', () => {
       { id: candidate.externalId, wood: true, flip: true, confidence: 0.4 },
     ]));
 
-    const result = await triageWithHaiku(makeState([candidate]));
+    const result = await triageCandidates(makeState([candidate]));
     expect(result.passedTriage).toHaveLength(0);
     expect(result.triagedCandidates).toHaveLength(1);
   });
@@ -131,7 +133,7 @@ describe('triageWithHaiku', () => {
         candidates.slice(10, 15).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
       ));
 
-    const result = await triageWithHaiku(makeState(candidates));
+    const result = await triageCandidates(makeState(candidates));
 
     expect(mockAnalyze).toHaveBeenCalledTimes(2); // 2 batches, not 15 individual calls
     expect(result.triagedCandidates).toHaveLength(15);
@@ -148,10 +150,10 @@ describe('triageWithHaiku', () => {
     ));
 
     // Already triaged 48, cap is 50, so only 2 should be processed
-    const result = await triageWithHaiku(makeState(candidates, { haikuTriaged: 48 }));
+    const result = await triageCandidates(makeState(candidates, { triageCount: 48 }));
 
     expect(mockAnalyze).toHaveBeenCalledTimes(1);
-    expect(result.haikuTriaged).toBe(50);
+    expect(result.triageCount).toBe(50);
   });
 
   it('handles batch errors gracefully', async () => {
@@ -165,11 +167,11 @@ describe('triageWithHaiku', () => {
       ))
       .mockRejectedValueOnce(new Error('API error'));
 
-    const result = await triageWithHaiku(makeState(candidates));
+    const result = await triageCandidates(makeState(candidates));
 
     expect(result.triagedCandidates).toHaveLength(10); // first batch succeeded
     expect(result.errors).toHaveLength(1); // second batch failed
-    expect(result.haikuTriaged).toBe(10);
+    expect(result.triageCount).toBe(10);
   });
 });
 

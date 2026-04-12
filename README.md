@@ -6,10 +6,10 @@ AI-powered furniture flipping — an autonomous agent discovers underpriced wood
 
 ## What It Does
 
-- **Autonomous Agent** — LangGraph pipeline runs on a schedule: discovers listings via Craigslist RSS, triages with Qwen (batch classification), evaluates with AI vision analysis, generates concept renders via fal.ai, and writes results to a shared feed
+- **Autonomous Agent** — LangGraph pipeline runs on a schedule: discovers listings via Craigslist RSS, triages with Qwen (batch classification), evaluates with AI vision analysis, generates concept renders via fal.ai, reconciles stale listings, and writes results to a shared feed
 - **Vision Analysis** — sends listing photos to AI for furniture type/style identification, condition scoring (1-10), wood species detection, and a blunt profit verdict
 - **Refinishing Concepts** — generates "before vs. after" concept images at varying difficulty levels (quick clean, sand & refinish, full transformation) with cost/time estimates
-- **eBay Pricing** — pulls active comparables via eBay Browse API, applies condition-adjusted blended median pricing, calculates deal score
+- **eBay Pricing** — pulls active comparables via eBay Browse API, applies IQR outlier filtering and condition-adjusted median pricing with a 15% active-listing discount, calculates deal score
 - **User Preferences** — location radius, budget, shop space, experience level, and style preferences filter the shared deal feed per-user
 - **Refinishing Plans** — detailed step-by-step instructions with product recommendations, time/cost estimates (generated on-demand when user selects a concept)
 - **Project Tracking** — full lifecycle from acquisition through refinishing to sale, with before/during/after photos and ROI calculations
@@ -118,14 +118,30 @@ Settings can also be set via `AGENT_*` env vars as initial defaults before the D
 
 ```
 scrape (CL RSS) → triage (Qwen batch) → [retry if 0 pass] →
-enrich (fetch detail pages) → evaluate (Qwen VL vision + eBay pricing) →
+enrich (fetch detail pages) → reconcile (mark removed listings) →
+evaluate (Qwen VL vision + eBay pricing) →
 planOptions (refinishing summaries) → render (fal.ai concepts) → summarize
 ```
 
 - Retries vary CL subcategory on each attempt (all → by-owner → by-dealer)
 - Deduplicates against DB and within retries (no wasted triage tokens)
+- **Stale listing detection**: enrichment detects 404s and CL deletion notices; reconcile node probes existing DB listings missing from RSS and marks confirmed removals
+- Listings tied to a project are never marked removed or cleaned up
 - Agent-discovered listings visible to all users, filtered by preferences
 - Config refreshed from DB before each run
+
+## Listing Lifecycle
+
+| Status | Set by | Meaning |
+|--------|--------|---------|
+| `new` | Scrape/import | Just discovered, not yet analyzed |
+| `analyzed` | Vision analysis | AI analysis complete |
+| `watching` | User | Bookmarked for later |
+| `acquired` | Project creation | User bought the piece |
+| `dismissed` | User | Not interested |
+| `removed` | Reconcile node | Source listing confirmed gone (404 or CL deletion notice) |
+
+Removed listings are excluded from the browse feed but remain accessible by direct URL. Users can still create projects from removed listings (the seller took it down after selling to you). Image cleanup treats `removed` the same as `dismissed`.
 
 ## Project Structure
 

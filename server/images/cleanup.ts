@@ -49,7 +49,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
         sql`(
           (${listings.userId} IS NOT NULL AND ${listings.scrapedAt} < ${userCutoff})
           OR (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
-          OR (${listings.userId} IS NULL AND ${listings.status} = 'dismissed')
+          OR (${listings.userId} IS NULL AND ${listings.status} IN ('dismissed', 'removed'))
         )`,
       ),
     )
@@ -66,7 +66,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
         isNotNull(conceptRenders.localPath),
         sql`(
           (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
-          OR (${listings.userId} IS NULL AND ${listings.status} = 'dismissed')
+          OR (${listings.userId} IS NULL AND ${listings.status} IN ('dismissed', 'removed'))
         )`,
       ),
     )

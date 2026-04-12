@@ -57,7 +57,7 @@ beforeAll(async () => {
       latitude: data.latitude,
       longitude: data.longitude,
       userId: null, // agent listing
-      triageSource: 'agent_sonnet',
+      triageSource: 'agent_eval',
     }).returning({ id: listings.id });
     agentListingIds.push(result[0].id);
   }

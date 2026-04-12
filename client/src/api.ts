@@ -64,7 +64,7 @@ export interface Listing {
   sellerName: string | null;
   postedAt: string | null;
   scrapedAt: string;
-  status: 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed';
+  status: 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed' | 'removed';
   furnitureType: string | null;
   furnitureStyle: string | null;
   conditionScore: number | null;

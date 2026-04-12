@@ -9,11 +9,14 @@ import { agentConfig } from '../config.js';
 import type { AgentState, EvaluatedCandidate } from '../state.js';
 import logger from '../../lib/logger.js';
 import fs from 'fs';
+import path from 'path';
+import sharp from 'sharp';
+import { IMAGES_DIR } from '../../lib/paths.js';
 
-export async function evaluateWithSonnet(state: AgentState): Promise<Partial<AgentState>> {
+export async function evaluateCandidates(state: AgentState): Promise<Partial<AgentState>> {
   const toEvaluate = state.passedTriage.slice(
     0,
-    agentConfig.maxSonnetEvals - state.sonnetEvaluated,
+    agentConfig.maxEvals - state.evalCount,
   );
 
   const evaluated: EvaluatedCandidate[] = [];
@@ -33,9 +36,9 @@ export async function evaluateWithSonnet(state: AgentState): Promise<Partial<Age
         location: candidate.location || null,
         latitude: candidate.latitude ?? null,
         longitude: candidate.longitude ?? null,
-        postedAt: candidate.postedAt ?? null,
+        postedAt: candidate.postedAt ? new Date(candidate.postedAt) : null,
         userId: null, // shared agent listing
-        triageSource: 'agent_sonnet',
+        triageSource: 'agent_eval',
         agentRunId: state.runId,
       }).onConflictDoNothing({ target: [listings.platform, listings.externalId] }).returning({ id: listings.id });
 
@@ -60,17 +63,23 @@ export async function evaluateWithSonnet(state: AgentState): Promise<Partial<Age
       await downloadListingImages(listingId);
       await processListingImages(listingId);
 
-      // Delete originals after processing to save space (keep only resized WebP)
+      // Delete originals after processing — only if the resized WebP is valid
       const images = await db.select().from(listingImages).where(eq(listingImages.listingId, listingId));
       for (const img of images) {
-        if (img.localPathOriginal) {
+        if (img.localPathOriginal && img.localPathResized) {
           try {
-            fs.unlinkSync(img.localPathOriginal);
+            const resizedFullPath = path.join(IMAGES_DIR, img.localPathResized);
+            const metadata = await sharp(resizedFullPath).metadata();
+            if (!metadata.width || !metadata.height) {
+              logger.warn({ imagePath: img.localPathResized }, 'Resized image invalid, keeping original');
+              continue;
+            }
+            fs.unlinkSync(path.join(IMAGES_DIR, img.localPathOriginal));
             await db.update(listingImages)
               .set({ localPathOriginal: null })
               .where(eq(listingImages.id, img.id));
           } catch {
-            // not critical if cleanup fails
+            // not critical if cleanup fails — keep original as fallback
           }
         }
       }
@@ -131,7 +140,7 @@ export async function evaluateWithSonnet(state: AgentState): Promise<Partial<Age
   return {
     evaluatedCandidates: evaluated,
     qualifiedListings: qualified,
-    sonnetEvaluated: state.sonnetEvaluated + evaluated.length,
+    evalCount: state.evalCount + evaluated.length,
     errors,
   };
 }

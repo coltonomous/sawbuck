@@ -1,4 +1,4 @@
-import { discover, enrich } from './ingest.js';
+import { discover, enrich, type EnrichResult } from './ingest.js';
 import type { Integration } from '../common/types.js';
 
 export const craigslistIntegration: Integration = {
@@ -6,4 +6,4 @@ export const craigslistIntegration: Integration = {
   ingest: discover,
 };
 
-export { discover, enrich };
+export { discover, enrich, type EnrichResult };

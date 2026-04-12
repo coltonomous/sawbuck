@@ -89,16 +89,16 @@ function buildBatchPrompt(candidates: ScrapedCandidate[]): string {
   return `Assess each of these ${candidates.length} listings:\n\n${listings.join('\n---\n')}`;
 }
 
-export async function triageWithHaiku(state: AgentState): Promise<Partial<AgentState>> {
+export async function triageCandidates(state: AgentState): Promise<Partial<AgentState>> {
   const candidates = state.scrapedCandidates;
   const maxToTriage = Math.min(
     candidates.length,
-    agentConfig.maxHaikuTriages - state.haikuTriaged,
+    agentConfig.maxTriages - state.triageCount,
   );
 
   if (maxToTriage <= 0) {
     logger.info('Triage: no candidates to triage or cap reached');
-    return { triagedCandidates: [], passedTriage: [], haikuTriaged: state.haikuTriaged };
+    return { triagedCandidates: [], passedTriage: [], triageCount: state.triageCount };
   }
 
   const systemPrompt = await buildSystemPrompt();
@@ -168,7 +168,7 @@ export async function triageWithHaiku(state: AgentState): Promise<Partial<AgentS
   return {
     triagedCandidates: triaged,
     passedTriage: passed,
-    haikuTriaged: state.haikuTriaged + count,
+    triageCount: state.triageCount + count,
     errors,
   };
 }

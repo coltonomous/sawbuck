@@ -18,7 +18,7 @@ export const editSawbuckListingSchema = z.object({
   location: z.string().max(200).nullable(),
 }).partial();
 
-const listingStatus = z.enum(['new', 'analyzed', 'watching', 'acquired', 'dismissed']);
+const listingStatus = z.enum(['new', 'analyzed', 'watching', 'acquired', 'dismissed', 'removed']);
 
 export const updateListingSchema = z.object({
   status: listingStatus,

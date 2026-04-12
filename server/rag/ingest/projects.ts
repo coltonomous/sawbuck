@@ -25,8 +25,8 @@ interface CompletedFlip {
   soldPrice: number | null;
   profit: number | null;
   roiPercentage: number | null;
-  purchaseDate: string | null;
-  soldDate: string | null;
+  purchaseDate: Date | null;
+  soldDate: Date | null;
   // Listing
   furnitureType: string | null;
   furnitureStyle: string | null;
@@ -94,7 +94,7 @@ function flipToChunk(flip: CompletedFlip, materialsUsed: string[]): Omit<Knowled
   const daysToFlip =
     flip.purchaseDate && flip.soldDate
       ? Math.round(
-          (new Date(flip.soldDate).getTime() - new Date(flip.purchaseDate).getTime()) /
+          (flip.soldDate.getTime() - flip.purchaseDate.getTime()) /
             (1000 * 60 * 60 * 24),
         )
       : null;

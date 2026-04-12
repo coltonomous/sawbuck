@@ -103,10 +103,11 @@ export async function calculatePricing(listingId: number): Promise<PricingResult
   const refinishedMultiplier = conditionMultiplier(REFINISHED_CONDITION_SCORE);
   const estimatedRefinishedValue = Math.round(medianPrice * refinishedMultiplier * 100) / 100;
 
-  const askingPrice = listing.askingPrice || 0;
-  const dealScore = askingPrice > 0
+  const askingPrice = listing.askingPrice;
+  // Free or unpriced listings with positive estimated value are the best possible deals
+  const dealScore = askingPrice != null && askingPrice > 0
     ? Math.round((estimatedValue / askingPrice) * 100) / 100
-    : 0;
+    : estimatedValue > 0 ? 99 : 0;
 
   // Update the listing
   await db.update(listings).set({

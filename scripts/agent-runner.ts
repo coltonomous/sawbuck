@@ -3,7 +3,7 @@
  * Usage: npm run agent
  *
  * Runs the autonomous LangGraph agent pipeline that scrapes Craigslist,
- * triages with Haiku, evaluates with Sonnet, and generates concept renders.
+ * triages candidates, evaluates with vision, and generates concept renders.
  */
 
 import crypto from 'crypto';

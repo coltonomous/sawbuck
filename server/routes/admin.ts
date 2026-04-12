@@ -1,8 +1,33 @@
 import { Hono } from 'hono';
-import { db, pool } from '../db/index.js';
+import { z } from 'zod';
+import { db } from '../db/index.js';
 import { users, listings } from '../db/schema.js';
 import { eq, count } from 'drizzle-orm';
 import { getAllSettings, updateSetting, getAgentConfig } from '../agents/config.js';
+
+const VALID_SETTINGS = new Set([
+  'agent.max_triages',
+  'agent.max_evals',
+  'agent.max_renders',
+  'agent.concepts_per_listing',
+  'agent.triage_threshold',
+  'agent.deal_score_threshold',
+  'agent.min_delay_ms',
+  'agent.max_delay_ms',
+  'agent.daily_request_cap',
+  'agent.run_interval_ms',
+  'agent.target_city',
+  'agent.triage_model',
+  'agent.eval_model',
+  'agent.fal_model',
+  'agent.concept_size',
+  'agent.image_retention_days',
+]);
+
+const settingsUpdateSchema = z.record(z.string(), z.string()).refine(
+  (obj) => Object.keys(obj).every((key) => VALID_SETTINGS.has(key)),
+  { message: 'Unknown setting key' },
+);
 
 const adminRouter = new Hono();
 
@@ -55,27 +80,12 @@ adminRouter.delete('/users/:id', async (c) => {
   const user = await db.select().from(users).where(eq(users.id, id)).then(r => r[0]);
   if (!user) return c.json({ error: 'User not found' }, 404);
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM materials WHERE refinishing_plan_id IN (SELECT id FROM refinishing_plans WHERE listing_id IN (SELECT id FROM listings WHERE user_id = $1))', [id]);
-    await client.query('DELETE FROM listing_images WHERE listing_id IN (SELECT id FROM listings WHERE user_id = $1)', [id]);
-    await client.query('DELETE FROM project_photos WHERE project_id IN (SELECT id FROM projects WHERE user_id = $1)', [id]);
-    await client.query('DELETE FROM refinishing_plans WHERE listing_id IN (SELECT id FROM listings WHERE user_id = $1)', [id]);
-    await client.query('DELETE FROM comparables WHERE listing_id IN (SELECT id FROM listings WHERE user_id = $1)', [id]);
-    await client.query('DELETE FROM projects WHERE user_id = $1', [id]);
-    await client.query('DELETE FROM listings WHERE user_id = $1', [id]);
-    await client.query('DELETE FROM background_jobs WHERE user_id = $1', [id]);
-    await client.query('DELETE FROM sessions WHERE user_id = $1', [id]);
-    await client.query('DELETE FROM accounts WHERE user_id = $1', [id]);
-    await client.query('DELETE FROM users WHERE id = $1', [id]);
-    await client.query('COMMIT');
-  } catch (err: any) {
-    await client.query('ROLLBACK');
-    return c.json({ error: `Failed to delete user: ${err.message}` }, 500);
-  } finally {
-    client.release();
-  }
+  // FK cascades handle all dependent records:
+  // users → sessions, accounts, listings, projects, searchConfigs, scrapeRuns, backgroundJobs, comparables, refinishingPlans
+  // listings → listingImages, refinishingPlans, comparables, conceptRenders, projects
+  // projects → projectPhotos, and sets null on refinishingPlans.projectId, materials.projectId
+  // refinishingPlans → materials
+  await db.delete(users).where(eq(users.id, id));
 
   return c.json({ ok: true });
 });
@@ -89,11 +99,14 @@ adminRouter.get('/settings', async (c) => {
 
 // PATCH /settings — update agent config values
 adminRouter.patch('/settings', async (c) => {
-  const updates = await c.req.json<Record<string, string>>();
+  const body = await c.req.json();
+  const parsed = settingsUpdateSchema.safeParse(body);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
 
-  for (const [key, value] of Object.entries(updates)) {
-    if (typeof value !== 'string' && typeof value !== 'number') continue;
-    await updateSetting(key, String(value));
+  for (const [key, value] of Object.entries(parsed.data)) {
+    await updateSetting(key, value);
   }
 
   return c.json({ ok: true, resolved: getAgentConfig() });

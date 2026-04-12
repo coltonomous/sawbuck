@@ -2,9 +2,10 @@ import { StateGraph, END, MemorySaver } from '@langchain/langgraph';
 import { AgentAnnotation, type AgentState } from './state.js';
 import { agentConfig } from './config.js';
 import { scrapeCategory } from './nodes/scrape.js';
-import { triageWithHaiku } from './nodes/triage.js';
+import { triageCandidates } from './nodes/triage.js';
 import { enrichPassed } from './nodes/enrich.js';
-import { evaluateWithSonnet } from './nodes/evaluate.js';
+import { reconcileListings } from './nodes/reconcile.js';
+import { evaluateCandidates } from './nodes/evaluate.js';
 import { generatePlanOptions } from './nodes/plan-options.js';
 import { generateConcepts } from './nodes/render.js';
 import { summarizeRun } from './nodes/summarize.js';
@@ -13,11 +14,16 @@ const MAX_SCRAPE_ATTEMPTS = 3;
 
 function afterTriage(state: AgentState): 'enrich' | 'scrape' | 'summarize' {
   if (state.passedTriage.length > 0) {
-    if (state.sonnetEvaluated >= agentConfig.maxSonnetEvals) return 'summarize';
+    if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
     return 'enrich';
   }
   if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'scrape';
   return 'summarize';
+}
+
+function afterReconcile(state: AgentState): 'evaluate' | 'summarize' {
+  if (state.passedTriage.length === 0) return 'summarize';
+  return 'evaluate';
 }
 
 function afterEvaluate(state: AgentState): 'planOptions' | 'summarize' {
@@ -33,12 +39,13 @@ function afterPlanOptions(state: AgentState): 'render' | 'summarize' {
 }
 
 // Graph flow:
-// scrape → triage → [retry?] → enrich → evaluate → planOptions → render → summarize
+// scrape → triage → [retry?] → enrich → reconcile → evaluate → planOptions → render → summarize
 const graph = new StateGraph(AgentAnnotation)
   .addNode('scrape', scrapeCategory)
-  .addNode('triage', triageWithHaiku)
+  .addNode('triage', triageCandidates)
   .addNode('enrich', enrichPassed)
-  .addNode('evaluate', evaluateWithSonnet)
+  .addNode('reconcile', reconcileListings)
+  .addNode('evaluate', evaluateCandidates)
   .addNode('planOptions', generatePlanOptions)
   .addNode('render', generateConcepts)
   .addNode('summarize', summarizeRun)
@@ -49,7 +56,11 @@ const graph = new StateGraph(AgentAnnotation)
     scrape: 'scrape',
     summarize: 'summarize',
   })
-  .addEdge('enrich', 'evaluate')
+  .addEdge('enrich', 'reconcile')
+  .addConditionalEdges('reconcile', afterReconcile, {
+    evaluate: 'evaluate',
+    summarize: 'summarize',
+  })
   .addConditionalEdges('evaluate', afterEvaluate, {
     planOptions: 'planOptions',
     summarize: 'summarize',
@@ -65,4 +76,4 @@ const checkpointer = new MemorySaver();
 
 export const agentPipeline = graph.compile({ checkpointer });
 
-export { afterTriage, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS };
+export { afterTriage, afterReconcile, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS };

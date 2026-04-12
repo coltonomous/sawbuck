@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { agentConfig } from '../config.js';
-import { MAX_SCRAPE_ATTEMPTS } from '../graph.js';
+import { MAX_SCRAPE_ATTEMPTS, afterReconcile } from '../graph.js';
 import type { AgentState } from '../state.js';
 
 // Mirror conditional edge logic from graph.ts
 function afterTriage(state: AgentState): 'enrich' | 'scrape' | 'summarize' {
   if (state.passedTriage.length > 0) {
-    if (state.sonnetEvaluated >= agentConfig.maxSonnetEvals) return 'summarize';
+    if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
     return 'enrich';
   }
   if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'scrape';
@@ -36,10 +36,12 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     qualifiedListings: [],
     listingsWithOptions: [],
     conceptRenders: [],
-    haikuTriaged: 0,
-    sonnetEvaluated: 0,
+    triageCount: 0,
+    evalCount: 0,
     conceptsRendered: 0,
     scrapeAttempts: 0,
+    removedIds: [],
+    reconciledCount: 0,
     seenExternalIds: [],
     errors: [],
     summary: null,
@@ -56,8 +58,8 @@ describe('afterTriage', () => {
     expect(afterTriage(makeState({ passedTriage: [mockTriaged] }))).toBe('enrich');
   });
 
-  it('routes to summarize when sonnet cap reached', () => {
-    expect(afterTriage(makeState({ passedTriage: [mockTriaged], sonnetEvaluated: agentConfig.maxSonnetEvals }))).toBe('summarize');
+  it('routes to summarize when eval cap reached', () => {
+    expect(afterTriage(makeState({ passedTriage: [mockTriaged], evalCount: agentConfig.maxEvals }))).toBe('summarize');
   });
 
   it('retries scrape when 0 passed and attempts remain', () => {
@@ -66,6 +68,16 @@ describe('afterTriage', () => {
 
   it('summarizes when 0 passed and max attempts', () => {
     expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: MAX_SCRAPE_ATTEMPTS }))).toBe('summarize');
+  });
+});
+
+describe('afterReconcile', () => {
+  it('routes to evaluate when candidates remain after reconciliation', () => {
+    expect(afterReconcile(makeState({ passedTriage: [mockTriaged] }))).toBe('evaluate');
+  });
+
+  it('routes to summarize when all candidates were removed', () => {
+    expect(afterReconcile(makeState({ passedTriage: [] }))).toBe('summarize');
   });
 });
 

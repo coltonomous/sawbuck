@@ -35,8 +35,8 @@ import { analyzeWithVisionStructured } from '../../lib/claude.js';
 import { analyzeListing } from '../../analysis/vision.js';
 import { calculatePricing } from '../../analysis/pricing.js';
 import { scrapeCategory } from '../nodes/scrape.js';
-import { triageWithHaiku } from '../nodes/triage.js';
-import { evaluateWithSonnet } from '../nodes/evaluate.js';
+import { triageCandidates } from '../nodes/triage.js';
+import { evaluateCandidates } from '../nodes/evaluate.js';
 import { summarizeRun } from '../nodes/summarize.js';
 import type { AgentState, ScrapedCandidate, TriagedCandidate } from '../state.js';
 import { db } from '../../db/index.js';
@@ -58,11 +58,13 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     qualifiedListings: [],
     listingsWithOptions: [],
     conceptRenders: [],
-    haikuTriaged: 0,
-    sonnetEvaluated: 0,
+    triageCount: 0,
+    evalCount: 0,
     conceptsRendered: 0,
     errors: [],
     scrapeAttempts: 1,
+    removedIds: [],
+    reconciledCount: 0,
     seenExternalIds: [],
     summary: null,
     ...overrides,
@@ -99,7 +101,7 @@ describe('Agent Pipeline Integration', () => {
     vi.clearAllMocks();
   });
 
-  describe('triageWithHaiku → evaluateWithSonnet flow', () => {
+  describe('triageCandidates → evaluateCandidates flow', () => {
     it('triages candidates and passes wood furniture to evaluation', async () => {
       const candidates = [
         makeCandidate('1', 'Solid oak dresser'),
@@ -114,7 +116,7 @@ describe('Agent Pipeline Integration', () => {
         ],
       });
 
-      const triageResult = await triageWithHaiku(makeState({ scrapedCandidates: candidates }));
+      const triageResult = await triageCandidates(makeState({ scrapedCandidates: candidates }));
 
       expect(triageResult.triagedCandidates).toHaveLength(2);
       expect(triageResult.passedTriage).toHaveLength(1);
@@ -122,8 +124,8 @@ describe('Agent Pipeline Integration', () => {
     });
   });
 
-  describe('evaluateWithSonnet', () => {
-    it('inserts listings into DB with userId = null and triageSource = agent_sonnet', async () => {
+  describe('evaluateCandidates', () => {
+    it('inserts listings into DB with userId = null and triageSource = agent_eval', async () => {
       const candidate = makeTriaged(makeCandidate('eval-1', 'Walnut desk'));
 
       mockAnalyzeListing.mockResolvedValueOnce({
@@ -156,7 +158,7 @@ describe('Agent Pipeline Integration', () => {
         runId: `eval-test-${Date.now()}`,
       });
 
-      const result = await evaluateWithSonnet(state);
+      const result = await evaluateCandidates(state);
 
       expect(result.evaluatedCandidates).toHaveLength(1);
 
@@ -166,7 +168,7 @@ describe('Agent Pipeline Integration', () => {
 
       expect(dbListing).toBeDefined();
       expect(dbListing!.userId).toBeNull();
-      expect(dbListing!.triageSource).toBe('agent_sonnet');
+      expect(dbListing!.triageSource).toBe('agent_eval');
       expect(dbListing!.agentRunId).toBe(state.runId);
 
       // Cleanup

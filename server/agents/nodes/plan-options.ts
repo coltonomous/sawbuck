@@ -73,7 +73,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         'refinishing_options',
         'Generate three refinishing options at different difficulty levels',
         PLAN_OPTIONS_SYSTEM,
-        agentConfig.triageModel, // Haiku — cheap
+        agentConfig.triageModel,
       );
 
       const options: RefinishingOption[] = result.options.map((o) => ({

@@ -3,7 +3,7 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/claude.js';
@@ -65,8 +65,8 @@ projectsRouter.post('/', async (c) => {
   }
   const { listingId, name, purchasePrice, purchaseDate, purchaseNotes } = parsed.data;
 
-  // Verify the listing belongs to this user
-  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), eq(listings.userId, user.id))).then(r => r[0]);
+  // Verify the listing is accessible: user's own, or agent-discovered (shared)
+  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), or(eq(listings.userId, user.id), isNull(listings.userId)))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
   const project = await db.transaction(async (tx) => {
@@ -74,7 +74,7 @@ projectsRouter.post('/', async (c) => {
       listingId,
       name,
       purchasePrice,
-      purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+      purchaseDate: purchaseDate ? new Date(purchaseDate) : new Date(),
       purchaseNotes,
       userId: user.id,
     }).returning();
@@ -103,10 +103,11 @@ projectsRouter.patch('/:id', async (c) => {
   // Auto-set soldDate when marking as sold (if not already set)
   const updates: Record<string, unknown> = {
     ...parsed.data,
-    updatedAt: new Date().toISOString(),
+    updatedAt: new Date(),
   };
+  if (parsed.data.purchaseDate) updates.purchaseDate = new Date(parsed.data.purchaseDate);
   if (parsed.data.status === 'sold' && !existing.soldDate) {
-    updates.soldDate = new Date().toISOString().split('T')[0];
+    updates.soldDate = new Date();
   }
 
   await db.update(projects).set(updates).where(eq(projects.id, id));
@@ -184,7 +185,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
 
     await db.update(projects).set({
       status: 'refinishing',
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     }).where(eq(projects.id, id));
 
     return c.json({
@@ -331,14 +332,17 @@ projectsRouter.patch('/:id/costs', async (c) => {
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const updates: Record<string, unknown> = { ...parsed.data };
+  // Convert date strings from client to Date objects
+  if (updates.soldDate) updates.soldDate = new Date(updates.soldDate as string);
+  if (updates.listedDate) updates.listedDate = new Date(updates.listedDate as string);
   // Auto-set soldDate when soldPrice is provided (if not already set)
   if (updates.soldPrice && !updates.soldDate && !existing.soldDate) {
-    updates.soldDate = new Date().toISOString().split('T')[0];
+    updates.soldDate = new Date();
   }
   if (Object.keys(updates).length > 0) {
     await db.update(projects).set({
       ...updates,
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(),
     }).where(eq(projects.id, id));
     await recalculateFinancials(id);
   }

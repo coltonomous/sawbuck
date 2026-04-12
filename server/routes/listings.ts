@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { listings, listingImages, conceptRenders, users } from '../db/schema.js';
-import { eq, desc, asc, and, or, gte, lte, count, sql, isNull } from 'drizzle-orm';
+import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
 import { processListingImages } from '../images/processor.js';
@@ -112,7 +112,12 @@ listingsRouter.get('/', async (c) => {
   if (minScore) conditions.push(gte(listings.dealScore, parseFloat(minScore)));
   if (maxPrice) conditions.push(lte(listings.askingPrice, parseFloat(maxPrice)));
   if (platform) conditions.push(eq(listings.platform, platform as 'craigslist' | 'offerup' | 'ebay' | 'sawbuck'));
-  if (status) conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed'));
+  if (status) {
+    conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed' | 'removed'));
+  } else {
+    // Exclude removed listings from the default feed
+    conditions.push(ne(listings.status, 'removed'));
+  }
   if (search || pagination.search) {
     const term = search || pagination.search!;
     conditions.push(sql`${listings.title} LIKE ${'%' + term + '%'}`);
@@ -291,7 +296,7 @@ listingsRouter.post('/create', async (c) => {
     askingPrice,
     location: location || null,
     sellerName: user.name || user.email,
-    scrapedAt: new Date().toISOString(),
+    scrapedAt: new Date(),
     status: 'new',
     userId: user.id,
   }).returning();
@@ -348,7 +353,8 @@ listingsRouter.get('/:id', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));
 
-  let listing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))).then(r => r[0]);
+  // Visible: user's own, any sawbuck listing, or agent-discovered (userId IS NULL)
+  let listing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'), isNull(listings.userId)))).then(r => r[0]);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-fetch details if missing description, images, or description looks like a page dump
