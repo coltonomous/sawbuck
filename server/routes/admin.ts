@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
 import { users, listings, listingImages, conceptRenders } from '../db/schema.js';
-import { eq, count, isNull, inArray } from 'drizzle-orm';
+import { eq, and, count, isNull, inArray, sql } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
 
@@ -124,6 +124,28 @@ adminRouter.post('/agent/run', async (c) => {
     return c.json({ error: 'A run is already in progress' }, 409);
   }
   return c.json({ ok: true, message: 'Agent pipeline run started' });
+});
+
+// POST /listings/cleanup — dismiss agent listings where the verdict says pass
+adminRouter.post('/listings/cleanup', async (c) => {
+  const result = await db.update(listings)
+    .set({ status: 'dismissed' })
+    .where(and(
+      isNull(listings.userId),
+      inArray(listings.status, ['new', 'analyzed']),
+      sql`${listings.analysisRaw}::jsonb->>'flip_recommendation' = 'pass'
+        OR (
+          ${listings.analysisRaw}::jsonb->>'flip_recommendation' = 'maybe'
+          AND (
+            ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* '\\mpass\\M'
+            OR ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* 'not worth'
+            OR ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* 'terrible roi'
+            OR ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* 'negative profit'
+          )
+        )`,
+    ));
+
+  return c.json({ ok: true, dismissed: result.rowCount ?? 0 });
 });
 
 // DELETE /listings — bulk delete agent-discovered listings by IDs

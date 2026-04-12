@@ -392,20 +392,35 @@ export default function Settings() {
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Agent Run History</h3>
-            <button
-              onClick={async () => {
-                try {
-                  await api.triggerAgentRun();
-                  toast('success', 'Agent pipeline run started');
-                  setTimeout(loadAdmin, 3000);
-                } catch (err) {
-                  toast('error', err instanceof Error ? err.message : 'Failed to start run');
-                }
-              }}
-              className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Run Now
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  try {
+                    const { dismissed } = await api.cleanupPassListings();
+                    toast('success', `Dismissed ${dismissed} pass listing${dismissed !== 1 ? 's' : ''}`);
+                  } catch (err) {
+                    toast('error', err instanceof Error ? err.message : 'Cleanup failed');
+                  }
+                }}
+                className="px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Cleanup Pass Listings
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    await api.triggerAgentRun();
+                    toast('success', 'Agent pipeline run started');
+                    setTimeout(loadAdmin, 3000);
+                  } catch (err) {
+                    toast('error', err instanceof Error ? err.message : 'Failed to start run');
+                  }
+                }}
+                className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Run Now
+              </button>
+            </div>
           </div>
           {agentRuns.length === 0 ? (
             <p className="text-sm text-gray-500">No agent runs yet.</p>
