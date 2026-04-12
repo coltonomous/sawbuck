@@ -1,80 +1,14 @@
-import { XMLParser } from 'fast-xml-parser';
 import { db } from '../../db/index.js';
 import { listings } from '../../db/schema.js';
 import { eq, and, inArray } from 'drizzle-orm';
 import { agentConfig } from '../../agents/config.js';
 import { AntiBlockingController } from '../../agents/anti-blocking.js';
+import { clFetch, warmCookies } from './client.js';
 import type { ScrapedCandidate } from '../common/types.js';
 import logger from '../../lib/logger.js';
 
-const RSS_URL = (city: string, offset = 0) => `https://${city}.craigslist.org/search/fua?format=rss&s=${offset}`;
-
-const xmlParser = new XMLParser({
-  ignoreAttributes: false,
-  attributeNamePrefix: '@_',
-});
-
-// Parse price and location from CL title format: "Title - $Price (Location)"
-function parseTitlePriceLoc(raw: string): { title: string; price: number | null; neighborhood: string } {
-  let title = raw;
-  let price: number | null = null;
-  let neighborhood = '';
-
-  // Extract neighborhood from end: "... (Capitol Hill)"
-  const locMatch = title.match(/\s*\(([^)]+)\)\s*$/);
-  if (locMatch) {
-    neighborhood = locMatch[1];
-    title = title.slice(0, locMatch.index!).trim();
-  }
-
-  // Extract price: "... - $150" or "$150"
-  const priceMatch = title.match(/\s*[-–]\s*\$([0-9,]+)\s*$/);
-  if (priceMatch) {
-    price = parseFloat(priceMatch[1].replace(/,/g, ''));
-    title = title.slice(0, priceMatch.index!).trim();
-  }
-
-  return { title, price, neighborhood };
-}
-
-interface RssItem {
-  title: string;
-  link: string;
-  description: string;
-  date: string;
-  imageUrl: string | null;
-}
-
-function parseRssItems(xml: string): RssItem[] {
-  try {
-    const parsed = xmlParser.parse(xml);
-
-    // CL uses RDF format: rdf:RDF > item[]
-    const rdf = parsed['rdf:RDF'] || parsed.rdf || parsed;
-    const rawItems = rdf?.item;
-    if (!rawItems) return [];
-
-    const itemArray = Array.isArray(rawItems) ? rawItems : [rawItems];
-
-    return itemArray
-      .map((item: any): RssItem | null => {
-        const title = typeof item.title === 'string' ? item.title : String(item.title ?? '');
-        const link = typeof item.link === 'string' ? item.link : String(item.link ?? '');
-        if (!title || !link) return null;
-
-        const description = typeof item.description === 'string' ? item.description : '';
-        const date = item['dc:date'] || '';
-        const enclosure = item['enc:enclosure'];
-        const imageUrl = enclosure?.['@_resource'] || null;
-
-        return { title, link, description, date, imageUrl };
-      })
-      .filter((item): item is RssItem => item !== null);
-  } catch (err) {
-    logger.error({ error: String(err) }, 'CL integration: RSS XML parse failed');
-    return [];
-  }
-}
+const SEARCH_URL = (city: string, page = 0) =>
+  `https://${city}.craigslist.org/search/fua#search=1~list~${page}~0`;
 
 // Extract external ID from CL URL: .../12345.html → 12345
 function extractId(url: string): string {
@@ -82,60 +16,138 @@ function extractId(url: string): string {
   return match?.[1] ?? url;
 }
 
+interface JsonLdItem {
+  name: string;
+  description?: string;
+  image?: string[];
+  offers?: {
+    price?: string;
+    availableAtOrFrom?: {
+      address?: { addressLocality?: string };
+      geo?: { latitude?: number; longitude?: number };
+    };
+  };
+}
+
 /**
- * Phase 1: Discover new listings from RSS feed.
- * Returns lightweight candidates (title, price, location, RSS description snippet).
- * No detail page fetches — just RSS data for triage.
+ * Parse the JSON-LD structured data and listing URLs from a CL search page.
+ * CL embeds a full schema.org ItemList in a <script id="ld_searchpage_results">.
+ * Listing URLs are extracted from <a> tags separately and matched by position.
  */
-export async function discover(offset = 0): Promise<ScrapedCandidate[]> {
+function parseSearchPage(html: string): Array<{
+  title: string;
+  url: string;
+  externalId: string;
+  askingPrice: number | null;
+  location: string;
+  latitude?: number;
+  longitude?: number;
+  imageUrls: string[];
+  description?: string;
+}> {
+  // Extract JSON-LD
+  const ldMatch = html.match(/id="ld_searchpage_results"[^>]*>([\s\S]*?)<\/script>/);
+  if (!ldMatch) {
+    logger.warn('CL integration: no JSON-LD found in search page');
+    return [];
+  }
+
+  let items: Array<{ item: JsonLdItem }>;
+  try {
+    const data = JSON.parse(ldMatch[1]);
+    items = data.itemListElement ?? [];
+  } catch {
+    logger.error('CL integration: failed to parse JSON-LD');
+    return [];
+  }
+
+  // Extract listing URLs from HTML (ordered same as JSON-LD)
+  const urlMatches = html.matchAll(/href="(https:\/\/[^"]+\.craigslist\.org\/[^"]+\/(\d+)\.html)"/g);
+  const urls: string[] = [];
+  const seenUrls = new Set<string>();
+  for (const m of urlMatches) {
+    if (!seenUrls.has(m[1])) {
+      seenUrls.add(m[1]);
+      urls.push(m[1]);
+    }
+  }
+
+  const results = [];
+  for (let i = 0; i < items.length && i < urls.length; i++) {
+    const ld = items[i].item;
+    const url = urls[i];
+    const externalId = extractId(url);
+
+    const price = ld.offers?.price ? parseFloat(ld.offers.price) : null;
+    const geo = ld.offers?.availableAtOrFrom?.geo;
+    const locality = ld.offers?.availableAtOrFrom?.address?.addressLocality || '';
+
+    results.push({
+      title: ld.name || '',
+      url,
+      externalId,
+      askingPrice: price && !isNaN(price) ? price : null,
+      location: locality,
+      latitude: geo?.latitude,
+      longitude: geo?.longitude,
+      imageUrls: (ld.image ?? []).slice(0, 3),
+      description: ld.description || undefined,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Phase 1: Discover new listings from CL search page.
+ * Parses JSON-LD structured data embedded in HTML — no RSS needed.
+ */
+export async function discover(page = 0): Promise<ScrapedCandidate[]> {
   const city = agentConfig.targetCity;
-  const rssUrl = RSS_URL(city, offset);
 
-  logger.info({ rssUrl, offset }, 'CL integration: fetching RSS feed');
+  // Warm cookies on first request to establish a session
+  await warmCookies(city);
 
-  const res = await fetch(rssUrl, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-    },
+  const searchUrl = SEARCH_URL(city, page);
+  logger.info({ searchUrl, page }, 'CL integration: fetching search page');
+
+  const res = await clFetch(searchUrl, {
+    referer: `https://${city}.craigslist.org/`,
   });
 
   if (!res.ok) {
-    throw new Error(`CL RSS feed returned ${res.status}: ${res.statusText}`);
+    throw new Error(`CL search page returned ${res.status}: ${res.statusText}`);
   }
 
-  const xml = await res.text();
-  const rssItems = parseRssItems(xml);
+  const html = await res.text();
+  const parsed = parseSearchPage(html);
 
-  logger.info({ count: rssItems.length }, 'CL integration: RSS items parsed');
+  logger.info({ count: parsed.length }, 'CL integration: search items parsed');
 
-  if (rssItems.length === 0) return [];
+  if (parsed.length === 0) return [];
 
   // Dedup against DB
-  const externalIds = rssItems.map((item) => extractId(item.link));
+  const externalIds = parsed.map((item) => item.externalId);
   const existing = await db
     .select({ externalId: listings.externalId })
     .from(listings)
     .where(and(eq(listings.platform, 'craigslist'), inArray(listings.externalId, externalIds)));
   const existingIds = new Set(existing.map((e) => e.externalId));
 
-  const newItems = rssItems.filter((item) => !existingIds.has(extractId(item.link)));
-  logger.info({ total: rssItems.length, new: newItems.length, existing: existingIds.size }, 'CL integration: dedup results');
+  const newItems = parsed.filter((item) => !existingIds.has(item.externalId));
+  logger.info({ total: parsed.length, new: newItems.length, existing: existingIds.size }, 'CL integration: dedup results');
 
-  return newItems.map((item) => {
-    const { title, price, neighborhood } = parseTitlePriceLoc(item.title);
-    return {
-      externalId: extractId(item.link),
-      url: item.link,
-      title,
-      askingPrice: price,
-      location: neighborhood || city,
-      imageUrls: item.imageUrl ? [item.imageUrl] : [],
-      description: item.description || undefined,
-      postedAt: item.date || undefined,
-    };
-  });
+  return newItems.map((item) => ({
+    externalId: item.externalId,
+    url: item.url,
+    title: item.title,
+    askingPrice: item.askingPrice,
+    location: item.location || city,
+    latitude: item.latitude,
+    longitude: item.longitude,
+    imageUrls: item.imageUrls,
+    description: item.description,
+  }));
 }
 
 export interface EnrichResult {
@@ -178,12 +190,12 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<EnrichResu
           longitude: detail.longitude ?? candidate.longitude,
         });
       } else {
-        enriched.push(candidate); // keep RSS data on non-404 failure
+        enriched.push(candidate); // keep search data on non-404 failure
       }
     } catch (err) {
       antiBlocking.onError(err);
       logger.warn({ url: candidate.url, error: String(err) }, 'CL integration: detail fetch failed');
-      enriched.push(candidate); // keep RSS data on failure
+      enriched.push(candidate); // keep search data on failure
     }
   }
 
@@ -200,12 +212,8 @@ type DetailResult = {
 
 async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | null> {
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html',
-        'Accept-Language': 'en-US,en;q=0.9',
-      },
+    const res = await clFetch(url, {
+      referer: `https://${new URL(url).hostname}/search/fua`,
     });
 
     if (res.status === 404) return 'removed';

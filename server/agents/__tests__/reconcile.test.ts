@@ -69,6 +69,10 @@ vi.mock('../../db/schema.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
+function mockResponse(opts: { ok: boolean; status: number; text?: () => Promise<string> }) {
+  return { ...opts, headers: { getSetCookie: () => [] }, text: opts.text ?? (() => Promise.resolve('')) };
+}
+
 import { reconcileListings } from '../nodes/reconcile.js';
 import type { AgentState } from '../state.js';
 
@@ -126,8 +130,7 @@ describe('reconcileListings', () => {
       { id: 100, externalId: 'old-1', url: 'https://seattle.craigslist.org/old/1.html' },
     ];
 
-    // HEAD returns 404
-    mockFetch.mockResolvedValueOnce({ ok: false, status: 404 });
+    mockFetch.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
 
     const result = await reconcileListings(makeState({
       seenExternalIds: ['new-1', 'new-2'],
@@ -143,14 +146,12 @@ describe('reconcileListings', () => {
       { id: 200, externalId: 'deleted-1', url: 'https://seattle.craigslist.org/d/200.html' },
     ];
 
-    // HEAD returns 200 (page exists)
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200 });
-    // GET returns deletion notice
-    mockFetch.mockResolvedValueOnce({
+    // Single GET returns deletion notice page
+    mockFetch.mockResolvedValueOnce(mockResponse({
       ok: true,
       status: 200,
       text: () => Promise.resolve('<html><body>This posting has been deleted by its author.</body></html>'),
-    });
+    }));
 
     const result = await reconcileListings(makeState({
       seenExternalIds: ['new-1'],

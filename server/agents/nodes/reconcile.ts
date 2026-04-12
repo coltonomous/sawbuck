@@ -3,6 +3,7 @@ import { listings } from '../../db/schema.js';
 import { eq, and, inArray, isNull, notInArray } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { AntiBlockingController } from '../anti-blocking.js';
+import { clFetch } from '../../integrations/craigslist/client.js';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -69,26 +70,13 @@ export async function reconcileListings(state: AgentState): Promise<Partial<Agen
     for (const listing of candidates) {
       try {
         await antiBlocking.beforeRequest();
-        const res = await fetch(listing.url, {
-          method: 'HEAD',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          },
-        });
+        const res = await clFetch(listing.url);
         antiBlocking.onSuccess();
 
         if (res.status === 404) {
           removedListingIds.push(listing.id);
         } else if (res.ok) {
-          // Listing still exists — check for CL deletion page via GET
-          // Only do this for a subset to limit requests
-          const bodyRes = await fetch(listing.url, {
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Accept': 'text/html',
-            },
-          });
-          const html = await bodyRes.text();
+          const html = await res.text();
           if (html.includes('This posting has been deleted') || html.includes('This posting has expired')) {
             removedListingIds.push(listing.id);
           }

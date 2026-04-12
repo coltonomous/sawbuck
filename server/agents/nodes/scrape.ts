@@ -2,22 +2,19 @@ import { discover } from '../../integrations/craigslist/ingest.js';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
-// CL RSS returns ~100 items per page. Paginate deeper on retries.
-const PAGE_SIZE = 100;
-
 export async function scrapeCategory(state: AgentState): Promise<Partial<AgentState>> {
-  const offset = state.scrapeAttempts * PAGE_SIZE;
+  const page = state.scrapeAttempts; // 0-indexed page number
   const seenIds = new Set(state.seenExternalIds);
 
   try {
-    const allResults = await discover(offset);
+    const allResults = await discover(page);
 
     // Filter out listings already triaged in previous attempts this run
     const newResults = allResults.filter((r) => !seenIds.has(r.externalId));
     const newIds = newResults.map((r) => r.externalId);
 
     logger.info({
-      offset,
+      page,
       attempt: state.scrapeAttempts + 1,
       total: allResults.length,
       new: newResults.length,
@@ -30,7 +27,7 @@ export async function scrapeCategory(state: AgentState): Promise<Partial<AgentSt
       seenExternalIds: newIds,
     };
   } catch (err) {
-    logger.error({ error: String(err), offset }, 'Agent scrape node failed');
+    logger.error({ error: String(err), page }, 'Agent scrape node failed');
     return {
       scrapedCandidates: [],
       scrapeAttempts: state.scrapeAttempts + 1,
