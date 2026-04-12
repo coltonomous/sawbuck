@@ -81,7 +81,17 @@ export interface Listing {
   analysisError: string | null;
   userId: string | null;
   primaryImage?: string | null;
-  conceptImages?: Array<{ localPath: string; prompt: string }> | null;
+  conceptImages?: ConceptOption[] | null;
+}
+
+export interface ConceptOption {
+  difficulty: string;
+  label: string;
+  summary: string;
+  estimatedHours: number | null;
+  estimatedMaterialCost: number | null;
+  estimatedResalePrice: number | null;
+  localPath: string | null;
 }
 
 export interface ListingDetail extends Listing {

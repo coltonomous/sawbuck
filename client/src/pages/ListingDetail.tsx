@@ -237,8 +237,64 @@ export default function ListingDetail() {
         </button>
       ) : null}
 
-      {/* Comparables — hidden while transitioning away from eBay comps */}
-      {/* {listing.furnitureType && <ComparablesList listingId={listing.id} />} */}
+      {/* Refinishing Options (from agent pipeline) */}
+      {listing.conceptImages && listing.conceptImages.length > 0 && (
+        <Card className="mb-4">
+          <CardHeader>Refinishing Options</CardHeader>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {listing.conceptImages.map((opt) => (
+              <div key={opt.difficulty} className="border border-gray-200 rounded-lg overflow-hidden">
+                {opt.localPath && (
+                  <img
+                    src={resolveImageUrl(opt.localPath)}
+                    alt={opt.label}
+                    className="w-full h-40 object-cover bg-gray-100"
+                  />
+                )}
+                <div className="p-3">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-semibold text-gray-900">{opt.label}</span>
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                      opt.difficulty === 'simple' ? 'bg-green-100 text-green-700'
+                        : opt.difficulty === 'moderate' ? 'bg-amber-100 text-amber-700'
+                        : 'bg-red-100 text-red-700'
+                    }`}>{opt.difficulty}</span>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-2 line-clamp-2">{opt.summary}</p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                    {opt.estimatedHours != null && (
+                      <>
+                        <span className="text-gray-400">Time</span>
+                        <span className="text-right font-medium text-gray-700">{opt.estimatedHours}h</span>
+                      </>
+                    )}
+                    {opt.estimatedMaterialCost != null && (
+                      <>
+                        <span className="text-gray-400">Materials</span>
+                        <span className="text-right font-medium text-gray-700">${opt.estimatedMaterialCost}</span>
+                      </>
+                    )}
+                    {opt.estimatedResalePrice != null && (
+                      <>
+                        <span className="text-gray-400">Resale est.</span>
+                        <span className="text-right font-medium text-green-700">${opt.estimatedResalePrice}</span>
+                      </>
+                    )}
+                    {opt.estimatedResalePrice != null && listing.askingPrice != null && opt.estimatedMaterialCost != null && (
+                      <>
+                        <span className="text-gray-400">Profit est.</span>
+                        <span className="text-right font-medium text-green-700">
+                          ${Math.round(opt.estimatedResalePrice - listing.askingPrice - opt.estimatedMaterialCost)}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Actions */}
       <div className="flex flex-wrap gap-2.5 mb-6">
