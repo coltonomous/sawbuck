@@ -123,6 +123,12 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
 
       if (passesRecommendation && passesDealScore) {
         qualified.push(evalCandidate);
+      } else {
+        // Not worth showing — dismiss so it doesn't clutter the feed
+        await db.update(listings)
+          .set({ status: 'dismissed' })
+          .where(eq(listings.id, listingId));
+        logger.info({ listingId, recommendation: analysis.flip_recommendation }, 'Evaluate: dismissed (below quality threshold)');
       }
 
       logger.info(

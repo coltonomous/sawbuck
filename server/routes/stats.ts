@@ -12,9 +12,14 @@ function parseNumbers(row: Record<string, any>): Record<string, any> {
 
 export const statsRouter = new Hono();
 
+// Analytics includes both user-owned and agent-discovered listings
+// that the user can see (their own + agent listings with userId IS NULL)
 statsRouter.get('/', async (c) => {
   const user = c.get('user');
   const userId = user.id;
+
+  // Listings visible to this user: their own OR agent-discovered
+  const listingFilter = '(user_id = $1 OR user_id IS NULL)';
 
   const [
     summaryResult,
@@ -36,7 +41,7 @@ statsRouter.get('/', async (c) => {
         AVG(asking_price) as avg_asking_price,
         MIN(scraped_at) as first_scraped,
         MAX(scraped_at) as last_scraped
-      FROM listings WHERE user_id = $1
+      FROM listings WHERE ${listingFilter}
     `, [userId]),
 
     pool.query(`
@@ -62,7 +67,7 @@ statsRouter.get('/', async (c) => {
 
     pool.query(`
       SELECT platform, COUNT(*) as count
-      FROM listings WHERE user_id = $1
+      FROM listings WHERE ${listingFilter}
       GROUP BY platform ORDER BY count DESC
     `, [userId]),
 
@@ -76,7 +81,7 @@ statsRouter.get('/', async (c) => {
 
     pool.query(`
       SELECT DATE_TRUNC('week', scraped_at::timestamp)::date::text as week, COUNT(*) as count
-      FROM listings WHERE user_id = $1
+      FROM listings WHERE ${listingFilter}
       GROUP BY week ORDER BY week
     `, [userId]),
 
@@ -90,7 +95,7 @@ statsRouter.get('/', async (c) => {
           WHEN asking_price < 1000 THEN '$500-999'
           ELSE '$1000+'
         END as bucket, COUNT(*) as count
-      FROM listings WHERE asking_price IS NOT NULL AND user_id = $1
+      FROM listings WHERE asking_price IS NOT NULL AND ${listingFilter}
       GROUP BY bucket ORDER BY MIN(asking_price)
     `, [userId]),
 
@@ -104,19 +109,19 @@ statsRouter.get('/', async (c) => {
           WHEN deal_score < 3.0 THEN '2.5-2.9x'
           ELSE '3.0x+'
         END as bucket, COUNT(*) as count
-      FROM listings WHERE deal_score IS NOT NULL AND user_id = $1
+      FROM listings WHERE deal_score IS NOT NULL AND ${listingFilter}
       GROUP BY bucket ORDER BY MIN(deal_score)
     `, [userId]),
 
     pool.query(`
       SELECT status, COUNT(*) as count
-      FROM listings WHERE user_id = $1
+      FROM listings WHERE ${listingFilter}
       GROUP BY status ORDER BY count DESC
     `, [userId]),
 
     pool.query(`
       SELECT furniture_type as type, COUNT(*) as count
-      FROM listings WHERE furniture_type IS NOT NULL AND user_id = $1
+      FROM listings WHERE furniture_type IS NOT NULL AND ${listingFilter}
       GROUP BY furniture_type ORDER BY count DESC LIMIT 10
     `, [userId]),
   ]);

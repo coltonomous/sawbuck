@@ -1,6 +1,7 @@
 import { fal } from '@fal-ai/client';
 import { db } from '../../db/index.js';
 import { conceptRenders } from '../../db/schema.js';
+import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import type { AgentState, ConceptRenderResult, ListingWithOptions, RefinishingOption } from '../state.js';
 import logger from '../../lib/logger.js';
@@ -80,19 +81,30 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
         const buffer = Buffer.from(await response.arrayBuffer());
         await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
 
-        await db.insert(conceptRenders).values({
-          listingId: listing.listingId,
-          agentRunId: state.runId,
-          difficulty: option.difficulty,
-          label: option.label,
-          summary: option.summary,
-          estimatedHours: option.estimatedHours,
-          estimatedMaterialCost: option.estimatedMaterialCost,
-          estimatedResalePrice: option.estimatedResalePrice,
-          prompt,
-          renderedImageUrl: imageUrl,
-          localPath,
-        });
+        // Update the row created by plan-options with the rendered image
+        const updated = await db.update(conceptRenders)
+          .set({ prompt, renderedImageUrl: imageUrl, localPath })
+          .where(and(
+            eq(conceptRenders.listingId, listing.listingId),
+            eq(conceptRenders.difficulty, option.difficulty),
+          ));
+
+        // If no existing row (shouldn't happen, but handle gracefully), insert
+        if (!updated.rowCount) {
+          await db.insert(conceptRenders).values({
+            listingId: listing.listingId,
+            agentRunId: state.runId,
+            difficulty: option.difficulty,
+            label: option.label,
+            summary: option.summary,
+            estimatedHours: option.estimatedHours,
+            estimatedMaterialCost: option.estimatedMaterialCost,
+            estimatedResalePrice: option.estimatedResalePrice,
+            prompt,
+            renderedImageUrl: imageUrl,
+            localPath,
+          });
+        }
 
         renders.push({
           listingId: listing.listingId,

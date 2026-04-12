@@ -1,5 +1,7 @@
 import { z } from 'zod';
 import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
+import { db } from '../../db/index.js';
+import { conceptRenders } from '../../db/schema.js';
 import { agentConfig } from '../config.js';
 import type { AgentState, RefinishingOption, ListingWithOptions } from '../state.js';
 import logger from '../../lib/logger.js';
@@ -84,6 +86,22 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         estimatedMaterialCost: o.estimated_material_cost,
         estimatedResalePrice: o.estimated_resale_price,
       }));
+
+      // Persist all options to DB so they're visible in the feed even without renders
+      for (const option of options) {
+        await db.insert(conceptRenders).values({
+          listingId: listing.listingId,
+          agentRunId: state.runId,
+          difficulty: option.difficulty,
+          label: option.label,
+          summary: option.summary,
+          estimatedHours: option.estimatedHours,
+          estimatedMaterialCost: option.estimatedMaterialCost,
+          estimatedResalePrice: option.estimatedResalePrice,
+          prompt: '',     // render node fills this in later
+          localPath: null, // render node fills this in later
+        }).onConflictDoNothing();
+      }
 
       results.push({ ...listing, options });
 

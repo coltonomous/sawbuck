@@ -161,7 +161,7 @@ listingsRouter.get('/', async (c) => {
     estimatedHours: number | null;
     estimatedMaterialCost: number | null;
     estimatedResalePrice: number | null;
-    localPath: string;
+    localPath: string | null;
   }>>();
   if (agentListingIds.length > 0) {
     const renders = await db.select({
@@ -178,18 +178,16 @@ listingsRouter.get('/', async (c) => {
       .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
       ;
     for (const r of renders) {
-      if (r.localPath) {
-        if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
-        conceptMap.get(r.listingId)!.push({
-          difficulty: r.difficulty,
-          label: r.label,
-          summary: r.summary,
-          estimatedHours: r.estimatedHours,
-          estimatedMaterialCost: r.estimatedMaterialCost,
-          estimatedResalePrice: r.estimatedResalePrice,
-          localPath: r.localPath,
-        });
-      }
+      if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
+      conceptMap.get(r.listingId)!.push({
+        difficulty: r.difficulty,
+        label: r.label,
+        summary: r.summary,
+        estimatedHours: r.estimatedHours,
+        estimatedMaterialCost: r.estimatedMaterialCost,
+        estimatedResalePrice: r.estimatedResalePrice,
+        localPath: r.localPath,
+      });
     }
   }
 
