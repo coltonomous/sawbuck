@@ -11,7 +11,8 @@ import { generatePlanOptions } from './nodes/plan-options.js';
 import { generateConcepts } from './nodes/render.js';
 import { summarizeRun } from './nodes/summarize.js';
 
-const MAX_SCRAPE_ATTEMPTS = 3;
+const MAX_SCRAPE_ATTEMPTS = 5;
+const MIN_QUALIFIED_TARGET = 3;
 
 function afterTriage(state: AgentState): 'enrich' | 'scrape' | 'summarize' {
   if (state.passedTriage.length > 0) {
@@ -27,9 +28,16 @@ function afterReconcile(state: AgentState): 'evaluate' | 'summarize' {
   return 'evaluate';
 }
 
-function afterEvaluate(state: AgentState): 'planOptions' | 'summarize' {
-  if (state.qualifiedListings.length === 0) return 'summarize';
-  return 'planOptions';
+function afterEvaluate(state: AgentState): 'planOptions' | 'scrape' | 'summarize' {
+  if (state.qualifiedListings.length > 0) return 'planOptions';
+  // No qualified listings this iteration — try another page if under caps
+  if (
+    state.evalCount < agentConfig.maxEvals &&
+    state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
+  ) {
+    return 'scrape';
+  }
+  return 'summarize';
 }
 
 function afterPlanOptions(state: AgentState): 'render' | 'summarize' {
@@ -37,6 +45,20 @@ function afterPlanOptions(state: AgentState): 'render' | 'summarize' {
   if (state.conceptsRendered >= agentConfig.maxListingsRendered) return 'summarize';
   if (!process.env.FAL_KEY) return 'summarize';
   return 'render';
+}
+
+function afterRender(state: AgentState): 'scrape' | 'summarize' {
+  // Keep looping if we haven't found enough qualified listings
+  // and we haven't exhausted pages or hit caps
+  if (
+    state.evalCount < agentConfig.maxEvals &&
+    state.conceptsRendered < agentConfig.maxListingsRendered &&
+    state.conceptsRendered < MIN_QUALIFIED_TARGET &&
+    state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
+  ) {
+    return 'scrape';
+  }
+  return 'summarize';
 }
 
 // Graph flow:
@@ -64,13 +86,17 @@ const graph = new StateGraph(AgentAnnotation)
   })
   .addConditionalEdges('evaluate', afterEvaluate, {
     planOptions: 'planOptions',
+    scrape: 'scrape',
     summarize: 'summarize',
   })
   .addConditionalEdges('planOptions', afterPlanOptions, {
     render: 'render',
     summarize: 'summarize',
   })
-  .addEdge('render', 'summarize')
+  .addConditionalEdges('render', afterRender, {
+    scrape: 'scrape',
+    summarize: 'summarize',
+  })
   .addEdge('summarize', END);
 
 const checkpointer = PostgresSaver.fromConnString(
@@ -88,4 +114,4 @@ export function initCheckpointer(): Promise<void> {
 
 export const agentPipeline = graph.compile({ checkpointer });
 
-export { afterTriage, afterReconcile, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS };
+export { afterTriage, afterReconcile, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };
