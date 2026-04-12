@@ -6,6 +6,7 @@ import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
+import AnalysisRating from '../components/AnalysisRating';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
 import { resolveImageUrl } from '../utils';
 
@@ -225,6 +226,7 @@ export default function ListingDetail() {
           {typeof analysisData?.refinishing_profit_verdict === 'string' && (
             <p className="mt-3 pt-3 border-t text-sm text-gray-700 leading-relaxed font-medium">{String(analysisData.refinishing_profit_verdict)}</p>
           )}
+          <AnalysisRating listingId={listing.id} />
         </Card>
       ) : listing.userId === session?.user?.id || listing.platform === 'sawbuck' ? (
         <button

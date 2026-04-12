@@ -278,6 +278,44 @@ export const projects = pgTable('projects', {
 ]);
 
 // ============================================================
+// Analysis & Plan Ratings
+// ============================================================
+
+export const analysisRatings = pgTable('analysis_ratings', {
+  id: serial('id').primaryKey(),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  overallRating: integer('overall_rating').notNull(), // 1-5
+  conditionAccuracy: integer('condition_accuracy'), // 1-5
+  woodIdAccuracy: integer('wood_id_accuracy'), // 1-5
+  priceAccuracy: integer('price_accuracy'), // 1-5
+  recommendationHelpful: integer('recommendation_helpful'), // 1-5
+  feedback: text('feedback'),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+  unique('idx_analysis_ratings_listing_user').on(table.listingId, table.userId),
+  index('idx_analysis_ratings_listing_id').on(table.listingId),
+]);
+
+export const planRatings = pgTable('plan_ratings', {
+  id: serial('id').primaryKey(),
+  refinishingPlanId: integer('refinishing_plan_id').notNull().references(() => refinishingPlans.id, { onDelete: 'cascade' }),
+  overallRating: integer('overall_rating').notNull(), // 1-5
+  stepClarity: integer('step_clarity'), // 1-5
+  timeAccuracy: integer('time_accuracy'), // 1-5
+  materialAccuracy: integer('material_accuracy'), // 1-5
+  resultQuality: integer('result_quality'), // 1-5
+  feedback: text('feedback'),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow(),
+}, (table) => [
+  unique('idx_plan_ratings_plan_user').on(table.refinishingPlanId, table.userId),
+  index('idx_plan_ratings_plan_id').on(table.refinishingPlanId),
+]);
+
+// ============================================================
 // Background Jobs
 // ============================================================
 

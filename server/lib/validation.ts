@@ -76,6 +76,30 @@ export const generateListingTextSchema = z.object({
 });
 
 // ============================================================
+// Ratings
+// ============================================================
+
+const ratingScore = z.number().int().min(1).max(5);
+
+export const submitAnalysisRatingSchema = z.object({
+  overallRating: ratingScore,
+  conditionAccuracy: ratingScore.optional(),
+  woodIdAccuracy: ratingScore.optional(),
+  priceAccuracy: ratingScore.optional(),
+  recommendationHelpful: ratingScore.optional(),
+  feedback: z.string().max(2000).optional(),
+});
+
+export const submitPlanRatingSchema = z.object({
+  overallRating: ratingScore,
+  stepClarity: ratingScore.optional(),
+  timeAccuracy: ratingScore.optional(),
+  materialAccuracy: ratingScore.optional(),
+  resultQuality: ratingScore.optional(),
+  feedback: z.string().max(2000).optional(),
+});
+
+// ============================================================
 // Scrapers
 // ============================================================
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { type RefinishingPlan as RefinishingPlanType, type RagSource } from '../api';
+import PlanRating from './PlanRating';
 
 function parseRagSources(raw: string | null | undefined): RagSource[] {
   if (!raw) return [];
@@ -147,6 +148,9 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
           </div>
         ))}
       </div>
+
+      {/* Plan Rating */}
+      <PlanRating planId={plan.id} />
     </div>
   );
 }

@@ -280,6 +280,77 @@ export interface MaterialUpdate {
   actualPrice?: number;
 }
 
+export interface AnalysisRating {
+  id: number;
+  listingId: number;
+  overallRating: number;
+  conditionAccuracy: number | null;
+  woodIdAccuracy: number | null;
+  priceAccuracy: number | null;
+  recommendationHelpful: number | null;
+  feedback: string | null;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlanRating {
+  id: number;
+  refinishingPlanId: number;
+  overallRating: number;
+  stepClarity: number | null;
+  timeAccuracy: number | null;
+  materialAccuracy: number | null;
+  resultQuality: number | null;
+  feedback: string | null;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AnalysisRatingInput {
+  overallRating: number;
+  conditionAccuracy?: number;
+  woodIdAccuracy?: number;
+  priceAccuracy?: number;
+  recommendationHelpful?: number;
+  feedback?: string;
+}
+
+export interface PlanRatingInput {
+  overallRating: number;
+  stepClarity?: number;
+  timeAccuracy?: number;
+  materialAccuracy?: number;
+  resultQuality?: number;
+  feedback?: string;
+}
+
+export interface RatingAnalytics {
+  analysis: {
+    totalRatings: number;
+    averages: {
+      overall: number | null;
+      conditionAccuracy: number | null;
+      woodIdAccuracy: number | null;
+      priceAccuracy: number | null;
+      recommendationHelpful: number | null;
+    };
+    distribution: { rating: number; count: number }[];
+  };
+  plan: {
+    totalRatings: number;
+    averages: {
+      overall: number | null;
+      stepClarity: number | null;
+      timeAccuracy: number | null;
+      materialAccuracy: number | null;
+      resultQuality: number | null;
+    };
+    distribution: { rating: number; count: number }[];
+  };
+}
+
 export interface AgentRun {
   id: number;
   runId: string;
@@ -414,6 +485,18 @@ export const api = {
     }
     return res.json() as Promise<{ listing: Listing }>;
   },
+
+  // Ratings
+  getAnalysisRating: (listingId: number) =>
+    request<AnalysisRating | null>(`/ratings/analysis/${listingId}`),
+  submitAnalysisRating: (listingId: number, data: AnalysisRatingInput) =>
+    request<AnalysisRating>(`/ratings/analysis/${listingId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getPlanRating: (planId: number) =>
+    request<PlanRating | null>(`/ratings/plan/${planId}`),
+  submitPlanRating: (planId: number, data: PlanRatingInput) =>
+    request<PlanRating>(`/ratings/plan/${planId}`, { method: 'PUT', body: JSON.stringify(data) }),
+  getRatingAnalytics: () =>
+    request<RatingAnalytics>('/ratings/analytics'),
 
   // Admin
   getUsers: () => request<AdminUser[]>('/admin/users'),

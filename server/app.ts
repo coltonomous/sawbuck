@@ -13,6 +13,7 @@ import { comparablesRouter } from './routes/comparables.js';
 import { statsRouter } from './routes/stats.js';
 import { adminRouter } from './routes/admin.js';
 import { preferencesRouter } from './routes/preferences.js';
+import { ratingsRouter } from './routes/ratings.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -106,6 +107,7 @@ app.route('/api/comparables', comparablesRouter);
 app.route('/api/stats', statsRouter);
 app.route('/api/admin', adminRouter);
 app.route('/api/user/preferences', preferencesRouter);
+app.route('/api/ratings', ratingsRouter);
 
 // ── Serve listing images with cache headers ─────────────────────────
 app.use('/images/*', async (c, next) => {
