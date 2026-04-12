@@ -70,7 +70,7 @@ export function getAgentConfig() {
     targetCity: resolve('agent.target_city', 'AGENT_TARGET_CITY', 'seattle'),
 
     // Models
-    triageModel: resolve('agent.triage_model', 'AGENT_TRIAGE_MODEL', 'qwen.qwen3-32b'),
+    triageModel: resolve('agent.triage_model', 'AGENT_TRIAGE_MODEL', 'qwen.qwen3-32b-v1:0'),
     evaluationModel: resolve('agent.eval_model', 'AGENT_EVAL_MODEL', 'qwen.qwen3-vl-235b-a22b'),
 
     // fal.ai

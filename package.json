@@ -19,7 +19,7 @@
     "docker:up": "docker compose up"
   },
   "dependencies": {
-    "@anthropic-ai/bedrock-sdk": "^0.28.1",
+    "@aws-sdk/client-bedrock-runtime": "^3.1029.0",
     "@fal-ai/client": "^1.9.5",
     "@hono/node-server": "^1.19.9",
     "@langchain/core": "^1.1.39",

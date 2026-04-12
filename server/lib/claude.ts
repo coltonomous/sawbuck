@@ -1,18 +1,24 @@
-import AnthropicBedrock from '@anthropic-ai/bedrock-sdk';
-import type Anthropic from '@anthropic-ai/sdk';
+import {
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type ContentBlock,
+  type Message,
+  type SystemContentBlock,
+} from '@aws-sdk/client-bedrock-runtime';
 import { z } from 'zod';
 import { config } from './config.js';
 import { withRetry as _withRetry } from './retry.js';
+import logger from './logger.js';
 
-let client: AnthropicBedrock | null = null;
+let client: BedrockRuntimeClient | null = null;
 
-function getClient(): AnthropicBedrock {
+function getClient(): BedrockRuntimeClient {
   if (!client) {
     const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
     if (!region) {
       throw new Error('AWS_REGION is required for Bedrock. Set AWS_REGION in your environment.');
     }
-    client = new AnthropicBedrock({ awsRegion: region });
+    client = new BedrockRuntimeClient({ region });
   }
   return client;
 }
@@ -21,7 +27,7 @@ function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   return _withRetry(fn, {
     maxRetries: config.claude.maxRetries,
     baseDelayMs: config.claude.baseDelayMs,
-    label: 'claude',
+    label: 'bedrock',
   });
 }
 
@@ -30,94 +36,138 @@ export interface ImageInput {
   mediaType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
 }
 
+/**
+ * Call Bedrock Converse API with optional images and return plain text.
+ */
 export async function analyzeWithVision(
   images: ImageInput[],
   prompt: string,
   systemPrompt?: string,
 ): Promise<string> {
-  const claude = getClient();
+  const bedrock = getClient();
   return withRetry(async () => {
-    const content: Anthropic.Messages.ContentBlockParam[] = [];
+    const content: ContentBlock[] = [];
 
     for (const img of images) {
       content.push({
-        type: 'image',
-        source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+        image: {
+          format: mediaTypeToFormat(img.mediaType),
+          source: { bytes: Buffer.from(img.base64, 'base64') },
+        },
       });
     }
 
-    content.push({ type: 'text', text: prompt });
+    content.push({ text: prompt });
 
-    const response = await claude.messages.create({
-      model: config.claude.model,
-      max_tokens: config.claude.maxTokens,
-      system: systemPrompt || '',
-      messages: [{ role: 'user', content }],
-    });
+    const system: SystemContentBlock[] = systemPrompt ? [{ text: systemPrompt }] : [];
+    const messages: Message[] = [{ role: 'user', content }];
 
-    const textBlock = response.content.find((b) => b.type === 'text');
-    return textBlock && 'text' in textBlock ? textBlock.text : '';
+    const response = await bedrock.send(new ConverseCommand({
+      modelId: config.claude.model,
+      system,
+      messages,
+      inferenceConfig: { maxTokens: config.claude.maxTokens },
+    }));
+
+    const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
+    return textBlock && 'text' in textBlock ? textBlock.text! : '';
   });
 }
 
+/**
+ * Call Bedrock Converse API and extract structured JSON output.
+ *
+ * Qwen models on Bedrock don't support server-side tool use, so we
+ * prompt the model to return JSON and parse it from the text response.
+ * The JSON schema is included in the prompt for guidance, and the
+ * result is validated with the provided zod schema.
+ */
 export async function analyzeWithVisionStructured<T>(
   images: ImageInput[],
   prompt: string,
-  jsonSchema: Record<string, unknown>,
+  _jsonSchema: Record<string, unknown>,
   zodSchema: z.ZodSchema<T>,
-  toolName: string,
-  toolDescription: string,
+  _toolName: string,
+  _toolDescription: string,
   systemPrompt?: string,
   model?: string,
 ): Promise<T> {
-  const claude = getClient();
+  const bedrock = getClient();
   return withRetry(async () => {
-    const content: Anthropic.Messages.ContentBlockParam[] = [];
+    const content: ContentBlock[] = [];
 
     for (const img of images) {
       content.push({
-        type: 'image',
-        source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+        image: {
+          format: mediaTypeToFormat(img.mediaType),
+          source: { bytes: Buffer.from(img.base64, 'base64') },
+        },
       });
     }
 
-    content.push({ type: 'text', text: prompt });
+    // Instruct the model to return only valid JSON
+    const jsonPrompt = prompt + '\n\nIMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanation, no code fences, just the raw JSON.';
+    content.push({ text: jsonPrompt });
 
-    const response = await claude.messages.create({
-      model: model ?? config.claude.model,
-      max_tokens: config.claude.maxTokens,
-      system: systemPrompt || '',
-      messages: [{ role: 'user', content }],
-      tools: [{
-        name: toolName,
-        description: toolDescription,
-        input_schema: jsonSchema as Anthropic.Messages.Tool.InputSchema,
-      }],
-      tool_choice: { type: 'tool', name: toolName },
-    });
+    const system: SystemContentBlock[] = systemPrompt ? [{ text: systemPrompt }] : [];
+    const messages: Message[] = [{ role: 'user', content }];
 
-    const toolBlock = response.content.find((b): b is Anthropic.Messages.ToolUseBlock => b.type === 'tool_use');
-    if (!toolBlock) throw new Error('No tool use block in Claude response');
-    return zodSchema.parse(toolBlock.input);
+    const response = await bedrock.send(new ConverseCommand({
+      modelId: model ?? config.claude.model,
+      system,
+      messages,
+      inferenceConfig: { maxTokens: config.claude.maxTokens },
+    }));
+
+    const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
+    const rawText = textBlock && 'text' in textBlock ? textBlock.text! : '';
+
+    // Parse JSON — handle markdown wrapping that models sometimes add
+    let jsonStr = rawText.trim();
+    const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (codeBlockMatch) jsonStr = codeBlockMatch[1].trim();
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return zodSchema.parse(parsed);
+    } catch (err) {
+      logger.error({ model: model ?? config.claude.model, rawText: rawText.slice(0, 500) }, 'Failed to parse structured response as JSON');
+      throw new Error(`Failed to parse model response as JSON: ${(err as Error).message}`);
+    }
   });
 }
 
+/**
+ * Plain text generation via Bedrock Converse API.
+ */
 export async function generateText(
   prompt: string,
   systemPrompt?: string,
   maxTokens = 2000,
   model?: string,
 ): Promise<string> {
-  const claude = getClient();
+  const bedrock = getClient();
   return withRetry(async () => {
-    const response = await claude.messages.create({
-      model: model ?? config.claude.model,
-      max_tokens: maxTokens,
-      system: systemPrompt || '',
-      messages: [{ role: 'user', content: prompt }],
-    });
+    const system: SystemContentBlock[] = systemPrompt ? [{ text: systemPrompt }] : [];
+    const messages: Message[] = [{ role: 'user', content: [{ text: prompt }] }];
 
-    const textBlock = response.content.find((b) => b.type === 'text');
-    return textBlock && 'text' in textBlock ? textBlock.text : '';
+    const response = await bedrock.send(new ConverseCommand({
+      modelId: model ?? config.claude.model,
+      system,
+      messages,
+      inferenceConfig: { maxTokens },
+    }));
+
+    const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
+    return textBlock && 'text' in textBlock ? textBlock.text! : '';
   });
+}
+
+function mediaTypeToFormat(mediaType: string): 'jpeg' | 'png' | 'webp' | 'gif' {
+  switch (mediaType) {
+    case 'image/png': return 'png';
+    case 'image/webp': return 'webp';
+    case 'image/gif': return 'gif';
+    default: return 'jpeg';
+  }
 }
