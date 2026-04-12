@@ -3,12 +3,16 @@ import app from './app.js';
 import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import { cleanupOrphanedImages } from './images/cleanup.js';
 import { startScheduler, stopScheduler } from './agents/scheduler.js';
+import { promoteAdmin } from './lib/seed-admin.js';
 import logger from './lib/logger.js';
 
 const port = parseInt(process.env.PORT || '3001');
 logger.info(`Server running on http://localhost:${port}`);
 
 const server = serve({ fetch: app.fetch, port });
+
+// Promote ADMIN_EMAIL user to admin role (idempotent)
+promoteAdmin();
 
 // Background: load embedding model + seed knowledge base if empty
 bootstrapKnowledgeBase();

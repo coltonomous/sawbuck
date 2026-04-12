@@ -4,6 +4,7 @@ import { db } from '../db/index.js';
 import { users, listings } from '../db/schema.js';
 import { eq, count } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
+import { triggerRun } from '../agents/scheduler.js';
 
 const VALID_SETTINGS = new Set([
   'agent.max_triages',
@@ -114,6 +115,15 @@ adminRouter.patch('/settings', async (c) => {
   }
 
   return c.json({ ok: true, resolved: getAgentConfig() });
+});
+
+// POST /agent/run — manually trigger an agent pipeline run
+adminRouter.post('/agent/run', async (c) => {
+  const started = triggerRun();
+  if (!started) {
+    return c.json({ error: 'A run is already in progress' }, 409);
+  }
+  return c.json({ ok: true, message: 'Agent pipeline run started' });
 });
 
 export { adminRouter };

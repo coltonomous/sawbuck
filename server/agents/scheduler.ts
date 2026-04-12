@@ -60,6 +60,13 @@ export async function startScheduler(): Promise<void> {
   timer.unref();
 }
 
+/** Manually trigger a pipeline run. Returns false if one is already running. */
+export function triggerRun(): boolean {
+  if (running) return false;
+  runOnce();
+  return true;
+}
+
 export function stopScheduler(): void {
   if (timer) {
     clearInterval(timer);

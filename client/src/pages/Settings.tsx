@@ -364,7 +364,23 @@ export default function Settings() {
       {/* Agent run logs (admin only) */}
       {isAdmin && (
         <Card>
-          <CardHeader>Agent Run History</CardHeader>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Agent Run History</h3>
+            <button
+              onClick={async () => {
+                try {
+                  await api.triggerAgentRun();
+                  toast('success', 'Agent pipeline run started');
+                  setTimeout(loadUsers, 3000);
+                } catch (err) {
+                  toast('error', err instanceof Error ? err.message : 'Failed to start run');
+                }
+              }}
+              className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Run Now
+            </button>
+          </div>
           {agentRuns.length === 0 ? (
             <p className="text-sm text-gray-500">No agent runs yet.</p>
           ) : (

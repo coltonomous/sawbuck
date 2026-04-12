@@ -421,6 +421,7 @@ export const api = {
     request<{ ok: boolean }>(`/admin/users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   deleteUser: (userId: string) =>
     request<{ ok: boolean }>(`/admin/users/${userId}`, { method: 'DELETE' }),
+  triggerAgentRun: () => request<{ ok: boolean }>('/admin/agent/run', { method: 'POST' }),
   getAgentSettings: () => request<{ resolved: Record<string, unknown>; overrides: Record<string, string> }>('/admin/settings'),
   updateAgentSettings: (settings: Record<string, string>) =>
     request<{ ok: boolean; resolved: Record<string, unknown> }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
