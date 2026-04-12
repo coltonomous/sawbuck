@@ -9,17 +9,17 @@ import { getFullContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
 
 const FurnitureAnalysisSchema = z.object({
-  furniture_type: z.string(),
-  furniture_style: z.string(),
-  condition_score: z.number().min(1).max(10),
-  condition_notes: z.string(),
-  wood_species: z.string().nullable(),
-  wood_confidence: z.number().min(0).max(1),
-  notable_features: z.array(z.string()),
-  damage_items: z.array(z.string()),
-  refinishing_potential: z.enum(['high', 'medium', 'low']),
-  flip_recommendation: z.enum(['strong_buy', 'buy', 'maybe', 'pass']),
-  refinishing_profit_verdict: z.string(),
+  furniture_type: z.string().default('unknown'),
+  furniture_style: z.string().default('unknown'),
+  condition_score: z.number().min(1).max(10).default(5),
+  condition_notes: z.string().default(''),
+  wood_species: z.string().nullable().default(null),
+  wood_confidence: z.number().min(0).max(1).default(0),
+  notable_features: z.array(z.string()).default([]),
+  damage_items: z.array(z.string()).default([]),
+  refinishing_potential: z.enum(['high', 'medium', 'low']).default('low'),
+  flip_recommendation: z.enum(['strong_buy', 'buy', 'maybe', 'pass']).default('pass'),
+  refinishing_profit_verdict: z.string().default('Unable to assess.'),
 });
 
 // JSON Schema for structured output — mirrors FurnitureAnalysisSchema above

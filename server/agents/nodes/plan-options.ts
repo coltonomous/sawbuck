@@ -10,12 +10,12 @@ const PLAN_OPTIONS_SYSTEM = `You are a furniture refinishing cost estimator. Giv
 
 const OptionsSchema = z.object({
   options: z.array(z.object({
-    difficulty: z.enum(['simple', 'moderate', 'full']),
-    label: z.string(),
-    summary: z.string(),
-    estimated_hours: z.number(),
-    estimated_material_cost: z.number(),
-    estimated_resale_price: z.number(),
+    difficulty: z.enum(['simple', 'moderate', 'full']).default('moderate'),
+    label: z.string().default('Refinish'),
+    summary: z.string().default(''),
+    estimated_hours: z.number().default(0),
+    estimated_material_cost: z.number().default(0),
+    estimated_resale_price: z.number().default(0),
   })),
 });
 

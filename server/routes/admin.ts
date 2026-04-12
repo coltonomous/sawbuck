@@ -126,23 +126,18 @@ adminRouter.post('/agent/run', async (c) => {
   return c.json({ ok: true, message: 'Agent pipeline run started' });
 });
 
-// POST /listings/cleanup — dismiss agent listings where the verdict says pass
+// POST /listings/cleanup — dismiss agent listings that aren't buy/strong_buy
 adminRouter.post('/listings/cleanup', async (c) => {
+  // Dismiss anything that's not a clear buy signal
   const result = await db.update(listings)
     .set({ status: 'dismissed' })
     .where(and(
       isNull(listings.userId),
       inArray(listings.status, ['new', 'analyzed']),
-      sql`${listings.analysisRaw}::jsonb->>'flip_recommendation' = 'pass'
-        OR (
-          ${listings.analysisRaw}::jsonb->>'flip_recommendation' = 'maybe'
-          AND (
-            ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* '\\mpass\\M'
-            OR ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* 'not worth'
-            OR ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* 'terrible roi'
-            OR ${listings.analysisRaw}::jsonb->>'refinishing_profit_verdict' ~* 'negative profit'
-          )
-        )`,
+      sql`(
+        ${listings.analysisRaw} IS NULL
+        OR ${listings.analysisRaw}::jsonb->>'flip_recommendation' NOT IN ('strong_buy', 'buy')
+      )`,
     ));
 
   return c.json({ ok: true, dismissed: result.rowCount ?? 0 });

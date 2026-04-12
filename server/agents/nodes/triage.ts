@@ -23,11 +23,11 @@ You will receive a batch of listings. Assess each one independently.`;
 
 export const TriageItemSchema = z.object({
   id: z.string(),
-  is_wood_furniture: z.boolean(),
-  has_flip_potential: z.boolean(),
-  furniture_type: z.string(),
-  reasoning: z.string(),
-  confidence_score: z.number().min(0).max(1),
+  is_wood_furniture: z.boolean().nullable().transform((v) => v ?? false),
+  has_flip_potential: z.boolean().nullable().transform((v) => v ?? false),
+  furniture_type: z.string().default('unknown'),
+  reasoning: z.string().default(''),
+  confidence_score: z.number().min(0).max(1).nullable().transform((v) => v ?? 0),
 });
 
 export const TriageBatchSchema = z.object({
