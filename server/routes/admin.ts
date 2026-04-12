@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings } from '../db/schema.js';
-import { eq, count } from 'drizzle-orm';
+import { users, listings, listingImages, conceptRenders } from '../db/schema.js';
+import { eq, count, isNull, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
 
@@ -124,6 +124,29 @@ adminRouter.post('/agent/run', async (c) => {
     return c.json({ error: 'A run is already in progress' }, 409);
   }
   return c.json({ ok: true, message: 'Agent pipeline run started' });
+});
+
+// DELETE /listings — bulk delete agent-discovered listings by IDs
+adminRouter.delete('/listings', async (c) => {
+  const { ids } = await c.req.json<{ ids: number[] }>();
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return c.json({ error: 'ids array is required' }, 400);
+  }
+
+  // Only allow deleting agent-discovered listings (userId IS NULL)
+  const agentListings = await db.select({ id: listings.id })
+    .from(listings)
+    .where(inArray(listings.id, ids));
+
+  const validIds = agentListings.map(l => l.id);
+  if (validIds.length === 0) {
+    return c.json({ error: 'No matching agent listings found' }, 404);
+  }
+
+  // FK cascades handle listingImages and conceptRenders
+  await db.delete(listings).where(inArray(listings.id, validIds));
+
+  return c.json({ ok: true, deleted: validIds.length });
 });
 
 export { adminRouter };

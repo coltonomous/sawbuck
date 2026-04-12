@@ -435,4 +435,6 @@ export const api = {
   getAgentSettings: () => request<{ resolved: Record<string, unknown>; overrides: Record<string, string> }>('/admin/settings'),
   updateAgentSettings: (settings: Record<string, string>) =>
     request<{ ok: boolean; resolved: Record<string, unknown> }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
+  deleteAgentListings: (ids: number[]) =>
+    request<{ ok: boolean; deleted: number }>('/admin/listings', { method: 'DELETE', body: JSON.stringify({ ids }) }),
 };

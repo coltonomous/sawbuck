@@ -329,6 +329,23 @@ export default function ListingDetail() {
             Dismiss
           </button>
         )}
+        {listing.userId === null && session?.user?.role === 'admin' && (
+          <button
+            onClick={async () => {
+              if (!confirm('Delete this agent-discovered listing?')) return;
+              try {
+                await api.deleteAgentListings([listing.id]);
+                toast('success', 'Listing deleted');
+                navigate(-1);
+              } catch (err) {
+                toast('error', err instanceof Error ? err.message : 'Failed to delete');
+              }
+            }}
+            className="px-4 py-2 bg-white border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
+          >
+            Delete (Admin)
+          </button>
+        )}
         {listing.platform === 'sawbuck' && listing.userId === session?.user?.id && (
           <>
             <button

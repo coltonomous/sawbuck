@@ -10,6 +10,17 @@ import logger from '../../lib/logger.js';
 const SEARCH_URL = (city: string, page = 0) =>
   `https://${city}.craigslist.org/search/fua#search=1~list~${page}~0`;
 
+/** Normalize a title for matching: lowercase, collapse whitespace, decode entities */
+function normalizeTitle(raw: string): string {
+  return raw
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(parseInt(code)))
+    .replace(/&\w+;/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
 // Extract external ID from CL URL: .../12345.html → 12345
 function extractId(url: string): string {
   const match = url.match(/\/(\d+)\.html/);
@@ -32,7 +43,7 @@ interface JsonLdItem {
 /**
  * Parse the JSON-LD structured data and listing URLs from a CL search page.
  * CL embeds a full schema.org ItemList in a <script id="ld_searchpage_results">.
- * Listing URLs are extracted from <a> tags separately and matched by position.
+ * Listing URLs are extracted from <a> tags and matched to JSON-LD items by title.
  */
 function parseSearchPage(html: string): Array<{
   title: string;
@@ -61,31 +72,42 @@ function parseSearchPage(html: string): Array<{
     return [];
   }
 
-  // Extract listing URLs from HTML (ordered same as JSON-LD)
-  const urlMatches = html.matchAll(/href="(https:\/\/[^"]+\.craigslist\.org\/[^"]+\/(\d+)\.html)"/g);
-  const urls: string[] = [];
-  const seenUrls = new Set<string>();
-  for (const m of urlMatches) {
-    if (!seenUrls.has(m[1])) {
-      seenUrls.add(m[1]);
-      urls.push(m[1]);
+  // Extract listing URLs from HTML with their titles
+  // Each <a> has the title text inside it, which we use to match with JSON-LD
+  const linkRegex = /<a[^>]+href="(https:\/\/[^"]+\.craigslist\.org\/[^"]+\/(\d+)\.html)"[^>]*>([\s\S]*?)<\/a>/g;
+  const urlByTitle = new Map<string, { url: string; id: string }>();
+  let linkMatch;
+  while ((linkMatch = linkRegex.exec(html)) !== null) {
+    const url = linkMatch[1];
+    const id = linkMatch[2];
+    const rawTitle = linkMatch[3].replace(/<[^>]+>/g, '').trim().split('\n')[0].trim();
+    const key = normalizeTitle(rawTitle);
+    if (key && !urlByTitle.has(key)) {
+      urlByTitle.set(key, { url, id });
     }
   }
 
   const results = [];
-  for (let i = 0; i < items.length && i < urls.length; i++) {
-    const ld = items[i].item;
-    const url = urls[i];
-    const externalId = extractId(url);
+  let skipped = 0;
+  for (const entry of items) {
+    const ld = entry.item;
+    const name = (ld.name || '').trim();
+    const key = normalizeTitle(name);
+    const link = urlByTitle.get(key);
+
+    if (!link) {
+      skipped++;
+      continue;
+    }
 
     const price = ld.offers?.price ? parseFloat(ld.offers.price) : null;
     const geo = ld.offers?.availableAtOrFrom?.geo;
     const locality = ld.offers?.availableAtOrFrom?.address?.addressLocality || '';
 
     results.push({
-      title: ld.name || '',
-      url,
-      externalId,
+      title: name,
+      url: link.url,
+      externalId: link.id,
       askingPrice: price && !isNaN(price) ? price : null,
       location: locality,
       latitude: geo?.latitude,
@@ -93,6 +115,10 @@ function parseSearchPage(html: string): Array<{
       imageUrls: (ld.image ?? []).slice(0, 3),
       description: ld.description || undefined,
     });
+  }
+
+  if (skipped > 0) {
+    logger.info({ matched: results.length, skipped }, 'CL integration: some JSON-LD items could not be matched to URLs');
   }
 
   return results;
