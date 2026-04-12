@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Mock all external services
-vi.mock('../../lib/claude.js', () => ({
+vi.mock('../../lib/bedrock.js', () => ({
   analyzeWithVisionStructured: vi.fn(),
 }));
 
@@ -31,7 +31,7 @@ vi.mock('@fal-ai/client', () => ({
   fal: { subscribe: vi.fn() },
 }));
 
-import { analyzeWithVisionStructured } from '../../lib/claude.js';
+import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { analyzeListing } from '../../analysis/vision.js';
 import { calculatePricing } from '../../analysis/pricing.js';
 import { scrapeCategory } from '../nodes/scrape.js';

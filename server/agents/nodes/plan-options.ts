@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { analyzeWithVisionStructured } from '../../lib/claude.js';
+import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { agentConfig } from '../config.js';
 import type { AgentState, RefinishingOption, ListingWithOptions } from '../state.js';
 import logger from '../../lib/logger.js';

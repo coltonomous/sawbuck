@@ -3,7 +3,7 @@
  *
  * Fetches guide pages from the source manifest, extracts text,
  * chunks by section, and stores in the knowledge base. These give
- * Claude concrete technique references (grit progressions, dry times,
+ * Concrete technique references (grit progressions, dry times,
  * product compatibility) instead of relying on general training data.
  */
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { listings, listingImages } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
+import { analyzeWithVisionStructured, type ImageInput } from '../lib/bedrock.js';
 import { getImageBase64 } from '../images/processor.js';
 import { config } from '../lib/config.js';
 import { getFullContext } from '../rag/retrieval.js';
@@ -22,7 +22,7 @@ const FurnitureAnalysisSchema = z.object({
   refinishing_profit_verdict: z.string(),
 });
 
-// JSON Schema for Anthropic tool use — mirrors FurnitureAnalysisSchema above
+// JSON Schema for structured output — mirrors FurnitureAnalysisSchema above
 const ANALYSIS_JSON_SCHEMA = {
   type: 'object',
   properties: {
@@ -91,7 +91,7 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
   }
 
   // Use up to N images — prefer resized, fall back to originals
-  const toAnalyze = images.slice(0, config.claude.maxAnalysisImages);
+  const toAnalyze = images.slice(0, config.ai.maxAnalysisImages);
   const imageInputs: ImageInput[] = [];
 
   for (const img of toAnalyze) {
@@ -156,8 +156,8 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
       SYSTEM_PROMPT,
     );
   } catch (err: any) {
-    const errorMsg = `Claude analysis failed: ${err.message}`;
-    logger.error({ listingId, err: err.message }, 'Claude analysis failed');
+    const errorMsg = `Analysis failed: ${err.message}`;
+    logger.error({ listingId, err: err.message }, 'Analysis failed');
     await db.update(listings).set({ analysisError: errorMsg }).where(eq(listings.id, listingId));
     return null;
   }

@@ -7,7 +7,7 @@ import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
-import { generateText } from '../lib/claude.js';
+import { generateText } from '../lib/bedrock.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
@@ -167,7 +167,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
   // Check if the listing has been analyzed first
   const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
   if (listing && !listing.furnitureType) {
-    return c.json({ error: 'Analyze the listing with Claude first — the refinishing plan needs furniture type, condition, and wood data to be useful.' }, 422);
+    return c.json({ error: 'Analyze the listing first — the refinishing plan needs furniture type, condition, and wood data to be useful.' }, 422);
   }
 
   try {
@@ -203,7 +203,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
   }
 });
 
-// POST /:id/listing-text — generate marketplace listing copy via Claude (cached)
+// POST /:id/listing-text — generate marketplace listing copy (cached)
 projectsRouter.post('/:id/listing-text', async (c) => {
   const user = c.get('user');
   const id = parseInt(c.req.param('id'));

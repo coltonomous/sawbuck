@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TriageSchema } from '../nodes/triage.js';
 
-// Mock the claude module
-vi.mock('../../lib/claude.js', () => ({
+// Mock the bedrock module
+vi.mock('../../lib/bedrock.js', () => ({
   analyzeWithVisionStructured: vi.fn(),
 }));
 
@@ -12,7 +12,7 @@ vi.mock('../../rag/retrieval.js', () => ({
   getProjectContext: vi.fn(),
 }));
 
-import { analyzeWithVisionStructured } from '../../lib/claude.js';
+import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { triageCandidates } from '../nodes/triage.js';
 import type { AgentState, ScrapedCandidate } from '../state.js';
 

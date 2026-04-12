@@ -1,6 +1,6 @@
 /**
  * High-level retrieval: turn a furniture query into relevant context
- * that can be injected into Claude prompts.
+ * that can be injected into LLM prompts.
  *
  * This is the public API that vision.ts / refinishing.ts will eventually
  * call (behind a feature check) to augment their prompts.

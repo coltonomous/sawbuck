@@ -233,7 +233,7 @@ export default function ListingDetail() {
           className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors mb-4 flex items-center gap-2"
         >
           {analyzing && <Spinner />}
-          {analyzing ? 'Analyzing...' : 'Analyze with Claude'}
+          {analyzing ? 'Analyzing...' : 'Analyze'}
         </button>
       ) : null}
 

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { listings, refinishingPlans } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { generateText } from '../lib/claude.js';
+import { generateText } from '../lib/bedrock.js';
 import { getFullContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
 

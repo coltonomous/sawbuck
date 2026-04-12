@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { analyzeWithVisionStructured } from '../../lib/claude.js';
+import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { isAvailable, getProjectContext } from '../../rag/retrieval.js';
 import { agentConfig } from '../config.js';
 import type { AgentState, TriagedCandidate, ScrapedCandidate } from '../state.js';

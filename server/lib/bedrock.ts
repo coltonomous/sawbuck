@@ -25,8 +25,8 @@ function getClient(): BedrockRuntimeClient {
 
 function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   return _withRetry(fn, {
-    maxRetries: config.claude.maxRetries,
-    baseDelayMs: config.claude.baseDelayMs,
+    maxRetries: config.ai.maxRetries,
+    baseDelayMs: config.ai.baseDelayMs,
     label: 'bedrock',
   });
 }
@@ -63,10 +63,10 @@ export async function analyzeWithVision(
     const messages: Message[] = [{ role: 'user', content }];
 
     const response = await bedrock.send(new ConverseCommand({
-      modelId: config.claude.model,
+      modelId: config.ai.model,
       system,
       messages,
-      inferenceConfig: { maxTokens: config.claude.maxTokens },
+      inferenceConfig: { maxTokens: config.ai.maxTokens },
     }));
 
     const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
@@ -85,7 +85,7 @@ export async function analyzeWithVision(
 export async function analyzeWithVisionStructured<T>(
   images: ImageInput[],
   prompt: string,
-  _jsonSchema: Record<string, unknown>,
+  jsonSchema: Record<string, unknown>,
   zodSchema: z.ZodSchema<T>,
   _toolName: string,
   _toolDescription: string,
@@ -105,18 +105,18 @@ export async function analyzeWithVisionStructured<T>(
       });
     }
 
-    // Instruct the model to return only valid JSON
-    const jsonPrompt = prompt + '\n\nIMPORTANT: Respond with ONLY a valid JSON object. No markdown, no explanation, no code fences, just the raw JSON.';
+    // Include the JSON schema in the prompt so the model knows the expected shape
+    const jsonPrompt = prompt + `\n\nRespond with a JSON object matching this schema:\n${JSON.stringify(jsonSchema, null, 2)}\n\nIMPORTANT: Respond with ONLY the JSON object. No markdown, no explanation, no code fences.`;
     content.push({ text: jsonPrompt });
 
     const system: SystemContentBlock[] = systemPrompt ? [{ text: systemPrompt }] : [];
     const messages: Message[] = [{ role: 'user', content }];
 
     const response = await bedrock.send(new ConverseCommand({
-      modelId: model ?? config.claude.model,
+      modelId: model ?? config.ai.model,
       system,
       messages,
-      inferenceConfig: { maxTokens: config.claude.maxTokens },
+      inferenceConfig: { maxTokens: config.ai.maxTokens },
     }));
 
     const textBlock = response.output?.message?.content?.find((b) => 'text' in b);
@@ -131,7 +131,7 @@ export async function analyzeWithVisionStructured<T>(
       const parsed = JSON.parse(jsonStr);
       return zodSchema.parse(parsed);
     } catch (err) {
-      logger.error({ model: model ?? config.claude.model, rawText: rawText.slice(0, 500) }, 'Failed to parse structured response as JSON');
+      logger.error({ model: model ?? config.ai.model, rawText: rawText.slice(0, 500) }, 'Failed to parse structured response as JSON');
       throw new Error(`Failed to parse model response as JSON: ${(err as Error).message}`);
     }
   });
@@ -152,7 +152,7 @@ export async function generateText(
     const messages: Message[] = [{ role: 'user', content: [{ text: prompt }] }];
 
     const response = await bedrock.send(new ConverseCommand({
-      modelId: model ?? config.claude.model,
+      modelId: model ?? config.ai.model,
       system,
       messages,
       inferenceConfig: { maxTokens },

@@ -44,7 +44,7 @@ async function seedAnalyzedListing(userId: string) {
 
 describe('Auth', () => {
   it('rejects unauthenticated requests to protected routes', async () => {
-    const routes = ['/api/listings', '/api/stats', '/api/usage/claude', '/api/admin/users'];
+    const routes = ['/api/listings', '/api/stats', '/api/admin/users'];
     for (const route of routes) {
       const res = await app.request(route);
       expect(res.status, `${route} should require auth`).toBe(401);
