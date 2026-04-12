@@ -39,15 +39,19 @@ export default function ListingDetail() {
     try {
       await api.analyzeListing(listing.id);
       // Poll until analysis completes or fails
+      let settled = false;
       const poll = setInterval(async () => {
+        if (settled) return;
         try {
           const updated = await api.getListing(listing.id);
           if (updated.furnitureType) {
+            settled = true;
             clearInterval(poll);
             setListing(updated);
             setAnalyzing(false);
             toast('success', 'Analysis complete');
           } else if (updated.analysisError) {
+            settled = true;
             clearInterval(poll);
             setListing(updated);
             setAnalyzing(false);
@@ -57,11 +61,11 @@ export default function ListingDetail() {
       }, 3000);
       // Stop polling after 5 minutes
       setTimeout(() => {
+        if (settled) return;
+        settled = true;
         clearInterval(poll);
-        if (analyzing) {
-          setAnalyzing(false);
-          toast('error', 'Analysis timed out — check server logs');
-        }
+        setAnalyzing(false);
+        toast('error', 'Analysis timed out — check server logs');
       }, 300_000);
     } catch (err) {
       toast('error', `Analysis failed: ${err instanceof Error ? err.message : 'Unknown error'}`);

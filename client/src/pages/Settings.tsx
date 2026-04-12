@@ -26,6 +26,10 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRun[]>([]);
+  const [agentConfig, setAgentConfig] = useState<Record<string, unknown> | null>(null);
+  const [agentOverrides, setAgentOverrides] = useState<Record<string, string>>({});
+  const [agentDraft, setAgentDraft] = useState<Record<string, string>>({});
+  const [savingAgent, setSavingAgent] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
@@ -35,6 +39,11 @@ export default function Settings() {
     if (isAdmin) {
       api.getUsers().then(setAdminUsers).catch(() => {});
       api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
+      api.getAgentSettings().then(({ resolved, overrides }) => {
+        setAgentConfig(resolved);
+        setAgentOverrides(overrides);
+        setAgentDraft({});
+      }).catch(() => {});
     }
   };
 
@@ -309,6 +318,49 @@ export default function Settings() {
         </Card>
       )}
 
+      {/* Agent configuration (admin only) */}
+      {isAdmin && agentConfig && (
+        <AgentConfigCard
+          config={agentConfig}
+          overrides={agentOverrides}
+          draft={agentDraft}
+          setDraft={setAgentDraft}
+          saving={savingAgent}
+          onSave={async () => {
+            const changed = Object.fromEntries(
+              Object.entries(agentDraft).filter(([k, v]) => v !== String(agentConfig[k] ?? '')),
+            );
+            if (Object.keys(changed).length === 0) return;
+            setSavingAgent(true);
+            try {
+              const { resolved } = await api.updateAgentSettings(changed);
+              setAgentConfig(resolved);
+              setAgentDraft({});
+              toast('success', 'Agent settings saved');
+            } catch (err) {
+              toast('error', err instanceof Error ? err.message : 'Failed to save settings');
+            } finally {
+              setSavingAgent(false);
+            }
+          }}
+          onReset={async (key: string) => {
+            setSavingAgent(true);
+            try {
+              await api.updateAgentSettings({ [key]: '' });
+              const { resolved, overrides } = await api.getAgentSettings();
+              setAgentConfig(resolved);
+              setAgentOverrides(overrides);
+              setAgentDraft((prev) => { const next = { ...prev }; delete next[key]; return next; });
+              toast('success', 'Reset to default');
+            } catch (err) {
+              toast('error', err instanceof Error ? err.message : 'Failed');
+            } finally {
+              setSavingAgent(false);
+            }
+          }}
+        />
+      )}
+
       {/* Agent run logs (admin only) */}
       {isAdmin && (
         <Card>
@@ -370,5 +422,130 @@ export default function Settings() {
         </Card>
       )}
     </div>
+  );
+}
+
+// ─── Agent Config Card ──────────────────────────────────────────────
+
+interface ConfigField {
+  key: string;       // DB key like "agent.triage_model"
+  configKey: string;  // JS key like "triageModel"
+  label: string;
+  type: 'text' | 'number';
+  group: string;
+}
+
+const CONFIG_FIELDS: ConfigField[] = [
+  // Models
+  { key: 'agent.triage_model', configKey: 'triageModel', label: 'Triage model', type: 'text', group: 'Models' },
+  { key: 'agent.eval_model', configKey: 'evaluationModel', label: 'Evaluation model (vision)', type: 'text', group: 'Models' },
+  { key: 'agent.fal_model', configKey: 'falModel', label: 'fal.ai model', type: 'text', group: 'Models' },
+
+  // Per-run caps
+  { key: 'agent.max_triages', configKey: 'maxTriages', label: 'Max triages per run', type: 'number', group: 'Per-Run Caps' },
+  { key: 'agent.max_evals', configKey: 'maxEvals', label: 'Max evaluations per run', type: 'number', group: 'Per-Run Caps' },
+  { key: 'agent.max_renders', configKey: 'maxListingsRendered', label: 'Max concept renders per run', type: 'number', group: 'Per-Run Caps' },
+  { key: 'agent.concepts_per_listing', configKey: 'conceptsPerListing', label: 'Concepts per listing', type: 'number', group: 'Per-Run Caps' },
+
+  // Quality gates
+  { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
+  { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
+
+  // Scheduling & targeting
+  { key: 'agent.run_interval_ms', configKey: 'runIntervalMs', label: 'Run interval (ms)', type: 'number', group: 'Scheduling' },
+  { key: 'agent.target_city', configKey: 'targetCity', label: 'Target city', type: 'text', group: 'Scheduling' },
+
+  // Anti-blocking
+  { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
+  { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
+  { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },
+
+  // Images
+  { key: 'agent.concept_size', configKey: 'conceptRenderSize', label: 'Concept render size (px)', type: 'number', group: 'Images' },
+  { key: 'agent.image_retention_days', configKey: 'agentImageRetentionDays', label: 'Image retention (days)', type: 'number', group: 'Images' },
+];
+
+function AgentConfigCard({
+  config,
+  overrides,
+  draft,
+  setDraft,
+  saving,
+  onSave,
+  onReset,
+}: {
+  config: Record<string, unknown>;
+  overrides: Record<string, string>;
+  draft: Record<string, string>;
+  setDraft: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  saving: boolean;
+  onSave: () => void;
+  onReset: (key: string) => void;
+}) {
+  const groups = CONFIG_FIELDS.reduce<Record<string, ConfigField[]>>((acc, f) => {
+    if (!acc[f.group]) acc[f.group] = [];
+    acc[f.group].push(f);
+    return acc;
+  }, {});
+
+  const hasDraft = Object.entries(draft).some(([k, v]) => {
+    const field = CONFIG_FIELDS.find((f) => f.key === k);
+    return field && v !== String(config[field.configKey] ?? '');
+  });
+
+  return (
+    <Card className="mb-5">
+      <CardHeader>Agent Configuration</CardHeader>
+      <p className="text-xs text-gray-400 mb-4">
+        Override agent defaults. Changes take effect on the next pipeline run. Clear a field to reset to default.
+      </p>
+      <div className="space-y-5">
+        {Object.entries(groups).map(([group, fields]) => (
+          <div key={group}>
+            <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">{group}</h4>
+            <div className="space-y-2">
+              {fields.map((field) => {
+                const resolved = String(config[field.configKey] ?? '');
+                const hasOverride = field.key in overrides;
+                const value = field.key in draft ? draft[field.key] : resolved;
+
+                return (
+                  <div key={field.key} className="flex items-center gap-2">
+                    <label className="text-sm text-gray-700 w-56 shrink-0">{field.label}</label>
+                    <input
+                      type={field.type}
+                      value={value}
+                      onChange={(e) => setDraft((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                      className={`flex-1 border rounded px-2.5 py-1.5 text-sm font-mono ${
+                        hasOverride ? 'border-blue-300 bg-blue-50/50' : 'border-gray-300'
+                      }`}
+                    />
+                    {hasOverride && (
+                      <button
+                        onClick={() => onReset(field.key)}
+                        disabled={saving}
+                        className="text-xs text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                        title="Reset to default"
+                      >
+                        reset
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 pt-3 border-t border-gray-100">
+        <button
+          onClick={onSave}
+          disabled={saving || !hasDraft}
+          className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+        >
+          {saving ? 'Saving...' : 'Save Configuration'}
+        </button>
+      </div>
+    </Card>
   );
 }

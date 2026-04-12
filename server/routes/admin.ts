@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { users, listings } from '../db/schema.js';
 import { eq, count } from 'drizzle-orm';
-import { getAllSettings, updateSetting, getAgentConfig } from '../agents/config.js';
+import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 
 const VALID_SETTINGS = new Set([
   'agent.max_triages',
@@ -106,7 +106,11 @@ adminRouter.patch('/settings', async (c) => {
   }
 
   for (const [key, value] of Object.entries(parsed.data)) {
-    await updateSetting(key, value);
+    if (value === '') {
+      await deleteSetting(key);
+    } else {
+      await updateSetting(key, value);
+    }
   }
 
   return c.json({ ok: true, resolved: getAgentConfig() });

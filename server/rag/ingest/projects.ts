@@ -39,8 +39,8 @@ interface CompletedFlip {
 /**
  * Pull all sold projects with financial data from the main DB.
  */
-function getCompletedFlips(): CompletedFlip[] {
-  const rows = db
+async function getCompletedFlips(): Promise<CompletedFlip[]> {
+  return db
     .select({
       projectId: projects.id,
       projectName: projects.name,
@@ -66,21 +66,17 @@ function getCompletedFlips(): CompletedFlip[] {
         eq(projects.status, 'sold'),
         isNotNull(projects.soldPrice),
       ),
-    )
-    ;
-
-  return rows;
+    );
 }
 
 /**
  * Get materials used for a project (if a refinishing plan was generated).
  */
-function getProjectMaterials(projectId: number): string[] {
-  const rows = db
+async function getProjectMaterials(projectId: number): Promise<string[]> {
+  const rows = await db
     .select({ productName: materials.productName, brand: materials.brand })
     .from(materials)
-    .where(eq(materials.projectId, projectId))
-    ;
+    .where(eq(materials.projectId, projectId));
 
   return rows.map((r) =>
     r.brand ? `${r.brand} ${r.productName}` : r.productName,
@@ -156,7 +152,7 @@ function flipToChunk(flip: CompletedFlip, materialsUsed: string[]): Omit<Knowled
  */
 export async function tryIngestProject(projectId: number): Promise<void> {
   try {
-    const flip = db
+    const flip = await db
       .select({
         projectId: projects.id,
         projectName: projects.name,
@@ -182,10 +178,10 @@ export async function tryIngestProject(projectId: number): Promise<void> {
 
     if (!flip || !flip.soldPrice) return;
 
-    const mats = getProjectMaterials(projectId);
+    const mats = await getProjectMaterials(projectId);
     const chunk = flipToChunk(flip, mats);
     const embedding = await embed(chunk.content);
-    const id = upsertChunk(chunk, embedding);
+    const id = await upsertChunk(chunk, embedding);
 
     if (id) {
       logger.info({ projectId, chunkId: id }, 'Project ingested into knowledge base');
@@ -201,7 +197,7 @@ export async function tryIngestProject(projectId: number): Promise<void> {
  * re-ingests everything. Safe to call repeatedly.
  */
 export async function ingestProjects(): Promise<{ ingested: number; skipped: number }> {
-  const flips = getCompletedFlips();
+  const flips = await getCompletedFlips();
   if (flips.length === 0) {
     logger.info('No completed flips to ingest');
     return { ingested: 0, skipped: 0 };
@@ -210,16 +206,17 @@ export async function ingestProjects(): Promise<{ ingested: number; skipped: num
   logger.info({ count: flips.length }, 'Ingesting completed flips');
 
   // Clear stale project chunks and re-ingest
-  clearChunks('project');
+  await clearChunks('project');
 
-  const chunks = flips.map((flip) => {
-    const mats = getProjectMaterials(flip.projectId);
-    return flipToChunk(flip, mats);
-  });
+  const chunks = [];
+  for (const flip of flips) {
+    const mats = await getProjectMaterials(flip.projectId);
+    chunks.push(flipToChunk(flip, mats));
+  }
 
   const texts = chunks.map((c) => c.content);
   const embeddings = await embedBatch(texts);
-  const inserted = upsertChunks(chunks, embeddings);
+  const inserted = await upsertChunks(chunks, embeddings);
 
   logger.info({ inserted, total: flips.length }, 'Project ingestion complete');
   return { ingested: inserted, skipped: flips.length - inserted };

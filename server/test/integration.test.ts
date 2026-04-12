@@ -261,25 +261,17 @@ describe('Sawbuck listing creation', () => {
   });
 
   it('creates listing with valid data and photo', async () => {
+    // Build a FormData with a real JPEG (minimal valid JPEG: SOI + EOI markers)
+    const jpegBytes = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xff, 0xd9]);
+    const formData = new FormData();
+    formData.append('title', 'Integration Test Dresser');
+    formData.append('askingPrice', '250');
+    formData.append('photos', new Blob([jpegBytes], { type: 'image/jpeg' }), 'test.jpg');
+
     const res = await app.request('/api/listings/create', {
       method: 'POST',
-      headers: { ...authHeaders(user), 'Content-Type': 'multipart/form-data; boundary=---boundary' },
-      body: [
-        '-----boundary',
-        'Content-Disposition: form-data; name="title"',
-        '',
-        'Integration Test Dresser',
-        '-----boundary',
-        'Content-Disposition: form-data; name="askingPrice"',
-        '',
-        '250',
-        '-----boundary',
-        'Content-Disposition: form-data; name="photos"; filename="test.jpg"',
-        'Content-Type: image/jpeg',
-        '',
-        'fake-image-data',
-        '-----boundary--',
-      ].join('\r\n'),
+      headers: authHeaders(user),
+      body: formData,
     });
     expect(res.status).toBe(201);
     const body = await res.json();

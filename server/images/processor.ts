@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
@@ -13,10 +13,10 @@ const WEBP_QUALITY = config.images.webpQuality;
 
 export async function processImage(originalPath: string, listingId: number, index: number, platform: string): Promise<{ resizedPath: string; width: number; height: number }> {
   const inputPath = path.join(IMAGES_DIR, originalPath);
-  if (!fs.existsSync(inputPath)) throw new Error(`Image not found: ${inputPath}`);
+  await fs.access(inputPath).catch(() => { throw new Error(`Image not found: ${inputPath}`); });
 
   const resizedDir = path.join(IMAGES_DIR, 'resized', platform, String(listingId));
-  fs.mkdirSync(resizedDir, { recursive: true });
+  await fs.mkdir(resizedDir, { recursive: true });
 
   const filename = `${index}.webp`;
   const outputPath = path.join(resizedDir, filename);
@@ -31,7 +31,7 @@ export async function processImage(originalPath: string, listingId: number, inde
   }
 
   const result = await pipeline.webp({ quality: WEBP_QUALITY }).toBuffer({ resolveWithObject: true });
-  fs.writeFileSync(outputPath, result.data);
+  await fs.writeFile(outputPath, result.data);
 
   return {
     resizedPath: relativePath,
@@ -77,7 +77,7 @@ export async function processListingImages(listingId: number): Promise<number> {
 
 export async function getImageBase64(imagePath: string): Promise<{ base64: string; mediaType: string }> {
   const fullPath = path.join(IMAGES_DIR, imagePath);
-  const buffer = fs.readFileSync(fullPath);
+  const buffer = await fs.readFile(fullPath);
   const base64 = buffer.toString('base64');
   const ext = path.extname(imagePath).toLowerCase();
   const mediaType = ext === '.webp' ? 'image/webp' : ext === '.png' ? 'image/png' : 'image/jpeg';

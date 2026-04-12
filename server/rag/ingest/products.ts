@@ -120,7 +120,7 @@ export async function ingestProducts(
   logger.info({ count: sources.length }, 'Ingesting product sources');
 
   // Clear and re-ingest
-  clearChunks('product');
+  await clearChunks('product');
 
   const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = [];
   let failed = 0;
@@ -166,7 +166,7 @@ export async function ingestProducts(
   }
 
   const embeddings = await embedBatch(allChunks.map((c) => c.content));
-  const inserted = upsertChunks(allChunks, embeddings);
+  const inserted = await upsertChunks(allChunks, embeddings);
 
   logger.info({ inserted, failed }, 'Product ingestion complete');
   return { ingested: inserted, failed };

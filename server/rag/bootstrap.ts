@@ -9,7 +9,7 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { warmup } from './embeddings.js';
-import { chunkCount, getDb } from './store.js';
+import { chunkCount, initStore } from './store.js';
 import { ingestProjects } from './ingest/projects.js';
 import { ingestProducts, type ProductSource } from './ingest/products.js';
 import { ingestGuides, type GuideSource } from './ingest/guides.js';
@@ -26,9 +26,9 @@ export async function bootstrapKnowledgeBase(): Promise<void> {
   try {
     await warmup();
 
-    getDb(); // ensure vector tables exist
+    await initStore(); // ensure vector tables exist
 
-    const total = chunkCount();
+    const total = await chunkCount();
     if (total > 0) {
       logger.info({ chunks: total }, 'Knowledge base already populated');
       return;

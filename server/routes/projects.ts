@@ -1,10 +1,11 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
 import { eq, and, or, desc, isNull } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
+import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/claude.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
@@ -136,7 +137,7 @@ projectsRouter.delete('/:id', async (c) => {
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   for (const photo of photos) {
     const filePath = path.join(IMAGES_DIR, photo.localPath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await fs.unlink(filePath).catch(() => {});
   }
 
   // Delete all DB records atomically
@@ -148,8 +149,8 @@ projectsRouter.delete('/:id', async (c) => {
 
     const [listing] = await tx.select().from(listings).where(eq(listings.id, project.listingId));
     if (listing) {
-      const newStatus = listing.furnitureType ? 'analyzed' : 'new';
-      await tx.update(listings).set({ status: newStatus as any }).where(eq(listings.id, project.listingId));
+      const newStatus: 'analyzed' | 'new' = listing.furnitureType ? 'analyzed' : 'new';
+      await tx.update(listings).set({ status: newStatus }).where(eq(listings.id, project.listingId));
     }
   });
 
@@ -180,7 +181,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
     const storedPlan = storedPlans[storedPlans.length - 1];
 
     if (storedPlan) {
-      generateMaterialsFromPlanSync(storedPlan.id, id);
+      await generateMaterialsFromPlanSync(storedPlan.id, id);
     }
 
     await db.update(projects).set({
@@ -413,17 +414,23 @@ projectsRouter.post('/:id/photos', async (c) => {
     return c.json({ error: 'type must be before, during, or after' }, 400);
   }
 
-  const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
-  fs.mkdirSync(projectDir, { recursive: true });
+  let validated;
+  try {
+    validated = await validateUpload(file);
+  } catch (err) {
+    if (err instanceof UploadError) return c.json({ error: err.message }, 400);
+    throw err;
+  }
 
-  const ext = path.extname(file.name) || '.jpg';
+  const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
+  await fs.mkdir(projectDir, { recursive: true });
+
   const timestamp = Date.now();
-  const filename = `${photoType}-${timestamp}${ext}`;
+  const filename = `${photoType}-${timestamp}${validated.ext}`;
   const filePath = path.join(projectDir, filename);
   const relativePath = path.join('projects', String(id), filename);
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  fs.writeFileSync(filePath, buffer);
+  await fs.writeFile(filePath, validated.buffer);
 
   const [photo] = await db.insert(projectPhotos).values({
     projectId: id,
@@ -447,7 +454,7 @@ projectsRouter.delete('/:id/photos/:photoId', async (c) => {
 
   if (photo) {
     const filePath = path.join(IMAGES_DIR, photo.localPath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await fs.unlink(filePath).catch(() => {});
     await db.delete(projectPhotos).where(eq(projectPhotos.id, photoId));
   }
 

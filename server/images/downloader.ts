@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
@@ -39,7 +39,7 @@ export async function downloadListingImages(listingId: number): Promise<number> 
 
   // Create directory for this listing
   const originalDir = path.join(IMAGES_DIR, 'originals', listing.platform, String(listingId));
-  fs.mkdirSync(originalDir, { recursive: true });
+  await fs.mkdir(originalDir, { recursive: true });
 
   let downloaded = 0;
   for (let i = 0; i < pendingImages.length; i++) {
@@ -81,7 +81,7 @@ export async function downloadListingImages(listingId: number): Promise<number> 
       const filePath = path.join(originalDir, filename);
       const relativePath = path.join('originals', listing.platform, String(listingId), filename);
 
-      fs.writeFileSync(filePath, buffer);
+      await fs.writeFile(filePath, buffer);
 
       await db.update(listingImages).set({
         localPathOriginal: relativePath,

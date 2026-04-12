@@ -8,7 +8,7 @@ import { calculatePricing, type PricingResult } from '../../analysis/pricing.js'
 import { agentConfig } from '../config.js';
 import type { AgentState, EvaluatedCandidate } from '../state.js';
 import logger from '../../lib/logger.js';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
 import { IMAGES_DIR } from '../../lib/paths.js';
@@ -74,7 +74,7 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
               logger.warn({ imagePath: img.localPathResized }, 'Resized image invalid, keeping original');
               continue;
             }
-            fs.unlinkSync(path.join(IMAGES_DIR, img.localPathOriginal));
+            await fs.unlink(path.join(IMAGES_DIR, img.localPathOriginal));
             await db.update(listingImages)
               .set({ localPathOriginal: null })
               .where(eq(listingImages.id, img.id));

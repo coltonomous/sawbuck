@@ -4,16 +4,14 @@ import { conceptRenders } from '../../db/schema.js';
 import { agentConfig } from '../config.js';
 import type { AgentState, ConceptRenderResult, ListingWithOptions, RefinishingOption } from '../state.js';
 import logger from '../../lib/logger.js';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import sharp from 'sharp';
 
 const CONCEPTS_DIR = 'data/images/concepts';
 
-function ensureConceptsDir(): void {
-  if (!fs.existsSync(CONCEPTS_DIR)) {
-    fs.mkdirSync(CONCEPTS_DIR, { recursive: true });
-  }
+async function ensureConceptsDir(): Promise<void> {
+  await fs.mkdir(CONCEPTS_DIR, { recursive: true });
 }
 
 function buildRenderPrompt(
@@ -48,7 +46,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
     return { conceptRenders: [], conceptsRendered: state.conceptsRendered };
   }
 
-  ensureConceptsDir();
+  await ensureConceptsDir();
   const renders: ConceptRenderResult[] = [];
   const errors: AgentState['errors'] = [];
 

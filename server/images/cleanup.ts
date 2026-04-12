@@ -1,4 +1,4 @@
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../db/index.js';
 import { listings, listingImages, projects, conceptRenders } from '../db/schema.js';
@@ -74,7 +74,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
 
   for (const concept of staleConceptPaths) {
     if (concept.localPath) {
-      try { fs.unlinkSync(concept.localPath); } catch {}
+      await fs.unlink(concept.localPath).catch(() => {});
     }
   }
 
@@ -92,8 +92,8 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     if (img.localPathOriginal) {
       const fullPath = path.join(IMAGES_DIR, img.localPathOriginal);
       try {
-        const stat = fs.statSync(fullPath);
-        fs.unlinkSync(fullPath);
+        const stat = await fs.stat(fullPath);
+        await fs.unlink(fullPath);
         bytesFreed += stat.size;
         filesDeleted++;
       } catch (err: any) {
@@ -107,8 +107,8 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     if (img.localPathResized) {
       const fullPath = path.join(IMAGES_DIR, img.localPathResized);
       try {
-        const stat = fs.statSync(fullPath);
-        fs.unlinkSync(fullPath);
+        const stat = await fs.stat(fullPath);
+        await fs.unlink(fullPath);
         bytesFreed += stat.size;
         filesDeleted++;
       } catch (err: any) {
@@ -137,13 +137,14 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
       // Listing images are stored as {subdir}/{platform}/{listingId}/
       // We don't know the platform here, so scan both subdirs
       const base = path.join(IMAGES_DIR, subdir);
-      if (!fs.existsSync(base)) continue;
-      for (const platform of fs.readdirSync(base)) {
+      let platforms: string[];
+      try { platforms = await fs.readdir(base); } catch { continue; }
+      for (const platform of platforms) {
         const dir = path.join(base, platform, String(listingId));
         try {
-          const entries = fs.readdirSync(dir);
+          const entries = await fs.readdir(dir);
           if (entries.length === 0) {
-            fs.rmdirSync(dir);
+            await fs.rmdir(dir);
           }
         } catch {
           // Directory doesn't exist or not empty — fine

@@ -7,19 +7,18 @@ const fsOps = {
   statted: [] as string[],
 };
 
-// Mock fs
-vi.mock('fs', () => ({
+// Mock fs/promises
+vi.mock('fs/promises', () => ({
   default: {
-    statSync: vi.fn((path: string) => {
+    stat: vi.fn(async (path: string) => {
       fsOps.statted.push(path);
       return { size: 50000 };
     }),
-    unlinkSync: vi.fn((path: string) => {
+    unlink: vi.fn(async (path: string) => {
       fsOps.unlinked.push(path);
     }),
-    existsSync: vi.fn(() => false),
-    readdirSync: vi.fn(() => []),
-    rmdirSync: vi.fn(),
+    readdir: vi.fn(async () => []),
+    rmdir: vi.fn(async () => {}),
   },
 }));
 
@@ -125,18 +124,17 @@ beforeEach(async () => {
   loggedMessages.info = [];
   loggedMessages.warn = [];
 
-  // Re-apply fs mocks after restoreAllMocks
-  const fs = await import('fs');
-  vi.spyOn(fs.default, 'statSync').mockImplementation((path: any) => {
+  // Re-apply fs/promises mocks after restoreAllMocks
+  const fs = await import('fs/promises');
+  vi.spyOn(fs.default, 'stat').mockImplementation(async (path: any) => {
     fsOps.statted.push(path);
     return { size: 50000 } as any;
   });
-  vi.spyOn(fs.default, 'unlinkSync').mockImplementation((path: any) => {
+  vi.spyOn(fs.default, 'unlink').mockImplementation(async (path: any) => {
     fsOps.unlinked.push(path);
   });
-  vi.spyOn(fs.default, 'existsSync').mockReturnValue(false);
-  vi.spyOn(fs.default, 'readdirSync').mockReturnValue([]);
-  vi.spyOn(fs.default, 'rmdirSync').mockImplementation(() => {});
+  vi.spyOn(fs.default, 'readdir').mockResolvedValue([] as any);
+  vi.spyOn(fs.default, 'rmdir').mockImplementation(async () => {});
 });
 
 describe('cleanupOrphanedImages', () => {
@@ -173,9 +171,9 @@ describe('cleanupOrphanedImages', () => {
     ]);
   });
 
-  it('does NOT call unlinkSync when statSync throws ENOENT', async () => {
-    const fs = await import('fs');
-    (fs.default.statSync as any).mockImplementation((path: string) => {
+  it('does NOT call unlink when stat throws ENOENT', async () => {
+    const fs = await import('fs/promises');
+    (fs.default.stat as any).mockImplementation(async (path: string) => {
       fsOps.statted.push(path);
       const err: any = new Error('ENOENT');
       err.code = 'ENOENT';
@@ -195,14 +193,14 @@ describe('cleanupOrphanedImages', () => {
     const result = await cleanupOrphanedImages();
     expect(result.filesDeleted).toBe(0);
     expect(result.listingsCleaned).toBe(1);
-    // statSync was attempted but unlinkSync was never called
+    // stat was attempted but unlink was never called
     expect(fsOps.statted).toEqual(['/app/data/images/originals/offerup/200/0.jpg']);
     expect(fsOps.unlinked).toEqual([]);
   });
 
   it('logs warning for non-ENOENT fs errors', async () => {
-    const fs = await import('fs');
-    (fs.default.statSync as any).mockImplementation((path: string) => {
+    const fs = await import('fs/promises');
+    (fs.default.stat as any).mockImplementation(async (path: string) => {
       fsOps.statted.push(path);
       const err: any = new Error('EACCES: permission denied');
       err.code = 'EACCES';

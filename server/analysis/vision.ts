@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { analyzeWithVisionStructured, type ImageInput } from '../lib/claude.js';
 import { getImageBase64 } from '../images/processor.js';
 import { config } from '../lib/config.js';
-import { getProjectContext } from '../rag/retrieval.js';
+import { getFullContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
 
 const FurnitureAnalysisSchema = z.object({
@@ -120,19 +120,20 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     prompt += `\n\nThe seller is asking $${listing.askingPrice} for this piece. Factor this into your refinishing_profit_verdict.`;
   }
 
-  // Augment prompt with RAG context from past flips (if knowledge base is populated)
+  // Augment prompt with RAG context (past flips, product specs, technique guides)
   let ragChunksUsed = 0;
   const ragSourceTitles: string[] = [];
   let ragSources: Array<{ title: string; source: string; type: string }> = [];
   if (listing.furnitureType || listing.title) {
     try {
-      const ragContext = await getProjectContext(
-        listing.furnitureType || listing.title,
-        listing.woodSpecies,
-        listing.furnitureStyle,
-      );
+      const ragContext = await getFullContext({
+        furnitureType: listing.furnitureType || listing.title,
+        woodSpecies: listing.woodSpecies,
+        style: listing.furnitureStyle,
+        conditionNotes: listing.conditionNotes,
+      });
       if (ragContext.chunkCount > 0) {
-        prompt += `\n\n--- PAST FLIP DATA (from completed projects) ---\n${ragContext.text}\n--- END PAST FLIP DATA ---\n\nUse the past flip data above to ground your price estimates and profit verdict in real outcomes. If similar pieces have sold, reference those numbers.`;
+        prompt += `\n\n${ragContext.text}\n\nUse the reference knowledge above to ground your analysis. If past flip data shows real costs, hours, or sale prices for similar pieces, reference those numbers in your profit verdict. If product specs or technique guides are relevant to the condition issues you observe, factor them into your refinishing assessment.`;
         ragChunksUsed = ragContext.chunkCount;
         ragSourceTitles.push(...ragContext.results.map((r) => r.title));
         ragSources = ragContext.sources.map(({ title, source, type }) => ({ title, source, type }));

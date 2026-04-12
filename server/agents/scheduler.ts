@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { agentPipeline } from './graph.js';
+import { agentPipeline, initCheckpointer } from './graph.js';
 import { agentConfig, refreshAgentConfig } from './config.js';
 import logger from '../lib/logger.js';
 
@@ -38,7 +38,7 @@ async function runOnce(): Promise<void> {
   }
 }
 
-export function startScheduler(): void {
+export async function startScheduler(): Promise<void> {
   if (timer) {
     logger.warn('Agent scheduler already started');
     return;
@@ -46,6 +46,13 @@ export function startScheduler(): void {
 
   const intervalMs = agentConfig.runIntervalMs;
   logger.info({ intervalMs }, 'Agent scheduler: starting');
+
+  // Ensure checkpoint tables exist before first run
+  try {
+    await initCheckpointer();
+  } catch (err) {
+    logger.error({ error: String(err) }, 'Agent scheduler: failed to initialize checkpointer');
+  }
 
   runOnce();
 

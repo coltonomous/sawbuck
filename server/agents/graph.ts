@@ -1,4 +1,5 @@
-import { StateGraph, END, MemorySaver } from '@langchain/langgraph';
+import { StateGraph, END } from '@langchain/langgraph';
+import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { AgentAnnotation, type AgentState } from './state.js';
 import { agentConfig } from './config.js';
 import { scrapeCategory } from './nodes/scrape.js';
@@ -72,7 +73,18 @@ const graph = new StateGraph(AgentAnnotation)
   .addEdge('render', 'summarize')
   .addEdge('summarize', END);
 
-const checkpointer = new MemorySaver();
+const checkpointer = PostgresSaver.fromConnString(
+  process.env.DATABASE_URL!,
+);
+
+// Initialize checkpoint tables (idempotent — safe to call on every startup)
+let checkpointerReady: Promise<void> | undefined;
+export function initCheckpointer(): Promise<void> {
+  if (!checkpointerReady) {
+    checkpointerReady = checkpointer.setup();
+  }
+  return checkpointerReady;
+}
 
 export const agentPipeline = graph.compile({ checkpointer });
 

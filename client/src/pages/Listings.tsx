@@ -61,6 +61,7 @@ export default function Listings() {
 
   const fetchListings = useCallback(() => {
     setLoading(true);
+    setSelected(new Set());
     const params: Record<string, string> = {
       page: String(page),
       limit: String(PER_PAGE),

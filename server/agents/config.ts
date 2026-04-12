@@ -84,8 +84,10 @@ export function getAgentConfig() {
 
 // Live config — reads from DB cache on every property access
 // so changes take effect without restart
-export const agentConfig = new Proxy({} as ReturnType<typeof getAgentConfig>, {
-  get: (_target, prop) => (getAgentConfig() as any)[prop],
+type AgentConfig = ReturnType<typeof getAgentConfig>;
+
+export const agentConfig = new Proxy({} as AgentConfig, {
+  get: (_target, prop: string & keyof AgentConfig) => getAgentConfig()[prop],
 });
 
 /** Update a setting in the DB (called from admin API). */
@@ -96,6 +98,12 @@ export async function updateSetting(key: string, value: string): Promise<void> {
       set: { value, updatedAt: new Date() },
     });
   // Refresh cache immediately
+  await refreshCache();
+}
+
+/** Delete a setting from the DB (revert to env/default). */
+export async function deleteSetting(key: string): Promise<void> {
+  await db.delete(appSettings).where(eq(appSettings.key, key));
   await refreshCache();
 }
 

@@ -13,8 +13,10 @@ import { fingerprint } from '../lib/fingerprint.js';
 import logger from '../lib/logger.js';
 import crypto from 'crypto';
 import path from 'path';
-import fs from 'fs';
-import { ORIGINALS_DIR } from '../lib/paths.js';
+import fs from 'fs/promises';
+import { ORIGINALS_DIR, IMAGES_DIR } from '../lib/paths.js';
+import { validateUpload, UploadError } from '../lib/upload.js';
+import { inArray } from 'drizzle-orm';
 import type { Platform } from '../../shared/constants.js';
 
 export const listingsRouter = new Hono();
@@ -285,6 +287,18 @@ listingsRouter.post('/create', async (c) => {
 
   const photos = formData.getAll('photos') as File[];
   if (photos.length === 0) return c.json({ error: 'At least one photo is required' }, 400);
+  if (photos.length > 10) return c.json({ error: 'Maximum 10 photos allowed' }, 400);
+
+  // Validate all uploads before creating the listing
+  const validated = [];
+  for (const file of photos) {
+    try {
+      validated.push(await validateUpload(file));
+    } catch (err) {
+      if (err instanceof UploadError) return c.json({ error: err.message }, 400);
+      throw err;
+    }
+  }
 
   const externalId = crypto.randomUUID();
   const [inserted] = await db.insert(listings).values({
@@ -303,17 +317,15 @@ listingsRouter.post('/create', async (c) => {
 
   // Save photos to disk and create listingImages rows
   const imageDir = path.join(ORIGINALS_DIR, 'sawbuck', String(inserted.id));
-  fs.mkdirSync(imageDir, { recursive: true });
+  await fs.mkdir(imageDir, { recursive: true });
 
-  for (let i = 0; i < photos.length; i++) {
-    const file = photos[i];
-    const ext = path.extname(file.name) || '.jpg';
+  for (let i = 0; i < validated.length; i++) {
+    const { buffer, ext } = validated[i];
     const filename = `${i}${ext}`;
     const filePath = path.join(imageDir, filename);
     const relativePath = path.join('originals', 'sawbuck', String(inserted.id), filename);
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filePath, buffer);
+    await fs.writeFile(filePath, buffer);
 
     await db.insert(listingImages).values({
       listingId: inserted.id,
@@ -393,11 +405,13 @@ listingsRouter.patch('/bulk', async (c) => {
   }
   const { ids, updates } = parsed.data;
 
-  for (const id of ids) {
-    await db.update(listings).set(updates).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
-  }
+  const result = await db.transaction(async (tx) => {
+    return tx.update(listings)
+      .set(updates)
+      .where(and(inArray(listings.id, ids), eq(listings.userId, user.id)));
+  });
 
-  return c.json({ updated: ids.length });
+  return c.json({ updated: result.rowCount ?? 0 });
 });
 
 // PATCH /:id — update listing
@@ -426,6 +440,13 @@ listingsRouter.delete('/:id', async (c) => {
 
   const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
+
+  // Delete image files from disk before removing DB records
+  const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
+  for (const img of images) {
+    if (img.localPathOriginal) await fs.unlink(path.join(IMAGES_DIR, img.localPathOriginal)).catch(() => {});
+    if (img.localPathResized) await fs.unlink(path.join(IMAGES_DIR, img.localPathResized)).catch(() => {});
+  }
 
   await db.delete(listingImages).where(eq(listingImages.listingId, id));
   await db.delete(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
