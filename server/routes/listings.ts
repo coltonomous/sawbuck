@@ -403,10 +403,14 @@ listingsRouter.patch('/bulk', async (c) => {
   }
   const { ids, updates } = parsed.data;
 
+  // Allow updating own listings + agent-discovered listings (userId IS NULL)
   const result = await db.transaction(async (tx) => {
     return tx.update(listings)
       .set(updates)
-      .where(and(inArray(listings.id, ids), eq(listings.userId, user.id)));
+      .where(and(
+        inArray(listings.id, ids),
+        or(eq(listings.userId, user.id), isNull(listings.userId)),
+      ));
   });
 
   return c.json({ updated: result.rowCount ?? 0 });
@@ -422,11 +426,12 @@ listingsRouter.patch('/:id', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
+  // Allow updating own listings + agent-discovered listings (userId IS NULL)
+  const existing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), isNull(listings.userId)))).then(r => r[0]);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  await db.update(listings).set(parsed.data).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
-  const updated = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
+  await db.update(listings).set(parsed.data).where(eq(listings.id, id));
+  const updated = await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]);
 
   return c.json(updated);
 });
