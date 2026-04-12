@@ -118,7 +118,24 @@ app.use('/images/*', serveStatic({ root: './data/' }));
 
 // ── SPA serving in production ───────────────────────────────────────
 if (isProd) {
+  // Hashed assets (JS, CSS) — cache forever
+  app.use('/assets/*', async (c, next) => {
+    await next();
+    if (c.res.status === 200) {
+      c.res.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  });
+  app.use('/assets/*', serveStatic({ root: './client/dist/' }));
+
+  // Everything else — serve index.html with no-cache so deploys take effect immediately
   app.use('/*', serveStatic({ root: './client/dist/' }));
+  app.get('/*', async (c, next) => {
+    await next();
+    // If this is the HTML fallback (not a real static file), prevent caching
+    if (c.res.headers.get('content-type')?.includes('text/html')) {
+      c.res.headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+  });
   app.get('/*', serveStatic({ root: './client/dist/', path: 'index.html' }));
 }
 
