@@ -506,6 +506,113 @@ listingsRouter.get('/jobs/:jobId', async (c) => {
   return c.json(job);
 });
 
+// POST /:id/render — generate concept render on demand for a listing
+listingsRouter.post('/:id/render', async (c) => {
+  const user = c.get('user');
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  const listing = await getVisibleListing(id, user.id);
+  if (!listing) return c.json({ error: 'Not found' }, 404);
+
+  if (!listing.furnitureType) {
+    return c.json({ error: 'Listing must be analyzed before generating concepts' }, 422);
+  }
+
+  if (!process.env.FAL_KEY) {
+    return c.json({ error: 'Concept rendering is not configured (FAL_KEY not set)' }, 503);
+  }
+
+  const body = await c.req.json().catch(() => ({}));
+  const difficulty = (body.difficulty as string) || 'moderate';
+  if (!['simple', 'moderate', 'full'].includes(difficulty)) {
+    return c.json({ error: 'difficulty must be simple, moderate, or full' }, 400);
+  }
+
+  // Check if a render already exists for this listing + difficulty
+  const existing = await db.select().from(conceptRenders)
+    .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.difficulty, difficulty as 'simple' | 'moderate' | 'full')))
+    .then(r => r[0]);
+
+  if (existing?.localPath) {
+    return c.json({ render: existing });
+  }
+
+  // Generate concept render
+  try {
+    const { fal } = await import('@fal-ai/client');
+    const { agentConfig } = await import('../agents/config.js');
+    const sharp = (await import('sharp')).default;
+    const fs = (await import('fs/promises'));
+    const path = (await import('path'));
+
+    const CONCEPTS_DIR = 'data/images/concepts';
+    await fs.mkdir(CONCEPTS_DIR, { recursive: true });
+
+    const SUMMARIES: Record<string, string> = {
+      simple: 'cleaned and oiled with natural finish, minimal intervention.',
+      moderate: 'sanded and refinished with a smooth satin stain, updated hardware.',
+      full: 'completely transformed with professional-grade finish, premium hardware.',
+    };
+    const LABELS: Record<string, string> = {
+      simple: 'Quick Clean & Oil',
+      moderate: 'Sand & Refinish',
+      full: 'Full Transformation',
+    };
+
+    const type = listing.furnitureType;
+    const style = listing.furnitureStyle;
+    const wood = listing.woodSpecies;
+    const summary = SUMMARIES[difficulty];
+    const prompt = `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
+
+    const result = await fal.subscribe(agentConfig.falModel, {
+      input: {
+        prompt,
+        image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
+        num_images: 1,
+      },
+    }) as { data: { images: Array<{ url: string }> } };
+
+    const imageUrl = result.data?.images?.[0]?.url;
+    if (!imageUrl) {
+      return c.json({ error: 'Image generation returned no results' }, 502);
+    }
+
+    const filename = `${id}_${difficulty}.webp`;
+    const localPath = path.join(CONCEPTS_DIR, filename);
+    const response = await fetch(imageUrl);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+
+    // Upsert concept render row
+    if (existing) {
+      await db.update(conceptRenders)
+        .set({ prompt, renderedImageUrl: imageUrl, localPath })
+        .where(eq(conceptRenders.id, existing.id));
+    } else {
+      await db.insert(conceptRenders).values({
+        listingId: id,
+        difficulty: difficulty as 'simple' | 'moderate' | 'full',
+        label: LABELS[difficulty],
+        summary,
+        prompt,
+        renderedImageUrl: imageUrl,
+        localPath,
+      });
+    }
+
+    const render = await db.select().from(conceptRenders)
+      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.difficulty, difficulty as 'simple' | 'moderate' | 'full')))
+      .then(r => r[0]);
+
+    return c.json({ render });
+  } catch (err) {
+    logger.error({ listingId: id, difficulty, error: String(err) }, 'On-demand concept render failed');
+    return c.json({ error: 'Failed to generate concept render' }, 500);
+  }
+});
+
 // GET /:id/price — get or calculate pricing
 listingsRouter.get('/:id/price', async (c) => {
   const user = c.get('user');

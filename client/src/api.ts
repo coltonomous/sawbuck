@@ -321,6 +321,8 @@ export const api = {
     request<AnalysisResult>(`/listings/${id}/analyze`, { method: 'POST' }),
   importListing: (url: string) =>
     request<{ listing: ListingDetail; alreadyExists: boolean }>('/listings/import', { method: 'POST', body: JSON.stringify({ url }) }),
+  generateConceptRender: (listingId: number, difficulty: 'simple' | 'moderate' | 'full' = 'moderate') =>
+    request<{ render: ConceptOption }>(`/listings/${listingId}/render`, { method: 'POST', body: JSON.stringify({ difficulty }) }),
 
   // Projects
   getProjects: (params?: Record<string, string>) => {

@@ -7,102 +7,97 @@ import { offerUpFetch, warmCookies } from './client.js';
 import type { ScrapedCandidate, Region, EnrichResult } from '../common/types.js';
 import logger from '../../lib/logger.js';
 
-const SEARCH_API = 'https://offerup.com/api/search/v4/search';
-const ITEMS_PER_PAGE = 25;
-
-interface OfferUpListing {
-  id: string;
-  title: string;
-  price: string | number;
-  images?: Array<{ uuid: string; url?: string }>;
-  location?: {
-    city?: string;
-    latitude?: number;
-    longitude?: number;
-  };
-  description?: string;
-  post_date_ago?: string;
-  detail_url?: string;
-  condition?: string;
-  get_url?: string;
+/**
+ * Build OfferUp search URL with location params.
+ * OfferUp's search pages embed results in __NEXT_DATA__ JSON.
+ */
+function searchUrl(region: Region, page: number): string {
+  const params = new URLSearchParams({
+    q: 'wood furniture',
+    LOCATION_LATITUDE: String(region.latitude),
+    LOCATION_LONGITUDE: String(region.longitude),
+    SEARCH_RADIUS: String(region.radiusMiles),
+  });
+  if (page > 0) params.set('page', String(page + 1)); // OfferUp uses 1-indexed pages
+  return `https://offerup.com/search?${params}`;
 }
 
-interface OfferUpSearchResponse {
-  data?: {
-    feed_items?: Array<{
-      listing?: OfferUpListing;
-    }>;
+interface OfferUpTile {
+  __typename: string;
+  listing?: {
+    listingId: string;
+    title: string;
+    price: number | string | null;
+    image?: { url?: string };
+    locationName?: string;
+    conditionText?: string;
   };
 }
 
 /**
- * Phase 1: Discover new listings from OfferUp search API.
- * Uses lat/lng + radius from the region config.
+ * Parse listings from OfferUp's __NEXT_DATA__ embedded JSON.
+ */
+function parseSearchPage(html: string): Array<{
+  externalId: string;
+  title: string;
+  askingPrice: number | null;
+  location: string;
+  imageUrl: string | null;
+}> {
+  const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+  if (!nextDataMatch) {
+    logger.warn('OfferUp integration: no __NEXT_DATA__ found in search page');
+    return [];
+  }
+
+  let tiles: OfferUpTile[];
+  try {
+    const data = JSON.parse(nextDataMatch[1]);
+    const feed = data?.props?.pageProps?.searchFeedResponse ?? {};
+    tiles = (feed.looseTiles ?? feed.tightTiles ?? []) as OfferUpTile[];
+  } catch {
+    logger.error('OfferUp integration: failed to parse __NEXT_DATA__');
+    return [];
+  }
+
+  const results = [];
+  for (const tile of tiles) {
+    if (tile.__typename !== 'ModularFeedTileListing') continue;
+    const item = tile.listing;
+    if (!item?.listingId || !item?.title) continue;
+
+    const price = typeof item.price === 'string' ? parseFloat(item.price) : item.price;
+
+    results.push({
+      externalId: item.listingId,
+      title: item.title,
+      askingPrice: price != null && !isNaN(price) ? price : null,
+      location: item.locationName ?? '',
+      imageUrl: item.image?.url ?? null,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Phase 1: Discover new listings from OfferUp search page.
+ * Parses __NEXT_DATA__ from the server-rendered HTML.
  */
 export async function discover(region: Region, page = 0): Promise<ScrapedCandidate[]> {
   await warmCookies();
 
-  const params = new URLSearchParams({
-    platform: 'web',
-    experiment_id: '',
-    q: 'wood furniture',
-    radius: String(region.radiusMiles),
-    lat: String(region.latitude),
-    lon: String(region.longitude),
-    limit: String(ITEMS_PER_PAGE),
-    offset: String(page * ITEMS_PER_PAGE),
-    sort: '-posted',
-    delivery: 'all',
-  });
+  const url = searchUrl(region, page);
+  logger.info({ url, page, region: region.name }, 'OfferUp integration: fetching search page');
 
-  const searchUrl = `${SEARCH_API}?${params}`;
-  logger.info({ searchUrl, page, region: region.name }, 'OfferUp integration: fetching search results');
-
-  const res = await offerUpFetch(searchUrl, {
-    headers: { 'Accept': 'application/json' },
-  });
+  const res = await offerUpFetch(url);
 
   if (!res.ok) {
-    throw new Error(`OfferUp search API returned ${res.status}: ${res.statusText}`);
+    throw new Error(`OfferUp search page returned ${res.status}: ${res.statusText}`);
   }
 
-  const json: OfferUpSearchResponse = await res.json();
-  const feedItems = json.data?.feed_items ?? [];
-
-  const parsed: ScrapedCandidate[] = [];
-  for (const item of feedItems) {
-    const listing = item.listing;
-    if (!listing?.id || !listing?.title) continue;
-
-    const price = typeof listing.price === 'string' ? parseFloat(listing.price) : listing.price;
-    const imageUrls: string[] = [];
-    if (listing.images) {
-      for (const img of listing.images.slice(0, 3)) {
-        if (img.url) {
-          imageUrls.push(img.url);
-        } else if (img.uuid) {
-          imageUrls.push(`https://images.offerup.com/${img.uuid}/600x.jpg`);
-        }
-      }
-    }
-
-    const listingUrl = listing.get_url
-      ? `https://offerup.com${listing.get_url}`
-      : `https://offerup.com/item/detail/${listing.id}`;
-
-    parsed.push({
-      externalId: String(listing.id),
-      platform: 'offerup',
-      url: listingUrl,
-      title: listing.title,
-      askingPrice: !isNaN(price) ? price : null,
-      location: listing.location?.city || region.name,
-      latitude: listing.location?.latitude,
-      longitude: listing.location?.longitude,
-      imageUrls,
-      description: listing.description,
-    });
-  }
+  const html = await res.text();
+  const parsed = parseSearchPage(html);
 
   logger.info({ count: parsed.length, region: region.name }, 'OfferUp integration: search items parsed');
 
@@ -119,7 +114,15 @@ export async function discover(region: Region, page = 0): Promise<ScrapedCandida
   const newItems = parsed.filter((item) => !existingIds.has(item.externalId));
   logger.info({ total: parsed.length, new: newItems.length, existing: existingIds.size }, 'OfferUp integration: dedup results');
 
-  return newItems;
+  return newItems.map((item) => ({
+    externalId: item.externalId,
+    platform: 'offerup',
+    url: `https://offerup.com/item/detail/${item.externalId}`,
+    title: item.title,
+    askingPrice: item.askingPrice,
+    location: item.location || region.name,
+    imageUrls: item.imageUrl ? [item.imageUrl] : [],
+  }));
 }
 
 /**
@@ -181,12 +184,11 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
 
     const html = await res.text();
 
-    // OfferUp returns 200 with "no longer available" for removed listings
     if (html.includes('no longer available') || html.includes('This item has been sold')) {
       return 'removed';
     }
 
-    // Try to extract __NEXT_DATA__ JSON for structured data
+    // Try __NEXT_DATA__ for structured data
     const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
     if (nextDataMatch) {
       try {
@@ -197,8 +199,8 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
           const imageUrls: string[] = [];
           const photos = listing.photos ?? listing.images ?? [];
           for (const photo of photos.slice(0, 5)) {
-            const url = photo.detail?.url ?? photo.url ?? (photo.uuid ? `https://images.offerup.com/${photo.uuid}/600x.jpg` : null);
-            if (url) imageUrls.push(url);
+            const photoUrl = photo.detail?.url ?? photo.url ?? (photo.uuid ? `https://images.offerup.com/${photo.uuid}/600x.jpg` : null);
+            if (photoUrl) imageUrls.push(photoUrl);
           }
           return {
             description: listing.description ?? '',
@@ -206,11 +208,11 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
           };
         }
       } catch {
-        // Fall through to HTML parsing
+        // Fall through to meta tags
       }
     }
 
-    // Fallback: extract from meta tags
+    // Fallback: meta tags
     const descMatch = html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
     const description = descMatch?.[1] ?? '';
 
