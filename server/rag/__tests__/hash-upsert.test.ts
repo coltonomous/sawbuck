@@ -30,7 +30,7 @@ const mockClient = {
 
 vi.mock('../../db/index.js', () => ({
   pool: {
-    query: (...args: unknown[]) => mockClient.query(...args),
+    query: (text: string, params?: unknown[]) => mockClient.query(text, params),
     connect: () => Promise.resolve(mockClient),
   },
 }));

@@ -44,18 +44,33 @@ describe('RAG store (pgvector)', () => {
     expect(results[0].title).toBe('Oak Dresser Flip');
   });
 
-  it('skips duplicates on upsert', async () => {
+  it('updates content when hash changes on upsert', async () => {
     const embedding = randomEmbedding();
     const id1 = await upsertChunk(
-      { type: 'project', source: 'test', title: 'Duplicate Test', content: 'First', metadata: {} },
+      { type: 'project', source: 'test', title: 'Upsert Test', content: 'First version', metadata: {} },
       embedding,
     );
     const id2 = await upsertChunk(
-      { type: 'project', source: 'test', title: 'Duplicate Test', content: 'Second', metadata: {} },
+      { type: 'project', source: 'test', title: 'Upsert Test', content: 'Second version', metadata: {} },
       embedding,
     );
     expect(id1).not.toBeNull();
-    expect(id2).toBeNull();
+    expect(id2).not.toBeNull(); // returns id because content changed
+  });
+
+  it('skips upsert when content is unchanged', async () => {
+    const embedding = randomEmbedding();
+    const content = 'Identical content for dedup test';
+    const id1 = await upsertChunk(
+      { type: 'project', source: 'test', title: 'Dedup Test', content, metadata: {} },
+      embedding,
+    );
+    const id2 = await upsertChunk(
+      { type: 'project', source: 'test', title: 'Dedup Test', content, metadata: {} },
+      embedding,
+    );
+    expect(id1).not.toBeNull();
+    expect(id2).toBeNull(); // null because content hash is identical
   });
 
   it('counts chunks by type', async () => {
