@@ -117,8 +117,8 @@ listingsRouter.get('/', async (c) => {
   if (status) {
     conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed' | 'removed'));
   } else {
-    // Exclude removed listings from the default feed
-    conditions.push(ne(listings.status, 'removed'));
+    // Exclude removed and dismissed listings from the default feed
+    conditions.push(sql`${listings.status} NOT IN ('removed', 'dismissed')`);
   }
   if (search || pagination.search) {
     const term = search || pagination.search!;
