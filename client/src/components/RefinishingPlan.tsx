@@ -105,7 +105,7 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
               </div>
               <div className="flex items-center gap-3 text-sm text-gray-500">
                 <span>{formatDuration(step.duration_minutes)}</span>
-                <span className="text-xs">{expandedSteps.has(i) ? '▼' : '▶'}</span>
+                <svg className={`w-3.5 h-3.5 transition-transform ${expandedSteps.has(i) ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
               </div>
             </button>
 

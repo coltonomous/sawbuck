@@ -703,7 +703,7 @@ function AgentConfigCard({
       <div className="space-y-5">
         {Object.entries(groups).map(([group, fields]) => (
           <div key={group}>
-            <h4 className="text-xs font-medium text-gray-500 uppercase mb-2">{group}</h4>
+            <h4 className="text-xs font-semibold text-gray-900 uppercase tracking-wide mb-2 mt-1 pb-1 border-b border-gray-100">{group}</h4>
             <div className="space-y-2">
               {fields.map((field) => {
                 const resolved = String(config[field.configKey] ?? '');
