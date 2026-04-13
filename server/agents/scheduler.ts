@@ -3,10 +3,12 @@ import { agentPipeline, initCheckpointer } from './graph.js';
 import { agentConfig, refreshAgentConfig } from './config.js';
 import { db } from '../db/index.js';
 import { agentRuns } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import logger from '../lib/logger.js';
 
 let running = false;
 let runStartedAt: number | null = null;
+let currentRunId: string | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
@@ -15,6 +17,13 @@ async function runOnce(): Promise<void> {
   if (running) {
     if (runStartedAt && Date.now() - runStartedAt > RUN_TIMEOUT_MS) {
       logger.error({ runStartedAt: new Date(runStartedAt).toISOString() }, 'Agent scheduler: previous run exceeded timeout, resetting');
+      // Mark the timed-out run as failed in the DB
+      if (currentRunId) {
+        db.update(agentRuns)
+          .set({ status: 'failed', completedAt: new Date(), errorsCount: 1, errorDetails: JSON.stringify([{ node: 'scheduler', message: 'Run exceeded 1 hour timeout', timestamp: new Date().toISOString() }]) })
+          .where(eq(agentRuns.runId, currentRunId))
+          .catch((err) => logger.warn({ error: String(err) }, 'Failed to mark timed-out run'));
+      }
       running = false;
     } else {
       logger.info('Agent scheduler: run already in progress, skipping');
@@ -29,6 +38,7 @@ async function runOnce(): Promise<void> {
   await refreshAgentConfig();
 
   const runId = crypto.randomUUID();
+  currentRunId = runId;
   const startedAt = new Date().toISOString();
 
   logger.info({ runId }, 'Agent scheduler: starting pipeline run');
@@ -58,6 +68,30 @@ async function runOnce(): Promise<void> {
   } finally {
     running = false;
     runStartedAt = null;
+    currentRunId = null;
+  }
+}
+
+/**
+ * Mark any agent_runs stuck in 'running' status as 'failed'.
+ * These are orphans from a previous process that crashed or was restarted.
+ */
+async function cleanupStaleRuns(): Promise<void> {
+  try {
+    const result = await db.update(agentRuns)
+      .set({
+        status: 'failed',
+        completedAt: new Date(),
+        errorsCount: 1,
+        errorDetails: JSON.stringify([{ node: 'scheduler', message: 'Marked as failed on startup (previous process died)', timestamp: new Date().toISOString() }]),
+      })
+      .where(eq(agentRuns.status, 'running'));
+
+    if (result.rowCount && result.rowCount > 0) {
+      logger.info({ cleaned: result.rowCount }, 'Agent scheduler: marked stale runs as failed');
+    }
+  } catch (err) {
+    logger.warn({ error: String(err) }, 'Agent scheduler: failed to clean up stale runs');
   }
 }
 
@@ -76,6 +110,9 @@ export async function startScheduler(): Promise<void> {
   } catch (err) {
     logger.error({ error: String(err) }, 'Agent scheduler: failed to initialize checkpointer');
   }
+
+  // Clean up orphaned 'running' rows from previous process crashes
+  await cleanupStaleRuns();
 
   runOnce();
 
