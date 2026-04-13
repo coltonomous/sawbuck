@@ -46,7 +46,7 @@ vi.mock('../db/index.js', () => {
   // Each chain method returns the builder; awaiting it resolves the Promise
   const makeSelectChain = () => {
     const chain: any = {};
-    const methods = ['select', 'from', 'innerJoin', 'where', 'orderBy'];
+    const methods = ['select', 'from', 'innerJoin', 'where', 'orderBy', 'limit'];
     for (const m of methods) {
       chain[m] = (..._args: any[]) => chain;
     }

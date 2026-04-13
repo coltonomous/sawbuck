@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../db/index.js';
 import { listings, listingImages, projects, conceptRenders } from '../db/schema.js';
-import { sql, and, lt, isNotNull, notInArray, isNull, eq } from 'drizzle-orm';
+import { sql, and, isNotNull, eq } from 'drizzle-orm';
 import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
 import { agentConfig } from '../agents/config.js';
@@ -27,11 +27,6 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
   const userCutoff = sql`CURRENT_TIMESTAMP - INTERVAL '${sql.raw(String(retentionDays))} days'`;
   const agentCutoff = sql`CURRENT_TIMESTAMP - INTERVAL '${sql.raw(String(agentConfig.agentImageRetentionDays))} days'`;
 
-  // Find listing IDs that have an associated project — these are protected
-  const projectListingIds = db
-    .select({ listingId: projects.listingId })
-    .from(projects);
-
   // Find old listings without projects that still have image files on disk
   // Agent listings (userId IS NULL) use shorter retention
   // Dismissed agent listings are cleaned immediately
@@ -47,7 +42,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     .innerJoin(listings, sql`${listingImages.listingId} = ${listings.id}`)
     .where(
       and(
-        notInArray(listings.id, projectListingIds),
+        sql`${listings.id} NOT IN (SELECT ${projects.listingId} FROM ${projects})`,
         sql`(${listingImages.localPathOriginal} IS NOT NULL OR ${listingImages.localPathResized} IS NOT NULL)`,
         sql`(
           (${listings.userId} IS NOT NULL AND ${listings.scrapedAt} < ${userCutoff})
@@ -66,7 +61,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
     .innerJoin(listings, sql`${conceptRenders.listingId} = ${listings.id}`)
     .where(
       and(
-        notInArray(listings.id, projectListingIds),
+        sql`${listings.id} NOT IN (SELECT ${projects.listingId} FROM ${projects})`,
         isNotNull(conceptRenders.localPath),
         sql`(
           (${listings.userId} IS NULL AND ${listings.scrapedAt} < ${agentCutoff})
