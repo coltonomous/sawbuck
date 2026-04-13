@@ -3,6 +3,7 @@ import { db } from '../../db/index.js';
 import { conceptRenders } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
+import { reportProgress } from '../progress.js';
 import type { AgentState, ConceptRenderResult, ListingWithOptions, RefinishingOption } from '../state.js';
 import logger from '../../lib/logger.js';
 import fs from 'fs/promises';
@@ -124,6 +125,8 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
   }
 
   logger.info({ rendered: renders.length, listings: listings.length }, 'Render node complete');
+
+  reportProgress(state.runId, { rendered: state.conceptsRendered + listings.length });
 
   return {
     conceptRenders: renders,

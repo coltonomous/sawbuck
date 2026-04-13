@@ -7,6 +7,7 @@ import { processListingImages } from '../../images/processor.js';
 import { calculatePricing, type PricingResult } from '../../analysis/pricing.js';
 import { agentConfig } from '../config.js';
 import type { AgentState, EvaluatedCandidate } from '../state.js';
+import { reportProgress } from '../progress.js';
 import logger from '../../lib/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -148,6 +149,11 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
   }
 
   logger.info({ evaluated: evaluated.length, qualified: qualified.length }, 'Evaluate node complete');
+
+  reportProgress(state.runId, {
+    evaluated: state.evalCount + evaluated.length,
+    qualified: state.qualifiedCount + qualified.length,
+  });
 
   return {
     evaluatedCandidates: evaluated,

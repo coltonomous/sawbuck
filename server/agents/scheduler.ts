@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { agentPipeline, initCheckpointer } from './graph.js';
 import { agentConfig, refreshAgentConfig } from './config.js';
+import { db } from '../db/index.js';
+import { agentRuns } from '../db/schema.js';
 import logger from '../lib/logger.js';
 
 let running = false;
@@ -30,6 +32,17 @@ async function runOnce(): Promise<void> {
   const startedAt = new Date().toISOString();
 
   logger.info({ runId }, 'Agent scheduler: starting pipeline run');
+
+  // Create the run record upfront so the UI can see it's running
+  try {
+    await db.insert(agentRuns).values({
+      runId,
+      startedAt: new Date(startedAt),
+      status: 'running',
+    }).onConflictDoNothing();
+  } catch (err) {
+    logger.warn({ runId, error: String(err) }, 'Agent scheduler: failed to create initial run record');
+  }
 
   try {
     const result = await agentPipeline.invoke(

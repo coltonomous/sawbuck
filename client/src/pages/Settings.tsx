@@ -717,26 +717,28 @@ function AgentConfigCard({
                 const value = field.key in draft ? draft[field.key] : resolved;
 
                 return (
-                  <div key={field.key} className="flex items-center gap-2">
-                    <label className="text-sm text-gray-700 w-56 shrink-0">{field.label}</label>
-                    <input
-                      type={field.type}
-                      value={value}
-                      onChange={(e) => setDraft((prev) => ({ ...prev, [field.key]: e.target.value }))}
-                      className={`flex-1 border rounded px-2.5 py-1.5 text-sm font-mono ${
-                        hasOverride ? 'border-blue-300 bg-blue-50/50' : 'border-gray-300'
-                      }`}
-                    />
-                    {hasOverride && (
-                      <button
-                        onClick={() => onReset(field.key)}
-                        disabled={saving}
-                        className="text-xs text-gray-400 hover:text-red-500 transition-colors shrink-0"
-                        title="Reset to default"
-                      >
-                        reset
-                      </button>
-                    )}
+                  <div key={field.key} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                    <label className="text-sm text-gray-700 sm:w-56 sm:shrink-0">{field.label}</label>
+                    <div className="flex items-center gap-2 flex-1">
+                      <input
+                        type={field.type}
+                        value={value}
+                        onChange={(e) => setDraft((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                        className={`flex-1 min-w-0 border rounded px-2.5 py-1.5 text-sm font-mono ${
+                          hasOverride ? 'border-blue-300 bg-blue-50/50' : 'border-gray-300'
+                        }`}
+                      />
+                      {hasOverride && (
+                        <button
+                          onClick={() => onReset(field.key)}
+                          disabled={saving}
+                          className="text-xs text-gray-400 hover:text-red-500 transition-colors shrink-0"
+                          title="Reset to default"
+                        >
+                          reset
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}

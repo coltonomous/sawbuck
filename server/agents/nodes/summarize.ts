@@ -1,5 +1,6 @@
 import { db } from '../../db/index.js';
 import { agentRuns } from '../../db/schema.js';
+import { eq } from 'drizzle-orm';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -15,22 +16,42 @@ export async function summarizeRun(state: AgentState): Promise<Partial<AgentStat
     errors: state.errors.length,
   };
 
-  // Write agent run record to DB
+  const finalStatus = state.errors.length > 0 && summary.evaluated === 0 ? 'failed' : 'completed';
+
+  // Finalize the agent run record (created by scheduler at start of run)
   try {
-    await db.insert(agentRuns).values({
-      runId: state.runId,
-      startedAt: new Date(state.startedAt),
-      completedAt: new Date(),
-      status: state.errors.length > 0 && summary.evaluated === 0 ? 'failed' : 'completed',
-      scraped: summary.scraped,
-      triaged: summary.triaged,
-      passedTriage: summary.passedTriage,
-      evaluated: summary.evaluated,
-      qualified: summary.qualified,
-      rendered: summary.rendered,
-      errorsCount: summary.errors,
-      errorDetails: state.errors.length > 0 ? JSON.stringify(state.errors) : null,
-    }).onConflictDoNothing(); // safety: don't crash if run was already recorded
+    const updated = await db.update(agentRuns)
+      .set({
+        completedAt: new Date(),
+        status: finalStatus,
+        scraped: summary.scraped,
+        triaged: summary.triaged,
+        passedTriage: summary.passedTriage,
+        evaluated: summary.evaluated,
+        qualified: summary.qualified,
+        rendered: summary.rendered,
+        errorsCount: summary.errors,
+        errorDetails: state.errors.length > 0 ? JSON.stringify(state.errors) : null,
+      })
+      .where(eq(agentRuns.runId, state.runId));
+
+    // Fallback: if no row was updated (scheduler didn't create it), insert
+    if (!updated.rowCount) {
+      await db.insert(agentRuns).values({
+        runId: state.runId,
+        startedAt: new Date(state.startedAt),
+        completedAt: new Date(),
+        status: finalStatus,
+        scraped: summary.scraped,
+        triaged: summary.triaged,
+        passedTriage: summary.passedTriage,
+        evaluated: summary.evaluated,
+        qualified: summary.qualified,
+        rendered: summary.rendered,
+        errorsCount: summary.errors,
+        errorDetails: state.errors.length > 0 ? JSON.stringify(state.errors) : null,
+      }).onConflictDoNothing();
+    }
   } catch (err) {
     logger.error({ error: String(err) }, 'Summarize: failed to write agent run record');
   }

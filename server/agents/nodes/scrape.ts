@@ -1,5 +1,6 @@
 import { Send } from '@langchain/langgraph';
 import { getEnabledPlatforms, getEnabledRegions } from '../../integrations/registry.js';
+import { reportProgress } from '../progress.js';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -49,6 +50,8 @@ export async function afterScrapesMerge(state: AgentState): Promise<Partial<Agen
     scraped: state.scrapedCandidates.length,
     attempt: state.scrapeAttempts + 1,
   }, 'All scrape tasks merged');
+
+  reportProgress(state.runId, { scraped: state.scrapedCandidates.length });
 
   return {
     scrapeAttempts: state.scrapeAttempts + 1,

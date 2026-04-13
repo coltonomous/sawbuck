@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { analyzeWithVisionStructured, type ImageInput } from '../../lib/bedrock.js';
 import { isAvailable, getProjectContext } from '../../rag/retrieval.js';
 import { agentConfig } from '../config.js';
+import { reportProgress } from '../progress.js';
 import type { AgentState, TriagedCandidate, ScrapedCandidate } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -221,6 +222,8 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
     passed: passed.length,
     apiCalls: Math.ceil(toProcess.length / BATCH_SIZE),
   }, 'Triage node complete');
+
+  reportProgress(state.runId, { triaged: triaged.length, passedTriage: passed.length });
 
   return {
     triagedCandidates: triaged,
