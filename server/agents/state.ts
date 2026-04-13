@@ -92,7 +92,7 @@ export interface AgentState {
   evalCount: number;
   qualifiedCount: number;
   conceptsRendered: number;
-  scrapeAttempts: number;
+  scrapeAttempts: Record<string, number>; // per-platform retry budget
   seenExternalIds: string[]; // track IDs across retries to avoid re-triaging
   scrapeTask: ScrapeTask | null; // current task for scrapeOne node (set by Send)
   errors: AgentError[];
@@ -159,9 +159,9 @@ export const AgentAnnotation = Annotation.Root({
     reducer: (_prev, next) => next,
     default: () => 0,
   }),
-  scrapeAttempts: Annotation<number>({
-    reducer: (_prev, next) => next,
-    default: () => 0,
+  scrapeAttempts: Annotation<Record<string, number>>({
+    reducer: (prev, next) => ({ ...prev, ...next }),
+    default: () => ({}),
   }),
   seenExternalIds: Annotation<string[]>({
     reducer: (prev, next) => [...new Set([...prev, ...next])],

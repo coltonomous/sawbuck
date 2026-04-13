@@ -9,7 +9,7 @@ function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summari
     if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
     return 'enrich';
   }
-  if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'dispatchScrapes';
+  if (Object.values(state.scrapeAttempts).length === 0 || Object.values(state.scrapeAttempts).some((a) => a < MAX_SCRAPE_ATTEMPTS)) return 'dispatchScrapes';
   return 'summarize';
 }
 
@@ -40,7 +40,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,
-    scrapeAttempts: 0,
+    scrapeAttempts: {},
     removedIds: [],
     reconciledCount: 0,
     seenExternalIds: [],
@@ -65,11 +65,11 @@ describe('afterTriage', () => {
   });
 
   it('retries scrape when 0 passed and attempts remain', () => {
-    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: 1 }))).toBe('dispatchScrapes');
+    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when 0 passed and max attempts', () => {
-    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: MAX_SCRAPE_ATTEMPTS }))).toBe('summarize');
+    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: { craigslist: MAX_SCRAPE_ATTEMPTS } }))).toBe('summarize');
   });
 });
 

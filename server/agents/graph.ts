@@ -16,12 +16,18 @@ import { summarizeRun } from './nodes/summarize.js';
 const MAX_SCRAPE_ATTEMPTS = 3;
 const MIN_QUALIFIED_TARGET = 1;
 
+/** True if at least one platform still has retry budget. */
+function hasScrapeBudget(state: AgentState): boolean {
+  const attempts = state.scrapeAttempts;
+  return Object.values(attempts).length === 0 || Object.values(attempts).some((a) => a < MAX_SCRAPE_ATTEMPTS);
+}
+
 function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summarize' {
   if (state.passedTriage.length > 0) {
     if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
     return 'enrich';
   }
-  if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'dispatchScrapes';
+  if (hasScrapeBudget(state)) return 'dispatchScrapes';
   return 'summarize';
 }
 
@@ -32,10 +38,7 @@ function afterReconcile(state: AgentState): 'evaluate' | 'summarize' {
 
 function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrapes' | 'summarize' {
   if (state.qualifiedListings.length > 0) return 'discoverKnowledge';
-  if (
-    state.evalCount < agentConfig.maxEvals &&
-    state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
-  ) {
+  if (state.evalCount < agentConfig.maxEvals && hasScrapeBudget(state)) {
     return 'dispatchScrapes';
   }
   return 'summarize';
@@ -58,7 +61,7 @@ function shouldLoop(state: AgentState): boolean {
   return (
     state.qualifiedCount < MIN_QUALIFIED_TARGET &&
     state.evalCount < agentConfig.maxEvals &&
-    state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
+    hasScrapeBudget(state)
   );
 }
 

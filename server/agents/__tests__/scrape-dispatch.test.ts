@@ -39,7 +39,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,
-    scrapeAttempts: 0,
+    scrapeAttempts: {},
     seenExternalIds: [],
     scrapeTask: null,
     errors: [],
@@ -58,7 +58,7 @@ describe('dispatchScrapes', () => {
   });
 
   it('passes correct scrapeTask with page from scrapeAttempts', async () => {
-    const sends = await dispatchScrapes(makeState({ scrapeAttempts: 2 }));
+    const sends = await dispatchScrapes(makeState({ scrapeAttempts: { craigslist: 2 } }));
 
     // Check that sends contain the right metadata
     expect(sends).toHaveLength(2);
@@ -66,7 +66,7 @@ describe('dispatchScrapes', () => {
     const send0 = sends[0] as any;
     expect(send0.node).toBe('scrapeOne');
     expect(send0.args.scrapeTask.platform).toBe('craigslist');
-    expect(send0.args.scrapeTask.page).toBe(2);
+    expect(send0.args.scrapeTask.page).toBe(2); // page = attempts for that platform
   });
 
   it('returns empty array when no platforms enabled', async () => {
@@ -79,7 +79,10 @@ describe('dispatchScrapes', () => {
 
 describe('afterScrapesMerge', () => {
   it('increments scrapeAttempts', async () => {
-    const result = await afterScrapesMerge(makeState({ scrapeAttempts: 1 }));
-    expect(result.scrapeAttempts).toBe(2);
+    const result = await afterScrapesMerge(makeState({
+      scrapeAttempts: { craigslist: 0 },
+      scrapedCandidates: [{ externalId: '1', platform: 'craigslist', url: '', title: '', askingPrice: null, location: '', imageUrls: [] }],
+    }));
+    expect(result.scrapeAttempts).toEqual({ craigslist: 1 });
   });
 });

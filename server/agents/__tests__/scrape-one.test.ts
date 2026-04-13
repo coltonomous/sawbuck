@@ -33,7 +33,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,
-    scrapeAttempts: 0,
+    scrapeAttempts: {},
     seenExternalIds: [],
     scrapeTask: null,
     errors: [],

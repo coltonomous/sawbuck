@@ -46,7 +46,7 @@ function makeState(candidates: ScrapedCandidate[], overrides: Partial<AgentState
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,
-    scrapeAttempts: 1,
+    scrapeAttempts: { craigslist: 1 },
     removedIds: [],
     reconciledCount: 0,
     seenExternalIds: [],
