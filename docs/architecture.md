@@ -295,18 +295,22 @@ Platform Search ──scrapeOne──> ScrapedCandidate (title, price, images, l
      (getFullContext)          (getFullContext)          (getProjectContext)
 ```
 
-### Ingestion
+### Storage
 
-Sources are tracked in the `knowledge_sources` DB table (seeded from `sources.json` on first boot). Ingestion uses hash-based upserts: content is SHA-256 hashed, and chunks are only re-embedded when the hash changes. This means deploys never wipe the knowledge base.
+Single table: `knowledge_chunks` stores content, metadata, content hash, AND the embedding vector (384-dim pgvector column). No separate vector table. The `knowledge_vec` legacy table is automatically migrated and dropped on startup if it exists.
+
+Sources are tracked in the `knowledge_sources` table (seeded from `sources.json` on first boot). Ingestion uses hash-based upserts: content is SHA-256 hashed, and chunks are only re-embedded when the hash changes. Deploys never wipe the knowledge base.
+
+### Ingestion
 
 - **Projects**: auto-ingested when a project is marked "sold"
 - **Products**: fetched from manufacturer pages (Citristrip, Minwax, General Finishes, etc.)
 - **Guides**: fetched from technique articles (stripping, sanding, staining, wood species profiles)
-- **Auto-discovered**: the `discoverKnowledge` pipeline node identifies gaps (e.g. "we keep seeing teak but have no teak guides") and queues URLs from reliable domains for async ingestion
+- **Auto-discovered**: the `discoverKnowledge` pipeline node identifies gaps and queues URLs from reliable domains for async ingestion
 
 ### Embedding Model
 
-all-MiniLM-L6-v2 via `@xenova/transformers` runs on-device (no API calls). 384-dimension vectors stored in pgvector. First run downloads the model (~80MB) to `data/.cache/huggingface/`.
+all-MiniLM-L6-v2 via `@xenova/transformers` runs on-device (no API calls). 384-dimension vectors stored as a column on `knowledge_chunks` via pgvector. First run downloads the model (~80MB) to `data/.cache/huggingface/`.
 
 ### Retrieval
 
@@ -337,8 +341,7 @@ agent_runs ---------- pipeline run history (updated incrementally by nodes)
 regions ------------- scrape target locations (admin-managed)
 platform_settings --- enable/disable platforms (admin-managed)
 knowledge_sources --- RAG source registry (seeded + auto-discovered)
-knowledge_chunks ---- RAG chunks with content_hash for non-destructive upserts
-knowledge_vec ------- pgvector embeddings (384-dim)
+knowledge_chunks ---- RAG chunks with content, content_hash, AND embedding vector (single table)
 app_settings -------- admin-configurable key-value pairs
 checkpoints --------- LangGraph state persistence (PostgresSaver)
 ```

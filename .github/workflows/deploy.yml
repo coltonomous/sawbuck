@@ -99,6 +99,10 @@ jobs:
           sudo systemctl restart docker
           sleep 3
 
+          # Stop app container gracefully (SIGTERM triggers shutdown handler
+          # which stops the scheduler, drains in-flight requests, and closes the pool)
+          echo "Stopping app container..."
+          docker compose stop -t 30 app 2>/dev/null || true
           docker compose down --remove-orphans 2>/dev/null || true
 
           # Reclaim disk: remove all unused images and build cache (keeps volumes)

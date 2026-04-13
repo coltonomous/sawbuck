@@ -9,19 +9,19 @@ const mockClient = {
   query: vi.fn(async (text: string, params?: unknown[]) => {
     queries.push({ text, params: params ?? [] });
     if (text.includes('INSERT INTO knowledge_chunks')) {
-      return { rows: insertReturnsId ? [{ id: 1 }] : [] };
+      return { rows: insertReturnsId ? [{ id: 1 }] : [], rowCount: insertReturnsId ? 1 : 0 };
     }
-    if (text.includes('INSERT INTO knowledge_vec')) {
-      return { rows: [] };
+    if (text.includes('CREATE') || text.includes('ALTER') || text.includes('UPDATE knowledge_chunks')) {
+      return { rows: [], rowCount: 0 };
     }
-    if (text.includes('CREATE')) {
-      return { rows: [] };
-    }
-    if (text.includes('ALTER')) {
-      return { rows: [] };
+    if (text.includes('SELECT 1 FROM information_schema')) {
+      return { rows: [] }; // no legacy table
     }
     if (text.includes('SELECT COUNT')) {
       return { rows: [{ count: '0' }] };
+    }
+    if (text.includes('DROP TABLE')) {
+      return { rows: [] };
     }
     return { rows: [] };
   }),
@@ -51,9 +51,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe('hash-based upsert', () => {
-  it('computes content hash and includes it in INSERT', async () => {
-    // Need to call initStore first since it checks the flag
+describe('hash-based upsert (single-table)', () => {
+  it('inserts content, metadata, content_hash, AND embedding in one statement', async () => {
     await initStore();
 
     const chunk = {
@@ -72,30 +71,15 @@ describe('hash-based upsert', () => {
     const insertQuery = queries.find((q) => q.text.includes('INSERT INTO knowledge_chunks'));
     expect(insertQuery).toBeDefined();
 
-    // Verify content_hash is in the query
+    // All fields in one INSERT — no separate knowledge_vec insert
     expect(insertQuery!.text).toContain('content_hash');
+    expect(insertQuery!.text).toContain('embedding');
     expect(insertQuery!.text).toContain('IS DISTINCT FROM');
-
-    // Verify the hash value is passed as a parameter
     expect(insertQuery!.params).toContain(expectedHash);
-  });
 
-  it('upserts embedding with ON CONFLICT DO UPDATE', async () => {
-    const chunk = {
-      type: 'product' as const,
-      source: 'https://example.com/product',
-      title: 'Test Product',
-      content: 'Minwax stain',
-      metadata: {},
-    };
-    const embedding = new Float32Array([0.4, 0.5, 0.6]);
-
-    await upsertChunk(chunk, embedding);
-
-    const vecQuery = queries.find((q) => q.text.includes('INSERT INTO knowledge_vec'));
-    expect(vecQuery).toBeDefined();
-    expect(vecQuery!.text).toContain('ON CONFLICT');
-    expect(vecQuery!.text).toContain('DO UPDATE');
+    // No separate INSERT into knowledge_vec — embedding is in the same INSERT
+    const vecInsert = queries.find((q) => q.text.includes('INSERT') && q.text.includes('knowledge_vec'));
+    expect(vecInsert).toBeUndefined();
   });
 
   it('returns null when content unchanged (no rows returned)', async () => {
@@ -111,9 +95,5 @@ describe('hash-based upsert', () => {
 
     const result = await upsertChunk(chunk, new Float32Array([0.1]));
     expect(result).toBeNull();
-
-    // Should NOT insert into knowledge_vec since content didn't change
-    const vecQuery = queries.find((q) => q.text.includes('INSERT INTO knowledge_vec'));
-    expect(vecQuery).toBeUndefined();
   });
 });

@@ -1,5 +1,8 @@
--- Migration: add regions and knowledge_sources tables
--- Run before drizzle-kit push to avoid interactive prompts
+-- Migration: add new tables and consolidate RAG schema
+-- Run before drizzle-kit push to avoid interactive prompts.
+-- All statements are idempotent (safe to re-run).
+
+CREATE EXTENSION IF NOT EXISTS vector;
 
 CREATE TABLE IF NOT EXISTS regions (
   id SERIAL PRIMARY KEY,
@@ -25,10 +28,22 @@ CREATE TABLE IF NOT EXISTS knowledge_sources (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Add content_hash to knowledge_chunks if it doesn't exist (for existing installs).
--- This is a no-op if the table doesn't exist yet (first deploy) — initStore() creates it.
+-- Consolidate knowledge_chunks: add embedding + content_hash columns
+-- so knowledge_vec is no longer needed as a separate table.
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'knowledge_chunks') THEN
+    -- Add columns if missing
     ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_hash TEXT;
+    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS embedding vector(384);
+
+    -- Migrate embeddings from legacy knowledge_vec table
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'knowledge_vec') THEN
+      UPDATE knowledge_chunks c
+      SET embedding = v.embedding
+      FROM knowledge_vec v
+      WHERE v.chunk_id = c.id AND c.embedding IS NULL;
+
+      DROP TABLE knowledge_vec;
+    END IF;
   END IF;
 END $$;

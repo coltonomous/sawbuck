@@ -1,7 +1,7 @@
 /**
  * Visual representation of the agent pipeline graph.
- * Shows the fan-out from dispatch into platform x region scrape tasks,
- * then the linear flow through triage/evaluate/plan/render/summarize.
+ * Shows the fan-out from dispatch into platform x region scrape tasks
+ * arranged horizontally, then the linear flow through the rest.
  */
 
 import type { AgentRun, PlatformSetting, Region } from '../api';
@@ -9,10 +9,10 @@ import type { AgentRun, PlatformSetting, Region } from '../api';
 // ── Layout constants ──────────────────────────────────────────────────
 const NW = 100;   // node width
 const NH = 32;    // node height
-const FNW = 88;   // fan-out node width (smaller)
-const FNH = 28;   // fan-out node height
-const GAP_Y = 52; // vertical gap between rows
-const FAN_GAP = 36; // vertical gap between fan-out nodes
+const FNW = 80;   // fan-out node width
+const FNH = 26;   // fan-out node height
+const FAN_GAP_X = 12; // horizontal gap between fan-out nodes
+const GAP_Y = 46; // vertical gap between rows
 
 const STATUS_STYLES = {
   idle:   { fill: '#f9fafb', stroke: '#d1d5db', text: '#6b7280' },
@@ -32,7 +32,6 @@ function nodeStatus(statKey: keyof AgentRun | undefined, run: AgentRun | null, n
   return 'idle';
 }
 
-// ── Render helpers ────────────────────────────────────────────────────
 function RNode({ x, y, w, h, label, subtitle, status }: {
   x: number; y: number; w: number; h: number;
   label: string; subtitle?: string | null; status: Status;
@@ -52,10 +51,6 @@ function RNode({ x, y, w, h, label, subtitle, status }: {
   );
 }
 
-function Arrow({ x1, y1, x2, y2, dashed }: { x1: number; y1: number; x2: number; y2: number; dashed?: boolean }) {
-  return <line x1={x1} y1={y1} x2={x2} y2={y2} stroke={dashed ? '#d1d5db' : '#9ca3af'} strokeWidth={dashed ? 1 : 1.5} strokeDasharray={dashed ? '4 3' : undefined} markerEnd={dashed ? 'url(#ag)' : 'url(#a)'} />;
-}
-
 function CurveArrow({ x1, y1, x2, y2, cpx, label }: { x1: number; y1: number; x2: number; y2: number; cpx: number; label?: string }) {
   return (
     <g>
@@ -65,7 +60,6 @@ function CurveArrow({ x1, y1, x2, y2, cpx, label }: { x1: number; y1: number; x2
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────
 interface Props {
   latestRun: AgentRun | null;
   platforms: PlatformSetting[];
@@ -79,19 +73,20 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
   const enabledPlatforms = platforms.filter((p) => p.enabled);
   const enabledRegions = regions.filter((r) => r.enabled);
 
-  // Build fan-out labels: one node per platform showing its regions
   const fanOutItems = enabledPlatforms.flatMap((p) =>
     enabledRegions.map((r) => ({ key: `${p.platform}-${r.name}`, platform: p.platform, region: r.name }))
   );
   const fanCount = Math.max(fanOutItems.length, 1);
 
-  // Dynamic layout calculations
-  const centerX = 160;
-  const fanStartY = 40 + NH + GAP_Y; // below dispatch
-  const fanHeight = fanCount * FNH + (fanCount - 1) * (FAN_GAP - FNH);
-  const mergeY = fanStartY + fanHeight + GAP_Y * 0.6;
+  // Horizontal fan-out layout
+  const fanTotalW = fanCount * FNW + (fanCount - 1) * FAN_GAP_X;
+  const centerX = Math.max(200, fanTotalW / 2 + 40);
+  const svgW = centerX * 2;
 
-  // Pipeline nodes after merge
+  const dispatchY = 36;
+  const fanY = dispatchY + NH + GAP_Y * 0.8;
+  const mergeY = fanY + FNH + GAP_Y * 0.8;
+
   const pipelineNodes: { id: string; label: string; statKey?: keyof AgentRun }[] = [
     { id: 'triage', label: 'Triage', statKey: 'triaged' },
     { id: 'enrich', label: 'Enrich', statKey: 'passedTriage' },
@@ -103,16 +98,13 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
     { id: 'summarize', label: 'Summarize' },
   ];
 
-  const pipeStartY = mergeY + NH + GAP_Y * 0.7;
-  const totalH = pipeStartY + pipelineNodes.length * (NH + GAP_Y * 0.7) + 10;
-  const svgW = centerX * 2 + 80;
+  const pipeStartY = mergeY + NH + GAP_Y * 0.6;
+  const pipeGap = NH + GAP_Y * 0.55;
+  const totalH = pipeStartY + pipelineNodes.length * pipeGap + 10;
 
-  // Dispatch position
   const dispatchX = centerX - NW / 2;
-  const dispatchY = 40;
-
-  // Merge position
   const mergeX = centerX - NW / 2;
+  const fanStartX = centerX - fanTotalW / 2;
 
   return (
     <div className="border border-gray-200 rounded-lg bg-white p-4 overflow-x-auto">
@@ -138,7 +130,7 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${svgW} ${totalH}`} className="w-full mx-auto" style={{ maxWidth: 420, minHeight: Math.min(totalH, 500) }}>
+      <svg viewBox={`0 0 ${svgW} ${totalH}`} className="w-full mx-auto" style={{ maxWidth: Math.max(420, fanTotalW + 80), minHeight: Math.min(totalH * 0.6, 500) }}>
         <defs>
           <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth={5} markerHeight={5} orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#9ca3af" /></marker>
           <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth={4} markerHeight={4} orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d1d5db" /></marker>
@@ -149,41 +141,35 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
           subtitle={`${enabledPlatforms.length}p x ${enabledRegions.length}r`}
           status={nodeStatus(undefined, latestRun, 'dispatch')} />
 
-        {/* ── Fan-out edges + scrape nodes ── */}
+        {/* ── Fan-out: horizontal scrape nodes ── */}
         {fanOutItems.length > 0 ? fanOutItems.map((item, i) => {
-          const fanY = fanStartY + i * FAN_GAP;
-          const fanX = centerX - FNW / 2;
-          const dcx = dispatchX + NW / 2;
-          const dcy = dispatchY + NH;
-          const fnCx = fanX + FNW / 2;
-          const fnCy = fanY + FNH / 2;
+          const fx = fanStartX + i * (FNW + FAN_GAP_X);
+          const fCx = fx + FNW / 2;
+          const dCx = dispatchX + NW / 2;
+          const dBot = dispatchY + NH;
+          const mCx = mergeX + NW / 2;
 
-          // Capitalize platform name
           const pLabel = item.platform.charAt(0).toUpperCase() + item.platform.slice(1, 3);
-          const label = `${pLabel}/${item.region}`;
 
           return (
             <g key={item.key}>
-              {/* Edge from dispatch to fan node */}
+              {/* Dispatch -> fan node */}
               <path
-                d={`M ${dcx} ${dcy} C ${dcx} ${dcy + 20}, ${fnCx} ${fnCy - 20}, ${fnCx} ${fanY}`}
+                d={`M ${dCx} ${dBot} C ${dCx} ${dBot + 15}, ${fCx} ${fanY - 15}, ${fCx} ${fanY}`}
                 fill="none" stroke="#9ca3af" strokeWidth={1} markerEnd="url(#a)"
               />
-              {/* Fan-out scrape node */}
-              <RNode x={fanX} y={fanY} w={FNW} h={FNH}
-                label={label}
+              <RNode x={fx} y={fanY} w={FNW} h={FNH}
+                label={`${pLabel}/${item.region}`}
                 status={nodeStatus('scraped', latestRun, 'scrapeOne')} />
-              {/* Edge from fan node to merge */}
+              {/* Fan node -> merge */}
               <path
-                d={`M ${fnCx} ${fanY + FNH} C ${fnCx} ${fanY + FNH + 20}, ${mergeX + NW / 2} ${mergeY - 20}, ${mergeX + NW / 2} ${mergeY}`}
+                d={`M ${fCx} ${fanY + FNH} C ${fCx} ${fanY + FNH + 15}, ${mCx} ${mergeY - 15}, ${mCx} ${mergeY}`}
                 fill="none" stroke="#9ca3af" strokeWidth={1} markerEnd="url(#a)"
               />
             </g>
           );
         }) : (
-          <g>
-            <Arrow x1={centerX} y1={dispatchY + NH} x2={centerX} y2={mergeY} />
-          </g>
+          <line x1={centerX} y1={dispatchY + NH} x2={centerX} y2={mergeY} stroke="#9ca3af" strokeWidth={1.5} markerEnd="url(#a)" />
         )}
 
         {/* ── Merge node ── */}
@@ -193,37 +179,29 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
 
         {/* ── Linear pipeline nodes ── */}
         {pipelineNodes.map((node, i) => {
-          const ny = pipeStartY + i * (NH + GAP_Y * 0.7);
+          const ny = pipeStartY + i * pipeGap;
           const nx = centerX - NW / 2;
-          const status = nodeStatus(node.statKey, latestRun, node.id);
-          const count = node.statKey && latestRun ? (latestRun[node.statKey] as number | null) : null;
+          const prevBot = i === 0 ? mergeY + NH : pipeStartY + (i - 1) * pipeGap + NH;
 
           return (
             <g key={node.id}>
-              {/* Edge from previous node */}
-              <Arrow
-                x1={centerX}
-                y1={i === 0 ? mergeY + NH : pipeStartY + (i - 1) * (NH + GAP_Y * 0.7) + NH}
-                x2={centerX}
-                y2={ny}
-              />
+              <line x1={centerX} y1={prevBot} x2={centerX} y2={ny} stroke="#9ca3af" strokeWidth={1.5} markerEnd="url(#a)" />
               <RNode x={nx} y={ny} w={NW} h={NH} label={node.label}
-                subtitle={count != null ? String(count) : null}
-                status={status} />
+                subtitle={node.statKey && latestRun ? (latestRun[node.statKey] as number | null)?.toString() ?? null : null}
+                status={nodeStatus(node.statKey, latestRun, node.id)} />
             </g>
           );
         })}
 
         {/* ── Retry edges ── */}
         {(() => {
-          // Triage retry -> dispatch
-          const triageY = pipeStartY + 0 * (NH + GAP_Y * 0.7) + NH / 2;
-          const evalY = pipeStartY + 3 * (NH + GAP_Y * 0.7) + NH / 2;
-          const rightEdge = centerX + NW / 2 + 30;
+          const triageY = pipeStartY + 0 * pipeGap + NH / 2;
+          const evalY = pipeStartY + 3 * pipeGap + NH / 2;
+          const rightEdge = centerX + NW / 2;
           return (
             <g>
-              <CurveArrow x1={centerX + NW / 2} y1={triageY} x2={dispatchX + NW} y2={dispatchY + NH / 2} cpx={rightEdge + 30} label="retry" />
-              <CurveArrow x1={centerX + NW / 2} y1={evalY} x2={dispatchX + NW} y2={dispatchY + NH / 2} cpx={rightEdge + 50} label="retry" />
+              <CurveArrow x1={rightEdge} y1={triageY} x2={dispatchX + NW} y2={dispatchY + NH / 2} cpx={rightEdge + 40} label="retry" />
+              <CurveArrow x1={rightEdge} y1={evalY} x2={dispatchX + NW} y2={dispatchY + NH / 2} cpx={rightEdge + 55} label="retry" />
             </g>
           );
         })()}

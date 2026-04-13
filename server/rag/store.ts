@@ -1,9 +1,8 @@
 /**
  * Vector store backed by pgvector (Postgres extension).
  *
- * Uses the same Postgres database as the main app. The knowledge_chunks
- * and knowledge_vec tables are created via raw SQL since they use
- * pgvector types not supported by Drizzle.
+ * Single table: knowledge_chunks stores content, metadata, AND the
+ * embedding vector. No separate knowledge_vec join table.
  */
 
 import { createHash } from 'crypto';
@@ -34,7 +33,7 @@ export interface SearchResult extends KnowledgeChunk {
 
 let initialized = false;
 
-/** Ensure pgvector extension and tables exist. Safe to call multiple times. */
+/** Ensure pgvector extension and table exist. Safe to call multiple times. */
 export async function initStore(): Promise<void> {
   if (initialized) return;
 
@@ -49,30 +48,46 @@ export async function initStore(): Promise<void> {
       content TEXT NOT NULL,
       metadata JSONB NOT NULL DEFAULT '{}',
       content_hash TEXT,
+      embedding vector(${DIMENSIONS}),
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(type, source, title)
     )
   `);
 
-  // Add content_hash column if it doesn't exist (migration for existing installs)
+  // Migration for existing installs: add embedding column if missing
+  await pool.query(`
+    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS embedding vector(${DIMENSIONS})
+  `);
   await pool.query(`
     ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_hash TEXT
   `);
 
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS knowledge_vec (
-      chunk_id INTEGER PRIMARY KEY REFERENCES knowledge_chunks(id) ON DELETE CASCADE,
-      embedding vector(${DIMENSIONS}) NOT NULL
-    )
+  // Migrate data from legacy knowledge_vec table if it exists
+  const legacyExists = await pool.query(`
+    SELECT 1 FROM information_schema.tables WHERE table_name = 'knowledge_vec'
   `);
+  if (legacyExists.rows.length > 0) {
+    const migrated = await pool.query(`
+      UPDATE knowledge_chunks c
+      SET embedding = v.embedding
+      FROM knowledge_vec v
+      WHERE v.chunk_id = c.id AND c.embedding IS NULL
+    `);
+    if (migrated.rowCount && migrated.rowCount > 0) {
+      logger.info({ migrated: migrated.rowCount }, 'Migrated embeddings from knowledge_vec to knowledge_chunks');
+    }
+    // Drop the legacy table after migration
+    await pool.query('DROP TABLE IF EXISTS knowledge_vec');
+    logger.info('Dropped legacy knowledge_vec table');
+  }
 
   initialized = true;
-  logger.info('RAG tables initialized (pgvector)');
+  logger.info('RAG store initialized (single-table pgvector)');
 }
 
 /**
- * Insert a chunk + its embedding vector. Skips silently on duplicate
- * (same type + source + title).
+ * Insert a chunk + its embedding. Updates content and embedding
+ * only when the content hash changes.
  */
 export async function upsertChunk(
   chunk: Omit<KnowledgeChunk, 'id' | 'createdAt'>,
@@ -81,35 +96,28 @@ export async function upsertChunk(
   await initStore();
 
   const hash = contentHash(chunk.content);
+  const embeddingSql = pgvector.toSql(Array.from(embedding));
 
   const result = await pool.query(
-    `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash, embedding)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (type, source, title) DO UPDATE
        SET content = EXCLUDED.content,
            metadata = EXCLUDED.metadata,
-           content_hash = EXCLUDED.content_hash
+           content_hash = EXCLUDED.content_hash,
+           embedding = EXCLUDED.embedding
        WHERE knowledge_chunks.content_hash IS DISTINCT FROM EXCLUDED.content_hash
      RETURNING id`,
-    [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata), hash],
+    [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata), hash, embeddingSql],
   );
 
-  if (result.rows.length === 0) return null; // unchanged content, no update needed
-
-  const chunkId = result.rows[0].id;
-  // Upsert embedding (update if content changed)
-  await pool.query(
-    `INSERT INTO knowledge_vec (chunk_id, embedding) VALUES ($1, $2)
-     ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
-    [chunkId, pgvector.toSql(Array.from(embedding))],
-  );
-
-  return chunkId;
+  if (result.rows.length === 0) return null;
+  return result.rows[0].id;
 }
 
 /**
  * Batch insert chunks + embeddings in a transaction.
- * Returns count of newly inserted chunks.
+ * Returns count of newly inserted/updated chunks.
  */
 export async function upsertChunks(
   chunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[],
@@ -130,27 +138,22 @@ export async function upsertChunks(
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const hash = contentHash(chunk.content);
+      const embeddingSql = pgvector.toSql(Array.from(embeddings[i]));
+
       const result = await client.query(
-        `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash, embedding)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (type, source, title) DO UPDATE
            SET content = EXCLUDED.content,
                metadata = EXCLUDED.metadata,
-               content_hash = EXCLUDED.content_hash
+               content_hash = EXCLUDED.content_hash,
+               embedding = EXCLUDED.embedding
            WHERE knowledge_chunks.content_hash IS DISTINCT FROM EXCLUDED.content_hash
          RETURNING id`,
-        [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata), hash],
+        [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata), hash, embeddingSql],
       );
 
-      if (result.rows.length > 0) {
-        const chunkId = result.rows[0].id;
-        await client.query(
-          `INSERT INTO knowledge_vec (chunk_id, embedding) VALUES ($1, $2)
-           ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
-          [chunkId, pgvector.toSql(Array.from(embeddings[i]))],
-        );
-        inserted++;
-      }
+      if (result.rows.length > 0) inserted++;
     }
 
     await client.query('COMMIT');
@@ -182,20 +185,21 @@ export async function search(
 
   if (type) {
     query = `
-      SELECT v.chunk_id, v.embedding <=> $1 as distance, c.*
-      FROM knowledge_vec v
-      JOIN knowledge_chunks c ON c.id = v.chunk_id
-      WHERE c.type = $2
-      ORDER BY v.embedding <=> $1
+      SELECT id, type, source, title, content, metadata, content_hash, created_at,
+             embedding <=> $1 as distance
+      FROM knowledge_chunks
+      WHERE type = $2 AND embedding IS NOT NULL
+      ORDER BY embedding <=> $1
       LIMIT $3
     `;
     params = [embeddingSql, type, k];
   } else {
     query = `
-      SELECT v.chunk_id, v.embedding <=> $1 as distance, c.*
-      FROM knowledge_vec v
-      JOIN knowledge_chunks c ON c.id = v.chunk_id
-      ORDER BY v.embedding <=> $1
+      SELECT id, type, source, title, content, metadata, content_hash, created_at,
+             embedding <=> $1 as distance
+      FROM knowledge_chunks
+      WHERE embedding IS NOT NULL
+      ORDER BY embedding <=> $1
       LIMIT $2
     `;
     params = [embeddingSql, k];
@@ -227,31 +231,13 @@ export async function chunkCount(type?: ChunkType): Promise<number> {
   return parseInt(result.rows[0].count, 10);
 }
 
-/** Delete all chunks of a given type (useful for re-ingestion). */
+/** Delete all chunks of a given type. */
 export async function clearChunks(type: ChunkType): Promise<number> {
   await initStore();
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Delete vectors first (FK constraint)
-    await client.query(
-      'DELETE FROM knowledge_vec WHERE chunk_id IN (SELECT id FROM knowledge_chunks WHERE type = $1)',
-      [type],
-    );
-
-    const result = await client.query(
-      'DELETE FROM knowledge_chunks WHERE type = $1',
-      [type],
-    );
-
-    await client.query('COMMIT');
-    return result.rowCount ?? 0;
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  const result = await pool.query(
+    'DELETE FROM knowledge_chunks WHERE type = $1',
+    [type],
+  );
+  return result.rowCount ?? 0;
 }
