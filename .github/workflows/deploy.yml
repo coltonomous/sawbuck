@@ -88,6 +88,16 @@ jobs:
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
 
+          # Write AWS credentials for Docker daemon's awslogs driver
+          # (daemon runs as root, can't use EC2 IMDS from container context)
+          _ak=$(grep '^AWS_ACCESS_KEY_ID=' .env | cut -d= -f2-)
+          _sk=$(grep '^AWS_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)
+          _rg=$(grep '^AWS_REGION=' .env | cut -d= -f2-)
+          sudo mkdir -p /root/.aws
+          printf '[default]\naws_access_key_id = %s\naws_secret_access_key = %s\n' "\$_ak" "\$_sk" | sudo tee /root/.aws/credentials > /dev/null
+          printf '[default]\nregion = %s\n' "\$_rg" | sudo tee /root/.aws/config > /dev/null
+          sudo chmod 600 /root/.aws/credentials
+
           docker compose down --remove-orphans 2>/dev/null || true
 
           # Reclaim disk: remove all unused images and build cache (keeps volumes)
