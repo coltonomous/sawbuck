@@ -81,6 +81,8 @@ export default function Settings() {
     if (shouldPoll && !pollRef.current) {
       pollRef.current = setInterval(() => {
         api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
+        api.getPlatforms().then(setPlatforms).catch(() => {});
+        api.getRegions().then(setRegionsData).catch(() => {});
       }, 5_000);
     } else if (!shouldPoll && pollRef.current) {
       clearInterval(pollRef.current);
@@ -558,29 +560,21 @@ export default function Settings() {
         <div className="space-y-4">
         <PipelineGraph
           latestRun={agentRuns[0] ?? null}
-          platformCount={platforms.filter((p) => p.enabled).length}
-          regionCount={regionsData.filter((r) => r.enabled).length}
+          platforms={platforms}
+          regions={regionsData}
+          onTriggerRun={async () => {
+            try {
+              await api.triggerAgentRun();
+              toast('success', 'Agent pipeline run started');
+              api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
+            } catch (err) {
+              toast('error', err instanceof Error ? err.message : 'Failed to start run');
+            }
+          }}
         />
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Agent Run History</h3>
-            <div className="flex gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    await api.triggerAgentRun();
-                    toast('success', 'Agent pipeline run started');
-                    // Reload immediately so polling detects the running state
-                    api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
-                  } catch (err) {
-                    toast('error', err instanceof Error ? err.message : 'Failed to start run');
-                  }
-                }}
-                className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Run Now
-              </button>
-            </div>
           </div>
           {agentRuns.length === 0 ? (
             <p className="text-sm text-gray-500">No agent runs yet.</p>
