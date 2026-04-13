@@ -138,6 +138,7 @@ describe('Agent Pipeline Integration', () => {
         condition_notes: 'Good condition',
         wood_species: 'walnut',
         wood_confidence: 0.85,
+        species_discrepancy: null,
         notable_features: ['dovetail joints'],
         damage_items: ['minor scratches'],
         refinishing_potential: 'high',

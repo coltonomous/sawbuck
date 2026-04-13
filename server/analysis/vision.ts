@@ -15,6 +15,7 @@ const FurnitureAnalysisSchema = z.object({
   condition_notes: z.string().default(''),
   wood_species: z.string().nullable().default(null),
   wood_confidence: z.number().min(0).max(1).default(0),
+  species_discrepancy: z.string().nullable().default(null),
   notable_features: z.array(z.string()).default([]),
   damage_items: z.array(z.string()).default([]),
   refinishing_potential: z.enum(['high', 'medium', 'low']).default('low'),
@@ -32,6 +33,7 @@ const ANALYSIS_JSON_SCHEMA = {
     condition_notes: { type: 'string' },
     wood_species: { type: 'string', nullable: true },
     wood_confidence: { type: 'number', minimum: 0, maximum: 1 },
+    species_discrepancy: { type: 'string', nullable: true, description: 'If the seller claims a different wood species than what the photos show, note it here (e.g. "Seller claims cherry, grain suggests oak"). Null if no conflict.' },
     notable_features: { type: 'array', items: { type: 'string' } },
     damage_items: { type: 'array', items: { type: 'string' } },
     refinishing_potential: { type: 'string', enum: ['high', 'medium', 'low'] },
@@ -62,8 +64,9 @@ const ANALYSIS_PROMPT = `Analyze this furniture piece from the listing photos. R
   "furniture_style": "design period/style (mid-century modern, victorian, art deco, farmhouse, industrial, contemporary, traditional, colonial, danish modern, japanese/tansu, chinese, korean, chinoiserie, campaign, shaker, mission/craftsman, regency, bohemian, coastal, brutalist, etc.)",
   "condition_score": 1-10 number (10=like new, 7=good minor wear, 5=fair visible issues, 3=needs significant work, 1=heavily damaged),
   "condition_notes": "specific observations about condition — scratches, stains, missing hardware, structural issues, finish wear",
-  "wood_species": "best guess (oak, walnut, maple, teak, pine, mahogany, cherry, rosewood, elm, paulownia, cedar, cypress, bamboo, etc.) or null if cannot determine",
-  "wood_confidence": 0-1 confidence in wood identification,
+  "wood_species": "best guess based on what YOU see in the photos (oak, walnut, maple, teak, pine, mahogany, cherry, rosewood, elm, paulownia, cedar, cypress, bamboo, etc.) or null if cannot determine",
+  "wood_confidence": 0-1 confidence in wood identification (lower if seller's claim conflicts with what you see),
+  "species_discrepancy": "if the seller's title/description claims a different species than what the photos show, note it here (e.g. 'Seller claims cherry, grain pattern consistent with oak'). null if no conflict or seller didn't specify.",
   "notable_features": ["array of noteworthy features: dovetail joints, original hardware, unique design, solid wood construction, etc."],
   "damage_items": ["array of specific damage or wear: water ring on top, scratch on left side, missing drawer pull, etc."],
   "refinishing_potential": "high/medium/low — how much value could refinishing add",
@@ -128,7 +131,8 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
     prompt += `\n\n--- LISTING CONTEXT ---\n${contextParts.join('\n')}\n--- END CONTEXT ---\n\nIMPORTANT: Cross-reference the photos with the title and description. They may contradict each other or contain critical details:
 - Quantities: title may say "set of 6" or "pair" but photos show only one item. Price and value ALL items, not just what's visible.
 - Count what you see: if photos show multiple chairs/items, count them and factor that into your assessment.
-- Materials: description may specify "solid oak" or "particle board" — trust text over visual guesses.
+- Wood species: sellers frequently misidentify wood. If the title/description claims a species (e.g. "cherry") but the grain, color, or pore pattern in the photos suggests something different (e.g. oak), trust YOUR visual assessment over the seller's claim. Note the discrepancy in condition_notes (e.g. "Seller claims cherry but grain pattern is consistent with oak"). Set wood_confidence lower when there's a conflict.
+- Materials: for non-wood claims (solid vs. particle board, veneer vs. solid), trust the description since those are hard to tell from photos alone.
 - Hidden damage: description may disclose issues not visible in photos.
 Your analysis and profit verdict must account for the COMPLETE listing, not just the primary photo.`;
   }
