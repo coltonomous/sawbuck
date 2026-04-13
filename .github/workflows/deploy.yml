@@ -88,15 +88,16 @@ jobs:
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
 
-          # Write AWS credentials for Docker daemon's awslogs driver
-          # (daemon runs as root, can't use EC2 IMDS from container context)
-          _ak=$(grep '^AWS_ACCESS_KEY_ID=' .env | cut -d= -f2-)
-          _sk=$(grep '^AWS_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)
-          _rg=$(grep '^AWS_REGION=' .env | cut -d= -f2-)
-          sudo mkdir -p /root/.aws
-          printf '[default]\naws_access_key_id = %s\naws_secret_access_key = %s\n' "\$_ak" "\$_sk" | sudo tee /root/.aws/credentials > /dev/null
-          printf '[default]\nregion = %s\n' "\$_rg" | sudo tee /root/.aws/config > /dev/null
-          sudo chmod 600 /root/.aws/credentials
+          # Inject AWS credentials into Docker daemon for awslogs driver
+          # (IMDS is unreachable from the daemon's log driver context)
+          _ak=\$(grep '^AWS_ACCESS_KEY_ID=' .env | cut -d= -f2-)
+          _sk=\$(grep '^AWS_SECRET_ACCESS_KEY=' .env | cut -d= -f2-)
+          _rg=\$(grep '^AWS_REGION=' .env | cut -d= -f2-)
+          sudo mkdir -p /etc/systemd/system/docker.service.d
+          printf '[Service]\nEnvironment="AWS_ACCESS_KEY_ID=%s"\nEnvironment="AWS_SECRET_ACCESS_KEY=%s"\nEnvironment="AWS_REGION=%s"\n' "\$_ak" "\$_sk" "\$_rg" | sudo tee /etc/systemd/system/docker.service.d/aws.conf > /dev/null
+          sudo systemctl daemon-reload
+          sudo systemctl restart docker
+          sleep 3
 
           docker compose down --remove-orphans 2>/dev/null || true
 
