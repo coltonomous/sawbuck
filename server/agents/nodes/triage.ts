@@ -140,14 +140,31 @@ async function fetchImageAsBase64(url: string): Promise<ImageInput | null> {
 
 export async function triageCandidates(state: AgentState): Promise<Partial<AgentState>> {
   const candidates = state.scrapedCandidates;
-  const maxToTriage = Math.min(
-    candidates.length,
-    agentConfig.maxTriages - state.triageCount,
-  );
+  const triageCounts = state.triageCount;
+  const maxPerPlatform = agentConfig.maxTriages;
 
-  if (maxToTriage <= 0) {
-    logger.info('Triage: no candidates to triage or cap reached');
-    return { triagedCandidates: [], passedTriage: [], triageCount: state.triageCount };
+  // Group candidates by platform and apply per-platform budget
+  const byPlatform = new Map<string, ScrapedCandidate[]>();
+  for (const c of candidates) {
+    const group = byPlatform.get(c.platform) ?? [];
+    group.push(c);
+    byPlatform.set(c.platform, group);
+  }
+
+  const toProcess: ScrapedCandidate[] = [];
+  for (const [platform, platformCandidates] of byPlatform) {
+    const used = triageCounts[platform] ?? 0;
+    const remaining = Math.max(0, maxPerPlatform - used);
+    if (remaining > 0) {
+      toProcess.push(...platformCandidates.slice(0, remaining));
+    } else {
+      logger.info({ platform, used }, 'Triage: platform budget exhausted');
+    }
+  }
+
+  if (toProcess.length === 0) {
+    logger.info('Triage: no candidates to triage or all platform caps reached');
+    return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
   }
 
   const systemPrompt = await buildSystemPrompt();
@@ -157,7 +174,6 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
   let count = 0;
 
   // ── Pass 1: Text-only batch classification ──────────────────────
-  const toProcess = candidates.slice(0, maxToTriage);
   for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
     const batch = toProcess.slice(i, i + BATCH_SIZE);
 
@@ -225,10 +241,16 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
 
   reportProgress(state.runId, { triaged: triaged.length, passedTriage: passed.length });
 
+  // Update per-platform triage counts
+  const updatedCounts = { ...triageCounts };
+  for (const t of triaged) {
+    updatedCounts[t.platform] = (updatedCounts[t.platform] ?? 0) + 1;
+  }
+
   return {
     triagedCandidates: triaged,
     passedTriage: passed,
-    triageCount: state.triageCount + count,
+    triageCount: updatedCounts,
     errors,
   };
 }

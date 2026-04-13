@@ -58,7 +58,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     qualifiedListings: [],
     listingsWithOptions: [],
     conceptRenders: [],
-    triageCount: 0,
+    triageCount: {},
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,

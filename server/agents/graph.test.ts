@@ -27,7 +27,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     conceptRenders: [],
     removedIds: [],
     reconciledCount: 0,
-    triageCount: 0,
+    triageCount: {},
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,

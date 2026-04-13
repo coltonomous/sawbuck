@@ -42,7 +42,7 @@ function makeState(candidates: ScrapedCandidate[], overrides: Partial<AgentState
     qualifiedListings: [],
     listingsWithOptions: [],
     conceptRenders: [],
-    triageCount: 0,
+    triageCount: {},
     evalCount: 0,
     qualifiedCount: 0,
     conceptsRendered: 0,
@@ -155,11 +155,11 @@ describe('triageCandidates', () => {
       candidates.slice(0, 2).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
     ));
 
-    // Already triaged 48, cap is 50, so only 2 should be processed
-    const result = await triageCandidates(makeState(candidates, { triageCount: 48 }));
+    // Already triaged 48 for craigslist, cap is 50, so only 2 should be processed
+    const result = await triageCandidates(makeState(candidates, { triageCount: { craigslist: 48 } }));
 
     expect(mockAnalyze).toHaveBeenCalledTimes(1);
-    expect(result.triageCount).toBe(50);
+    expect(result.triageCount).toEqual({ craigslist: 50 });
   });
 
   it('handles batch errors gracefully', async () => {
@@ -177,7 +177,7 @@ describe('triageCandidates', () => {
 
     expect(result.triagedCandidates).toHaveLength(5); // first batch succeeded
     expect(result.errors).toHaveLength(1); // second batch failed
-    expect(result.triageCount).toBe(5);
+    expect(result.triageCount).toEqual({ craigslist: 5 });
   });
 });
 

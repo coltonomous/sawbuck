@@ -41,9 +41,14 @@ function RNode({ x, y, w, h, label, subtitle, status }: {
     <g>
       <rect x={x} y={y} width={w} height={h} rx={5} fill={s.fill} stroke={s.stroke} strokeWidth={1.5} />
       {status === 'active' && (
-        <rect x={x} y={y} width={w} height={h} rx={5} fill="none" stroke="#3b82f6" strokeWidth={2} opacity={0.4}>
-          <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite" />
-        </rect>
+        <g>
+          <rect x={x} y={y} width={w} height={h} rx={5} fill="none" stroke="#3b82f6" strokeWidth={2.5} opacity={0.5}>
+            <animate attributeName="opacity" values="0.5;0.1;0.5" dur="1.5s" repeatCount="indefinite" />
+          </rect>
+          <rect x={x - 2} y={y - 2} width={w + 4} height={h + 4} rx={7} fill="none" stroke="#93c5fd" strokeWidth={1} opacity={0.3}>
+            <animate attributeName="opacity" values="0.3;0;0.3" dur="1.5s" repeatCount="indefinite" />
+          </rect>
+        </g>
       )}
       <text x={x + w / 2} y={y + (subtitle ? h / 2 - 3 : h / 2 + 1)} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={500} fill={s.text}>{label}</text>
       {subtitle && <text x={x + w / 2} y={y + h / 2 + 9} textAnchor="middle" dominantBaseline="middle" fontSize={8} fill={s.text} opacity={0.6}>{subtitle}</text>}
@@ -129,6 +134,12 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
           </button>
         </div>
       </div>
+
+      {isRunning && (
+        <p className="text-xs text-amber-600 bg-amber-50 rounded px-2.5 py-1.5 mb-3">
+          Platform and region changes are queued for the next run.
+        </p>
+      )}
 
       <svg viewBox={`0 0 ${svgW} ${totalH}`} className="w-full mx-auto" style={{ maxWidth: Math.max(420, fanTotalW + 80), minHeight: Math.min(totalH * 0.6, 500) }}>
         <defs>
