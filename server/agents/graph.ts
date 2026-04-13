@@ -40,25 +40,26 @@ function afterEvaluate(state: AgentState): 'planOptions' | 'scrape' | 'summarize
   return 'summarize';
 }
 
-function afterPlanOptions(state: AgentState): 'render' | 'summarize' {
-  if (state.listingsWithOptions.length === 0) return 'summarize';
-  if (state.conceptsRendered >= agentConfig.maxListingsRendered) return 'summarize';
-  if (!process.env.FAL_KEY) return 'summarize';
-  return 'render';
+function afterPlanOptions(state: AgentState): 'render' | 'scrape' | 'summarize' {
+  if (state.listingsWithOptions.length > 0 && process.env.FAL_KEY && state.conceptsRendered < agentConfig.maxListingsRendered) {
+    return 'render';
+  }
+  // No render possible — check if we should loop for more qualified listings
+  if (shouldLoop(state)) return 'scrape';
+  return 'summarize';
 }
 
 function afterRender(state: AgentState): 'scrape' | 'summarize' {
-  // Keep looping if we haven't found enough qualified listings
-  // and we haven't exhausted pages or hit caps
-  if (
-    state.evalCount < agentConfig.maxEvals &&
-    state.conceptsRendered < agentConfig.maxListingsRendered &&
-    state.conceptsRendered < MIN_QUALIFIED_TARGET &&
-    state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
-  ) {
-    return 'scrape';
-  }
+  if (shouldLoop(state)) return 'scrape';
   return 'summarize';
+}
+
+function shouldLoop(state: AgentState): boolean {
+  return (
+    state.qualifiedCount < MIN_QUALIFIED_TARGET &&
+    state.evalCount < agentConfig.maxEvals &&
+    state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
+  );
 }
 
 // Graph flow:
@@ -91,6 +92,7 @@ const graph = new StateGraph(AgentAnnotation)
   })
   .addConditionalEdges('planOptions', afterPlanOptions, {
     render: 'render',
+    scrape: 'scrape',
     summarize: 'summarize',
   })
   .addConditionalEdges('render', afterRender, {

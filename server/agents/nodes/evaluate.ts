@@ -151,6 +151,7 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
     evaluatedCandidates: evaluated,
     qualifiedListings: qualified,
     evalCount: state.evalCount + evaluated.length,
+    qualifiedCount: state.qualifiedCount + qualified.length,
     errors,
   };
 }

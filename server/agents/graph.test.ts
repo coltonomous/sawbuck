@@ -29,6 +29,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     reconciledCount: 0,
     triageCount: 0,
     evalCount: 0,
+    qualifiedCount: 0,
     conceptsRendered: 0,
     scrapeAttempts: 0,
     seenExternalIds: [],
@@ -59,40 +60,32 @@ describe('afterEvaluate', () => {
 describe('afterRender', () => {
   it('loops to scrape when under all caps and target not met', () => {
     expect(afterRender(makeState({
+      qualifiedCount: 1,
       evalCount: 3,
-      conceptsRendered: 1,
       scrapeAttempts: 2,
     }))).toBe('scrape');
   });
 
-  it('summarizes when target met', () => {
+  it('summarizes when qualified target met', () => {
     expect(afterRender(makeState({
+      qualifiedCount: MIN_QUALIFIED_TARGET,
       evalCount: 3,
-      conceptsRendered: MIN_QUALIFIED_TARGET,
       scrapeAttempts: 2,
     }))).toBe('summarize');
   });
 
   it('summarizes when eval cap hit', () => {
     expect(afterRender(makeState({
+      qualifiedCount: 1,
       evalCount: 10,
-      conceptsRendered: 1,
-      scrapeAttempts: 2,
-    }))).toBe('summarize');
-  });
-
-  it('summarizes when render cap hit', () => {
-    expect(afterRender(makeState({
-      evalCount: 3,
-      conceptsRendered: 5,
       scrapeAttempts: 2,
     }))).toBe('summarize');
   });
 
   it('summarizes when scrape attempts exhausted', () => {
     expect(afterRender(makeState({
+      qualifiedCount: 1,
       evalCount: 3,
-      conceptsRendered: 1,
       scrapeAttempts: MAX_SCRAPE_ATTEMPTS,
     }))).toBe('summarize');
   });
@@ -133,18 +126,27 @@ describe('afterPlanOptions', () => {
     delete process.env.FAL_KEY;
   });
 
-  it('summarizes when no FAL_KEY', () => {
+  it('loops to scrape when no FAL_KEY and under target', () => {
     delete process.env.FAL_KEY;
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], conceptsRendered: 0 }))).toBe('summarize');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 1, evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
+  });
+
+  it('summarizes when no FAL_KEY and target met', () => {
+    delete process.env.FAL_KEY;
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: MIN_QUALIFIED_TARGET, evalCount: 3, scrapeAttempts: 1 }))).toBe('summarize');
   });
 
   it('summarizes when render cap hit', () => {
     process.env.FAL_KEY = 'test';
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], conceptsRendered: 5 }))).toBe('summarize');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], conceptsRendered: 5, qualifiedCount: MIN_QUALIFIED_TARGET }))).toBe('summarize');
     delete process.env.FAL_KEY;
   });
 
-  it('summarizes when no listings with options', () => {
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [] }))).toBe('summarize');
+  it('summarizes when no listings with options and target met', () => {
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [], qualifiedCount: MIN_QUALIFIED_TARGET }))).toBe('summarize');
+  });
+
+  it('loops to scrape when no listings with options and under target', () => {
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [], qualifiedCount: 0, evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
   });
 });

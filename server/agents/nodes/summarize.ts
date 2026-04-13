@@ -10,7 +10,7 @@ export async function summarizeRun(state: AgentState): Promise<Partial<AgentStat
     passedTriage: state.passedTriage.length,
     reconciled: state.reconciledCount,
     evaluated: state.evaluatedCandidates.length,
-    qualified: state.qualifiedListings.length,
+    qualified: state.qualifiedCount,
     rendered: state.conceptRenders.length,
     errors: state.errors.length,
   };

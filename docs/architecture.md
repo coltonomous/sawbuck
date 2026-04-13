@@ -86,17 +86,23 @@ The core of Sawbuck is an autonomous LangGraph pipeline that discovers, evaluate
               |    | planOptions |                        |
               |    +------+------+                        |
               |           |                               |
+              |      +----+-----+                         |
+              |      | no FAL   |                         |
+              |      | or cap   |----> < 3 qualified? ────+
+              |      +----+-----+----> 3+ qualified? ──> summarize
+              |           |                               |
+              |       can render                          |
               |           v                               |
               |    +--------+                             |
               |    | render |                             |
               |    +---+----+                             |
               |        |                                  |
-              |   +----+-----+                            |
-              |   | < 3      |                            |
-              |   | rendered |----> under caps? ──────────+
-              |   +----+-----+----> caps hit? ──> summarize
+              |   +----+------+                           |
+              |   | < 3       |                           |
+              |   | qualified |----> under caps? ─────────+
+              |   +----+------+----> caps hit? ──> summarize
               |        |
-              |   3+ rendered
+              |   3+ qualified
               |        v
               |   +-----------+     +-----+
               +-->| summarize |---->| END |
@@ -118,10 +124,13 @@ The core of Sawbuck is an autonomous LangGraph pipeline that discovers, evaluate
 
 ### Loop Behavior
 
-The pipeline loops back to scrape when:
+The pipeline loops back to scrape when fewer than 3 listings have qualified (buy/strong_buy). Loop-back points:
 - **After triage**: 0 candidates passed but scrape attempts remain (tries next CL page)
-- **After evaluate**: 0 listings qualified but eval cap not hit (tries next page)
-- **After render**: fewer than 3 listings rendered and caps not exhausted
+- **After evaluate**: 0 listings qualified this iteration but eval cap not hit
+- **After planOptions**: no FAL_KEY or render cap hit, but still under qualified target
+- **After render**: fewer than 3 qualified listings and caps not exhausted
+
+The `qualifiedCount` counter accumulates across loop iterations and is the primary signal for "do we have enough." This works regardless of whether FAL_KEY is set.
 
 Caps that prevent infinite loops:
 - `MAX_SCRAPE_ATTEMPTS` = 5 (CL search pages)

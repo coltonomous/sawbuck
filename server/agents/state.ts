@@ -84,6 +84,7 @@ export interface AgentState {
   reconciledCount: number;
   triageCount: number;
   evalCount: number;
+  qualifiedCount: number;
   conceptsRendered: number;
   scrapeAttempts: number;
   seenExternalIds: string[]; // track IDs across retries to avoid re-triaging
@@ -140,6 +141,10 @@ export const AgentAnnotation = Annotation.Root({
     default: () => 0,
   }),
   evalCount: Annotation<number>({
+    reducer: (_prev, next) => next,
+    default: () => 0,
+  }),
+  qualifiedCount: Annotation<number>({
     reducer: (_prev, next) => next,
     default: () => 0,
   }),
