@@ -27,8 +27,8 @@ export const TriageItemSchema = z.object({
   id: z.string(),
   is_wood_furniture: z.boolean().nullable().transform((v) => v ?? false),
   has_flip_potential: z.boolean().nullable().transform((v) => v ?? false),
-  furniture_type: z.string().default('unknown'),
-  reasoning: z.string().default(''),
+  furniture_type: z.string().nullable().transform((v) => v ?? 'unknown'),
+  reasoning: z.string().nullable().transform((v) => v ?? ''),
   confidence_score: z.number().min(0).max(1).nullable().transform((v) => v ?? 0),
 });
 

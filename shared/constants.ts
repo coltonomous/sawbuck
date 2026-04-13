@@ -4,7 +4,7 @@
 export const PLATFORMS = ['craigslist', 'offerup', 'ebay', 'sawbuck'] as const;
 export type Platform = (typeof PLATFORMS)[number];
 
-export const LISTING_STATUSES = ['new', 'analyzed', 'watching', 'acquired', 'dismissed'] as const;
+export const LISTING_STATUSES = ['new', 'analyzed', 'watching', 'acquired', 'dismissed', 'removed'] as const;
 export type ListingStatus = (typeof LISTING_STATUSES)[number];
 
 export const PROJECT_STATUSES = ['acquired', 'refinishing', 'listed', 'sold', 'abandoned'] as const;
@@ -18,14 +18,32 @@ export type PhotoType = (typeof PHOTO_TYPES)[number];
 export const DIFFICULTY_LEVELS = ['beginner', 'intermediate', 'advanced'] as const;
 export type DifficultyLevel = (typeof DIFFICULTY_LEVELS)[number];
 
-export const DOWNLOAD_STATUSES = ['pending', 'downloaded', 'failed'] as const;
+export const DOWNLOAD_STATUSES = ['pending', 'downloaded', 'failed', 'cleaned'] as const;
+export type DownloadStatus = (typeof DOWNLOAD_STATUSES)[number];
 export const ANALYSIS_STATUSES = ['pending', 'analyzed', 'skipped', 'failed'] as const;
+export type AnalysisStatus = (typeof ANALYSIS_STATUSES)[number];
 export const SCRAPE_RUN_STATUSES = ['running', 'completed', 'failed'] as const;
 
 export const FLIP_RECOMMENDATIONS = ['strong_buy', 'buy', 'maybe', 'pass'] as const;
 export type FlipRecommendation = (typeof FLIP_RECOMMENDATIONS)[number];
 
 export const REFINISHING_POTENTIALS = ['high', 'medium', 'low'] as const;
+export type RefinishingPotential = (typeof REFINISHING_POTENTIALS)[number];
+
+export const CONCEPT_DIFFICULTIES = ['simple', 'moderate', 'full'] as const;
+export type ConceptDifficulty = (typeof CONCEPT_DIFFICULTIES)[number];
+
+export const USER_ROLES = ['user', 'admin'] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const RAG_CHUNK_TYPES = ['project', 'product', 'guide'] as const;
+export type RagChunkType = (typeof RAG_CHUNK_TYPES)[number];
+
+export const SHOP_SPACES = ['small_workshop', 'one_car_garage', 'two_car_garage', 'full_shop'] as const;
+export type ShopSpace = (typeof SHOP_SPACES)[number];
+
+export const EXPERIENCE_LEVELS = ['beginner', 'intermediate', 'advanced'] as const;
+export type ExperienceLevel = (typeof EXPERIENCE_LEVELS)[number];
 
 // -- Display labels --------------------------------------------------------
 
@@ -58,6 +76,7 @@ export const LISTING_STATUS_COLORS: Record<ListingStatus, string> = {
   watching: 'bg-amber-50 text-amber-600',
   acquired: 'bg-purple-50 text-purple-600',
   dismissed: 'bg-gray-100 text-gray-400',
+  removed: 'bg-red-50 text-red-400',
 };
 
 export const PROJECT_STATUS_META: Record<string, { bg: string; text: string; header: string; dot: string }> = {

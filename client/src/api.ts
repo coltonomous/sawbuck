@@ -1,3 +1,6 @@
+import type { Platform, ListingStatus, ProjectStatus, FlipRecommendation, PhotoType, UserRole } from '../../shared/constants.js';
+export type { Region, PlatformSetting, RagSource, AgentRunSummary } from '../../shared/types.js';
+
 const BASE = '/api';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -21,30 +24,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-// Shared types
-
-export interface PlatformSetting {
-  platform: string;
-  enabled: boolean;
-}
-
-export interface Region {
-  id: number;
-  name: string;
-  latitude: number;
-  longitude: number;
-  radiusMiles: number;
-  clSubdomain: string | null;
-  enabled: boolean;
-  createdAt: string;
-}
+// Types
 
 export interface AdminUser {
   id: string;
   name: string;
   email: string;
   image: string | null;
-  role: 'user' | 'admin';
+  role: UserRole;
   listingCount: number;
   createdAt: string;
 }
@@ -69,7 +56,7 @@ export interface ListingImage {
 export interface Listing {
   id: number;
   externalId: string;
-  platform: 'craigslist' | 'offerup' | 'ebay' | 'sawbuck';
+  platform: Platform;
   url: string;
   title: string;
   description: string | null;
@@ -80,7 +67,7 @@ export interface Listing {
   sellerName: string | null;
   postedAt: string | null;
   scrapedAt: string;
-  status: 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed' | 'removed';
+  status: ListingStatus;
   furnitureType: string | null;
   furnitureStyle: string | null;
   conditionScore: number | null;
@@ -138,12 +125,6 @@ export interface RefinishingStep {
   tips: string[];
 }
 
-export interface RagSource {
-  title: string;
-  source: string;
-  type: 'project' | 'product' | 'guide';
-}
-
 export interface RefinishingPlan {
   id: number;
   listingId: number;
@@ -186,7 +167,7 @@ export interface Material {
 export interface ProjectPhoto {
   id: number;
   projectId: number;
-  photoType: 'before' | 'during' | 'after';
+  photoType: PhotoType;
   localPath: string;
   caption: string | null;
   takenAt: string;
@@ -196,7 +177,7 @@ export interface Project {
   id: number;
   listingId: number;
   name: string;
-  status: 'acquired' | 'refinishing' | 'listed' | 'sold' | 'abandoned';
+  status: ProjectStatus;
   purchasePrice: number;
   purchaseDate: string | null;
   purchaseNotes: string | null;
@@ -443,7 +424,7 @@ export const api = {
 
   // Admin
   getUsers: () => request<AdminUser[]>('/admin/users'),
-  updateUserRole: (userId: string, role: 'user' | 'admin') =>
+  updateUserRole: (userId: string, role: UserRole) =>
     request<{ ok: boolean }>(`/admin/users/${userId}/role`, { method: 'PATCH', body: JSON.stringify({ role }) }),
   deleteUser: (userId: string) =>
     request<{ ok: boolean }>(`/admin/users/${userId}`, { method: 'DELETE' }),

@@ -4,6 +4,7 @@ import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region }
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
+import PipelineGraph from '../components/PipelineGraph';
 
 interface Preferences {
   preferredLatitude: number | null;
@@ -534,6 +535,8 @@ export default function Settings() {
 
       {/* Agent Runs tab (admin) */}
       {tab === 'runs' && isAdmin && (
+        <div className="space-y-4">
+        <PipelineGraph latestRun={agentRuns[0] ?? null} />
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Agent Run History</h3>
@@ -609,6 +612,7 @@ export default function Settings() {
             </div>
           )}
         </Card>
+        </div>
       )}
     </div>
   );
