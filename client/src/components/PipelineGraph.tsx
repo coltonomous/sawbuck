@@ -73,12 +73,35 @@ const STATUS_STYLES = {
   error: { fill: '#fef2f2', stroke: '#ef4444', text: '#b91c1c' },
 };
 
-export default function PipelineGraph({ latestRun }: { latestRun: AgentRun | null }) {
+interface Props {
+  latestRun: AgentRun | null;
+  platformCount?: number;
+  regionCount?: number;
+}
+
+export default function PipelineGraph({ latestRun, platformCount, regionCount }: Props) {
   const nodeMap = new Map(NODES.map((n) => [n.id, n]));
+  const isRunning = latestRun?.status === 'running';
+
+  // Build dispatch subtitle from platform/region counts
+  const dispatchSubtitle = platformCount != null && regionCount != null
+    ? `${platformCount}p x ${regionCount}r`
+    : null;
 
   return (
     <div className="border border-gray-200 rounded-lg bg-white p-4 mb-4 overflow-x-auto">
-      <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-3">Pipeline Flow</h4>
+      <div className="flex items-center justify-between mb-3">
+        <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Pipeline Flow</h4>
+        {isRunning && (
+          <span className="inline-flex items-center gap-1.5 text-xs text-blue-600">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500" />
+            </span>
+            Running
+          </span>
+        )}
+      </div>
       <svg viewBox="0 0 260 720" className="w-full max-w-[280px] mx-auto" style={{ minHeight: 400 }}>
         {/* Edges */}
         {EDGES.map((edge, i) => {
@@ -152,6 +175,7 @@ export default function PipelineGraph({ latestRun }: { latestRun: AgentRun | nul
           const status = getNodeStatus(node, latestRun);
           const style = STATUS_STYLES[status];
           const count = node.statKey && latestRun ? (latestRun[node.statKey] as number | null) : null;
+          const subtitle = node.id === 'dispatch' ? dispatchSubtitle : (count != null ? String(count) : null);
 
           return (
             <g key={node.id}>
@@ -165,9 +189,25 @@ export default function PipelineGraph({ latestRun }: { latestRun: AgentRun | nul
                 stroke={style.stroke}
                 strokeWidth={1.5}
               />
+              {/* Pulse animation for running nodes */}
+              {status === 'active' && (
+                <rect
+                  x={node.x}
+                  y={node.y}
+                  width={NODE_W}
+                  height={NODE_H}
+                  rx={6}
+                  fill="none"
+                  stroke="#3b82f6"
+                  strokeWidth={2}
+                  opacity={0.4}
+                >
+                  <animate attributeName="opacity" values="0.4;0;0.4" dur="2s" repeatCount="indefinite" />
+                </rect>
+              )}
               <text
                 x={node.x + NODE_W / 2}
-                y={node.y + (count != null ? 14 : 20)}
+                y={node.y + (subtitle ? 14 : 20)}
                 textAnchor="middle"
                 fontSize={11}
                 fontWeight={500}
@@ -175,7 +215,7 @@ export default function PipelineGraph({ latestRun }: { latestRun: AgentRun | nul
               >
                 {node.label}
               </text>
-              {count != null && (
+              {subtitle && (
                 <text
                   x={node.x + NODE_W / 2}
                   y={node.y + 28}
@@ -184,7 +224,7 @@ export default function PipelineGraph({ latestRun }: { latestRun: AgentRun | nul
                   fill={style.text}
                   opacity={0.7}
                 >
-                  {count}
+                  {subtitle}
                 </text>
               )}
             </g>

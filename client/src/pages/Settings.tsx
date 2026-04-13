@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region } from '../api';
 import { useSession } from '../lib/auth';
@@ -73,6 +73,26 @@ export default function Settings() {
       .finally(() => setLoading(false));
     loadAdmin();
   }, []);
+
+  // Poll agent runs every 5s while a run is in progress and the runs tab is active
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    const shouldPoll = tab === 'runs' && isAdmin && agentRuns[0]?.status === 'running';
+    if (shouldPoll && !pollRef.current) {
+      pollRef.current = setInterval(() => {
+        api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
+      }, 5_000);
+    } else if (!shouldPoll && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, [tab, isAdmin, agentRuns[0]?.status]);
 
   const detectLocation = () => {
     if (!navigator.geolocation) return;
@@ -536,7 +556,11 @@ export default function Settings() {
       {/* Agent Runs tab (admin) */}
       {tab === 'runs' && isAdmin && (
         <div className="space-y-4">
-        <PipelineGraph latestRun={agentRuns[0] ?? null} />
+        <PipelineGraph
+          latestRun={agentRuns[0] ?? null}
+          platformCount={platforms.filter((p) => p.enabled).length}
+          regionCount={regionsData.filter((r) => r.enabled).length}
+        />
         <Card>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Agent Run History</h3>
@@ -546,7 +570,8 @@ export default function Settings() {
                   try {
                     await api.triggerAgentRun();
                     toast('success', 'Agent pipeline run started');
-                    setTimeout(loadAdmin, 3000);
+                    // Reload immediately so polling detects the running state
+                    api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
                   } catch (err) {
                     toast('error', err instanceof Error ? err.message : 'Failed to start run');
                   }
