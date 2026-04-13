@@ -64,6 +64,8 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
       await processListingImages(listingId);
 
       // Delete originals after processing — only if the resized WebP is valid
+      // Update DB reference first, then delete file, so a crash never leaves
+      // the DB pointing at a deleted file.
       const images = await db.select().from(listingImages).where(eq(listingImages.listingId, listingId));
       for (const img of images) {
         if (img.localPathOriginal && img.localPathResized) {
@@ -74,10 +76,10 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
               logger.warn({ imagePath: img.localPathResized }, 'Resized image invalid, keeping original');
               continue;
             }
-            await fs.unlink(path.join(IMAGES_DIR, img.localPathOriginal));
             await db.update(listingImages)
               .set({ localPathOriginal: null })
               .where(eq(listingImages.id, img.id));
+            await fs.unlink(path.join(IMAGES_DIR, img.localPathOriginal));
           } catch {
             // not critical if cleanup fails — keep original as fallback
           }

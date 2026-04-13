@@ -4,15 +4,24 @@ import { agentConfig, refreshAgentConfig } from './config.js';
 import logger from '../lib/logger.js';
 
 let running = false;
+let runStartedAt: number | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
+
+const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
 async function runOnce(): Promise<void> {
   if (running) {
-    logger.info('Agent scheduler: run already in progress, skipping');
-    return;
+    if (runStartedAt && Date.now() - runStartedAt > RUN_TIMEOUT_MS) {
+      logger.error({ runStartedAt: new Date(runStartedAt).toISOString() }, 'Agent scheduler: previous run exceeded timeout, resetting');
+      running = false;
+    } else {
+      logger.info('Agent scheduler: run already in progress, skipping');
+      return;
+    }
   }
 
   running = true;
+  runStartedAt = Date.now();
 
   // Refresh config from DB before each run (picks up admin UI changes)
   await refreshAgentConfig();
@@ -35,6 +44,7 @@ async function runOnce(): Promise<void> {
     logger.error({ runId, error: String(err) }, 'Agent scheduler: run failed');
   } finally {
     running = false;
+    runStartedAt = null;
   }
 }
 

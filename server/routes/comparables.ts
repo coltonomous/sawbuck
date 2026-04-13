@@ -4,7 +4,7 @@ import { comparables, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import { searchComparablesSchema } from '../lib/validation.js';
-import { parseId, getOwnedListing } from './helpers.js';
+import { parseId, getVisibleListing } from './helpers.js';
 
 export const comparablesRouter = new Hono();
 
@@ -21,7 +21,7 @@ comparablesRouter.post('/search', async (c) => {
   let params: CompSearchParams | null = null;
 
   if (listingId) {
-    const listing = await getOwnedListing(listingId, user.id);
+    const listing = await getVisibleListing(listingId, user.id);
     if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
     params = {
@@ -56,7 +56,7 @@ comparablesRouter.get('/:listingId', async (c) => {
   const listingId = parseId(c, 'listingId');
   if (isNaN(listingId)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const listing = await getOwnedListing(listingId, user.id);
+  const listing = await getVisibleListing(listingId, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   const results = await db.select()

@@ -8,6 +8,9 @@ import { config } from '../lib/config.js';
 import { agentConfig } from '../agents/config.js';
 import logger from '../lib/logger.js';
 
+const CLEANUP_BATCH_SIZE = 500;  // max images to process per cleanup run
+const FILE_IO_BATCH = 50;        // parallel file deletions per batch
+
 export interface CleanupResult {
   filesDeleted: number;
   bytesFreed: number;
@@ -53,6 +56,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
         )`,
       ),
     )
+    .limit(CLEANUP_BATCH_SIZE)
 ;
 
   // Also clean up concept render images for dismissed or stale agent listings
@@ -70,6 +74,7 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
         )`,
       ),
     )
+    .limit(CLEANUP_BATCH_SIZE)
 ;
 
   for (const concept of staleConceptPaths) {
@@ -87,48 +92,64 @@ export async function cleanupOrphanedImages(): Promise<CleanupResult> {
   let bytesFreed = 0;
   const cleanedListingIds = new Set<number>();
 
-  for (const img of staleImages) {
-    // Delete original file
-    if (img.localPathOriginal) {
-      const fullPath = path.join(IMAGES_DIR, img.localPathOriginal);
-      try {
-        const stat = await fs.stat(fullPath);
-        await fs.unlink(fullPath);
-        bytesFreed += stat.size;
-        filesDeleted++;
-      } catch (err: any) {
-        if (err.code !== 'ENOENT') {
-          logger.warn({ path: fullPath, err: err.message }, 'Failed to delete original image');
+  // Process in batches to avoid blocking the event loop
+  for (let offset = 0; offset < staleImages.length; offset += FILE_IO_BATCH) {
+    const batch = staleImages.slice(offset, offset + FILE_IO_BATCH);
+
+    const results = await Promise.allSettled(batch.map(async (img) => {
+      let freed = 0;
+      let deleted = 0;
+
+      // Delete original file
+      if (img.localPathOriginal) {
+        const fullPath = path.join(IMAGES_DIR, img.localPathOriginal);
+        try {
+          const stat = await fs.stat(fullPath);
+          await fs.unlink(fullPath);
+          freed += stat.size;
+          deleted++;
+        } catch (err: any) {
+          if (err.code !== 'ENOENT') {
+            logger.warn({ path: fullPath, err: err.message }, 'Failed to delete original image');
+          }
         }
       }
-    }
 
-    // Delete resized file
-    if (img.localPathResized) {
-      const fullPath = path.join(IMAGES_DIR, img.localPathResized);
-      try {
-        const stat = await fs.stat(fullPath);
-        await fs.unlink(fullPath);
-        bytesFreed += stat.size;
-        filesDeleted++;
-      } catch (err: any) {
-        if (err.code !== 'ENOENT') {
-          logger.warn({ path: fullPath, err: err.message }, 'Failed to delete resized image');
+      // Delete resized file
+      if (img.localPathResized) {
+        const fullPath = path.join(IMAGES_DIR, img.localPathResized);
+        try {
+          const stat = await fs.stat(fullPath);
+          await fs.unlink(fullPath);
+          freed += stat.size;
+          deleted++;
+        } catch (err: any) {
+          if (err.code !== 'ENOENT') {
+            logger.warn({ path: fullPath, err: err.message }, 'Failed to delete resized image');
+          }
         }
       }
+
+      // Null out paths, mark as cleaned
+      await db.update(listingImages)
+        .set({
+          localPathOriginal: null,
+          localPathResized: null,
+          downloadStatus: 'cleaned',
+        })
+        .where(sql`${listingImages.id} = ${img.imageId}`)
+      ;
+
+      return { listingId: img.listingId, freed, deleted };
+    }));
+
+    for (const result of results) {
+      if (result.status === 'fulfilled') {
+        bytesFreed += result.value.freed;
+        filesDeleted += result.value.deleted;
+        cleanedListingIds.add(result.value.listingId);
+      }
     }
-
-    // Null out paths, mark as cleaned
-    await db.update(listingImages)
-      .set({
-        localPathOriginal: null,
-        localPathResized: null,
-        downloadStatus: 'cleaned',
-      })
-      .where(sql`${listingImages.id} = ${img.imageId}`)
-;
-
-    cleanedListingIds.add(img.listingId);
   }
 
   // Try to remove empty listing directories

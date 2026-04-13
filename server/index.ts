@@ -4,7 +4,7 @@ import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import { cleanupOrphanedImages } from './images/cleanup.js';
 import { startScheduler, stopScheduler } from './agents/scheduler.js';
 import { promoteAdmin } from './lib/seed-admin.js';
-import { db } from './db/index.js';
+import { db, pool } from './db/index.js';
 import { sessions } from './db/schema.js';
 import { lt } from 'drizzle-orm';
 import logger from './lib/logger.js';
@@ -58,11 +58,29 @@ async function shutdown() {
   clearInterval(cleanupTimer);
   clearInterval(sessionCleanupTimer);
   stopScheduler();
-  server.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
+
+  // Wait for in-flight requests to finish, then drain the connection pool
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      logger.warn('Shutdown timeout reached, forcing close');
+      resolve();
+    }, 30_000);
+
+    server.close(() => {
+      clearTimeout(timeout);
+      resolve();
+    });
   });
-  setTimeout(() => process.exit(1), 10_000);
+
+  try {
+    await pool.end();
+    logger.info('Connection pool drained');
+  } catch (err) {
+    logger.error({ err }, 'Failed to drain connection pool');
+  }
+
+  logger.info('Server closed');
+  process.exit(0);
 }
 
 process.on('SIGTERM', shutdown);
