@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Send } from '@langchain/langgraph';
+import { Send, Command } from '@langchain/langgraph';
 
 // Mock registry
 const mockPlatforms = [
@@ -49,30 +49,32 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
 }
 
 describe('dispatchScrapes', () => {
-  it('returns one Send per (platform x region) combination', async () => {
-    const sends = await dispatchScrapes(makeState());
+  it('returns Command with Send[] goto for each (platform x region)', async () => {
+    const cmd = await dispatchScrapes(makeState());
 
-    expect(sends).toHaveLength(2); // 1 platform x 2 regions
-    expect(sends[0]).toBeInstanceOf(Send);
-    expect(sends[1]).toBeInstanceOf(Send);
+    expect(cmd).toBeInstanceOf(Command);
+    const goto = (cmd as any).goto as Send[];
+    expect(goto).toHaveLength(2); // 1 platform x 2 regions
+    expect(goto[0]).toBeInstanceOf(Send);
+    expect(goto[1]).toBeInstanceOf(Send);
   });
 
   it('passes correct scrapeTask with page from scrapeAttempts', async () => {
-    const sends = await dispatchScrapes(makeState({ scrapeAttempts: { craigslist: 2 } }));
+    const cmd = await dispatchScrapes(makeState({ scrapeAttempts: { craigslist: 2 } }));
 
-    // Check that sends contain the right metadata
-    expect(sends).toHaveLength(2);
-    // The Send constructor takes (node, args), we can inspect the args
-    const send0 = sends[0] as any;
+    const goto = (cmd as any).goto as Send[];
+    expect(goto).toHaveLength(2);
+    const send0 = goto[0] as any;
     expect(send0.node).toBe('scrapeOne');
     expect(send0.args.scrapeTask.platform).toBe('craigslist');
-    expect(send0.args.scrapeTask.page).toBe(2); // page = attempts for that platform
+    expect(send0.args.scrapeTask.page).toBe(2);
   });
 
-  it('returns empty array when no platforms enabled', async () => {
+  it('returns Command with goto mergeScrapes when no platforms enabled', async () => {
     mockPlatforms.length = 0;
-    const sends = await dispatchScrapes(makeState());
-    expect(sends).toHaveLength(0);
+    const cmd = await dispatchScrapes(makeState());
+    expect(cmd).toBeInstanceOf(Command);
+    expect((cmd as any).goto).toContain('mergeScrapes');
     mockPlatforms.push({ platform: 'craigslist', discover: vi.fn(), enrich: vi.fn() });
   });
 });
