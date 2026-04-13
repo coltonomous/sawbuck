@@ -13,9 +13,9 @@ function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summari
   return 'summarize';
 }
 
-function afterEvaluate(state: AgentState): 'planOptions' | 'summarize' {
+function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'summarize' {
   if (state.qualifiedListings.length === 0) return 'summarize';
-  return 'planOptions';
+  return 'discoverKnowledge';
 }
 
 function afterPlanOptions(state: AgentState): 'render' | 'summarize' {

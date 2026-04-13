@@ -65,7 +65,7 @@ function shouldLoop(state: AgentState): boolean {
 // Graph flow:
 // dispatchScrapes → [Send → scrapeOne × N] → mergeScrapes → triage → [retry?] → enrich → reconcile → evaluate → planOptions → render → summarize
 const graph = new StateGraph(AgentAnnotation)
-  .addNode('dispatchScrapes', dispatchScrapes)
+  .addNode('dispatchScrapes', dispatchScrapes, { ends: ['scrapeOne'] })
   .addNode('scrapeOne', scrapeOne)
   .addNode('mergeScrapes', afterScrapesMerge)
   .addNode('triage', triageCandidates)
