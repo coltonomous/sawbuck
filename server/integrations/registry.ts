@@ -38,38 +38,46 @@ export async function getEnabledRegions(): Promise<Region[]> {
 
 /**
  * Seed default platform settings and regions if tables are empty.
- * Called on server startup (idempotent).
+ * Called on server startup (idempotent). Catches errors gracefully
+ * in case tables don't exist yet (first deploy before migration).
  */
 export async function seedPlatformDefaults(): Promise<void> {
-  const existing = await db.select().from(platformSettings);
-  if (existing.length === 0) {
-    await db.insert(platformSettings).values([
-      { platform: 'craigslist', enabled: true },
-      { platform: 'offerup', enabled: false },
-    ]).onConflictDoNothing();
-    logger.info('Seeded default platform settings');
+  try {
+    const existing = await db.select().from(platformSettings);
+    if (existing.length === 0) {
+      await db.insert(platformSettings).values([
+        { platform: 'craigslist', enabled: true },
+        { platform: 'offerup', enabled: false },
+      ]).onConflictDoNothing();
+      logger.info('Seeded default platform settings');
+    }
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, 'Could not seed platform settings (table may not exist yet)');
   }
 
-  const existingRegions = await db.select().from(regions);
-  if (existingRegions.length === 0) {
-    // Seed from legacy agent.target_city config or default to seattle
-    const { agentConfig } = await import('../agents/config.js');
-    const city = agentConfig.targetCity || 'seattle';
-    // Default coords for seattle; admin can update via UI
-    const CITY_DEFAULTS: Record<string, { lat: number; lng: number }> = {
-      seattle: { lat: 47.6062, lng: -122.3321 },
-      portland: { lat: 45.5152, lng: -122.6784 },
-      denver: { lat: 39.7392, lng: -104.9903 },
-    };
-    const coords = CITY_DEFAULTS[city] ?? { lat: 47.6062, lng: -122.3321 };
-    await db.insert(regions).values({
-      name: city,
-      latitude: coords.lat,
-      longitude: coords.lng,
-      radiusMiles: 30,
-      clSubdomain: city,
-      enabled: true,
-    }).onConflictDoNothing();
-    logger.info({ city }, 'Seeded default region');
+  try {
+    const existingRegions = await db.select().from(regions);
+    if (existingRegions.length === 0) {
+      // Seed from legacy agent.target_city config or default to seattle
+      const { agentConfig } = await import('../agents/config.js');
+      const city = agentConfig.targetCity || 'seattle';
+      const CITY_DEFAULTS: Record<string, { lat: number; lng: number }> = {
+        seattle: { lat: 47.6062, lng: -122.3321 },
+        portland: { lat: 45.5152, lng: -122.6784 },
+        denver: { lat: 39.7392, lng: -104.9903 },
+      };
+      const coords = CITY_DEFAULTS[city] ?? { lat: 47.6062, lng: -122.3321 };
+      await db.insert(regions).values({
+        name: city,
+        latitude: coords.lat,
+        longitude: coords.lng,
+        radiusMiles: 30,
+        clSubdomain: city,
+        enabled: true,
+      }).onConflictDoNothing();
+      logger.info({ city }, 'Seeded default region');
+    }
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, 'Could not seed regions (table may not exist yet)');
   }
 }
