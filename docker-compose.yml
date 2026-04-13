@@ -9,6 +9,13 @@ services:
     ports:
       - "5432:5432"
     restart: unless-stopped
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-group: /sawbuck/postgres
+        awslogs-stream-prefix: pg
+        awslogs-create-group: "true"
 
   app:
     build: .
@@ -24,6 +31,13 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-group: /sawbuck/app
+        awslogs-stream-prefix: app
+        awslogs-create-group: "true"
 
 volumes:
   postgres_data:

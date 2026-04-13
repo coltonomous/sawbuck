@@ -1,6 +1,6 @@
 FROM node:22-slim
 
-# Build tools for native modules (sharp, better-sqlite3)
+# Build tools for native modules (sharp)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3 make g++ && \
     rm -rf /var/lib/apt/lists/*

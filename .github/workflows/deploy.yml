@@ -108,7 +108,7 @@ jobs:
           done
 
           if ! curl -sf http://localhost:3001/health > /dev/null 2>&1; then
-            echo "Health check failed" && docker compose logs --tail 50 && exit 1
+            echo "Health check failed — check CloudWatch log group /sawbuck/app for details" && exit 1
           fi
 
           # Ingest RAG knowledge base
