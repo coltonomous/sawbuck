@@ -177,8 +177,8 @@ async function retrieveFormatted(
   const queryVec = await embed(query);
   const results = await search(queryVec, k, type);
 
-  // Filter out low-relevance results (distance > 1.2 for normalized cosine)
-  const relevant = results.filter((r) => r.distance < 1.2);
+  // Filter out low-relevance results (distance > 0.9 for normalized cosine)
+  const relevant = results.filter((r) => r.distance < 0.9);
 
   // Log misses — when query finds nothing useful
   if (relevant.length === 0) {

@@ -51,7 +51,7 @@ export async function reconcileListings(state: AgentState): Promise<Partial<Agen
         inArray(listings.status, ['new', 'analyzed']),
         notInArray(listings.externalId, recentRssIds),
       ))
-      .limit(20); // cap to avoid hammering CL
+      .limit(5); // cap to avoid hammering CL
 
     if (candidates.length === 0) {
       return { reconciledCount };

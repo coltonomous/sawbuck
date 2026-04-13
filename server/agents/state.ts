@@ -1,7 +1,7 @@
 import { Annotation } from '@langchain/langgraph';
+import type { ScrapedCandidate } from '../integrations/common/types.js';
 
-// Re-export from integration types so consumers don't need to know the path
-export type { ScrapedCandidate } from '../integrations/common/types.js';
+export type { ScrapedCandidate };
 
 export interface TriageResult {
   isWoodFurniture: boolean;

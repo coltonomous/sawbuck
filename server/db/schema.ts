@@ -51,7 +51,9 @@ export const accounts = pgTable('accounts', {
   password: text('password'),
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
-});
+}, (table) => [
+  uniqueIndex('idx_accounts_provider_account').on(table.providerId, table.accountId),
+]);
 
 export const verifications = pgTable('verifications', {
   id: text('id').primaryKey(),
@@ -112,6 +114,8 @@ export const listings = pgTable('listings', {
   index('idx_listings_scraped_at').on(table.scrapedAt),
   index('idx_listings_fingerprint').on(table.fingerprint),
   index('idx_listings_user_id').on(table.userId),
+  index('idx_listings_user_platform').on(table.userId, table.platform),
+  index('idx_listings_status_deal_score').on(table.status, table.dealScore),
 ]);
 
 export const listingImages = pgTable('listing_images', {

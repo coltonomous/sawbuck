@@ -5,6 +5,10 @@ import * as schema from './db/schema.js';
 
 const isProd = process.env.NODE_ENV === 'production';
 
+if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) {
+  throw new Error('BETTER_AUTH_SECRET must be set and at least 32 characters');
+}
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'pg',

@@ -118,10 +118,11 @@ export async function analyzeListing(listingId: number): Promise<FurnitureAnalys
   let prompt = ANALYSIS_PROMPT;
 
   // Include listing context — title and description often contain critical details
-  // (e.g. "set of 6", "solid oak", "needs reupholstering") not visible in photos
+  // (e.g. "set of 6", "solid oak", "needs reupholstering") not visible in photos.
+  // Data is JSON-encoded to prevent prompt injection from malicious listing text.
   const contextParts: string[] = [];
-  if (listing.title) contextParts.push(`Listing title: "${listing.title}"`);
-  if (listing.description) contextParts.push(`Description: "${listing.description.slice(0, 500)}"`);
+  if (listing.title) contextParts.push(`Listing title: ${JSON.stringify(listing.title)}`);
+  if (listing.description) contextParts.push(`Description: ${JSON.stringify(listing.description.slice(0, 500))}`);
   if (listing.askingPrice) contextParts.push(`Asking price: $${listing.askingPrice}`);
   if (contextParts.length > 0) {
     prompt += `\n\n--- LISTING CONTEXT ---\n${contextParts.join('\n')}\n--- END CONTEXT ---\n\nIMPORTANT: Cross-reference the photos with the title and description. They may contradict each other or contain critical details:

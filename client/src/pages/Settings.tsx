@@ -396,19 +396,6 @@ export default function Settings() {
               <button
                 onClick={async () => {
                   try {
-                    const { dismissed } = await api.cleanupPassListings();
-                    toast('success', `Dismissed ${dismissed} pass listing${dismissed !== 1 ? 's' : ''}`);
-                  } catch (err) {
-                    toast('error', err instanceof Error ? err.message : 'Cleanup failed');
-                  }
-                }}
-                className="px-3 py-1.5 bg-gray-600 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors"
-              >
-                Cleanup Pass Listings
-              </button>
-              <button
-                onClick={async () => {
-                  try {
                     await api.triggerAgentRun();
                     toast('success', 'Agent pipeline run started');
                     setTimeout(loadAdmin, 3000);

@@ -47,6 +47,8 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 RUN addgroup --system app && adduser --system --home /home/app --ingroup app app && \
     chown -R app:app /app
 
+USER app
+
 # Entrypoint: fix data dir permissions (bind mount may be root-owned), then drop to app user
 COPY --chmod=755 entrypoint.sh ./
 ENTRYPOINT ["./entrypoint.sh"]

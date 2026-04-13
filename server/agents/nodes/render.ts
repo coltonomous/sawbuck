@@ -40,6 +40,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
   }
 
   const listings = state.listingsWithOptions
+    .filter((l) => l.evaluation.dealScore >= agentConfig.dealScoreThreshold)
     .sort((a, b) => b.evaluation.dealScore - a.evaluation.dealScore)
     .slice(0, agentConfig.maxListingsRendered - state.conceptsRendered);
 

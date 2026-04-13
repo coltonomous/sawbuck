@@ -38,10 +38,16 @@ preferencesRouter.get('/', async (c) => {
 
   if (!row) return c.json({ error: 'User not found' }, 404);
 
-  return c.json({
-    ...row,
-    stylePreferences: row.stylePreferences ? JSON.parse(row.stylePreferences) : null,
-  });
+  let stylePreferences = null;
+  if (row.stylePreferences) {
+    try {
+      stylePreferences = JSON.parse(row.stylePreferences);
+    } catch {
+      // Corrupted JSON — treat as empty
+    }
+  }
+
+  return c.json({ ...row, stylePreferences });
 });
 
 // PATCH /api/user/preferences

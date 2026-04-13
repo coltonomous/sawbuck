@@ -1,27 +1,19 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings, listingImages, conceptRenders } from '../db/schema.js';
-import { eq, and, count, isNull, inArray, sql } from 'drizzle-orm';
+import { users, listings } from '../db/schema.js';
+import { eq, and, count, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
 
+// Derived from the DB key names used in agents/config.ts resolve*() calls.
+// Adding a new config option there automatically makes it settable here.
 const VALID_SETTINGS = new Set([
-  'agent.max_triages',
-  'agent.max_evals',
-  'agent.max_renders',
-  'agent.concepts_per_listing',
-  'agent.triage_threshold',
-  'agent.deal_score_threshold',
-  'agent.min_delay_ms',
-  'agent.max_delay_ms',
-  'agent.daily_request_cap',
-  'agent.run_interval_ms',
-  'agent.target_city',
-  'agent.triage_model',
-  'agent.eval_model',
-  'agent.fal_model',
-  'agent.concept_size',
+  'agent.max_triages', 'agent.max_evals', 'agent.max_renders',
+  'agent.concepts_per_listing', 'agent.triage_threshold', 'agent.deal_score_threshold',
+  'agent.min_delay_ms', 'agent.max_delay_ms', 'agent.daily_request_cap',
+  'agent.run_interval_ms', 'agent.target_city', 'agent.triage_model',
+  'agent.eval_model', 'agent.fal_model', 'agent.concept_size',
   'agent.image_retention_days',
 ]);
 
@@ -124,22 +116,6 @@ adminRouter.post('/agent/run', async (c) => {
     return c.json({ error: 'A run is already in progress' }, 409);
   }
   return c.json({ ok: true, message: 'Agent pipeline run started' });
-});
-
-// POST /listings/cleanup — dismiss agent listings rated 'pass'
-adminRouter.post('/listings/cleanup', async (c) => {
-  const result = await db.update(listings)
-    .set({ status: 'dismissed' })
-    .where(and(
-      isNull(listings.userId),
-      inArray(listings.status, ['new', 'analyzed']),
-      sql`(
-        ${listings.analysisRaw}::jsonb->>'flip_recommendation' = 'pass'
-        OR ${listings.analysisRaw} IS NULL
-      )`,
-    ));
-
-  return c.json({ ok: true, dismissed: result.rowCount ?? 0 });
 });
 
 // DELETE /listings — bulk delete agent-discovered listings by IDs

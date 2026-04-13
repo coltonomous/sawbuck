@@ -24,6 +24,7 @@ app.use('*', pinoLogger({ pino: logger }));
 // ── Security headers ────────────────────────────────────────────────
 app.use('*', secureHeaders({
   referrerPolicy: 'strict-origin-when-cross-origin',
+  xContentTypeOptions: 'nosniff',
 }));
 
 // ── CORS ────────────────────────────────────────────────────────────
@@ -39,6 +40,7 @@ app.use('*', cors({
 // fine for a single-instance deployment.
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT_API = 60;       // general API: 60 req/min
+const RATE_LIMIT_AUTH = 15;      // auth endpoints: 15 req/min (brute-force protection)
 
 const hits = new Map<string, { count: number; resetAt: number }>();
 
@@ -90,6 +92,7 @@ app.onError((err, c) => {
 app.get('/health', (c) => c.json({ status: 'ok' }));
 
 // ── Auth routes (handled by better-auth, no requireAuth) ────────────
+app.use('/api/auth/*', rateLimit(RATE_LIMIT_AUTH));
 app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
 
 // ── Require auth for all other API routes ───────────────────────────

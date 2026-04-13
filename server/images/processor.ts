@@ -11,7 +11,14 @@ import logger from '../lib/logger.js';
 const MAX_EDGE = config.images.maxEdge;
 const WEBP_QUALITY = config.images.webpQuality;
 
+function assertSafePath(p: string): void {
+  if (p.includes('..') || path.isAbsolute(p)) {
+    throw new Error(`Invalid image path: ${p}`);
+  }
+}
+
 export async function processImage(originalPath: string, listingId: number, index: number, platform: string): Promise<{ resizedPath: string; width: number; height: number }> {
+  assertSafePath(originalPath);
   const inputPath = path.join(IMAGES_DIR, originalPath);
   await fs.access(inputPath).catch(() => { throw new Error(`Image not found: ${inputPath}`); });
 
@@ -76,6 +83,7 @@ export async function processListingImages(listingId: number): Promise<number> {
 }
 
 export async function getImageBase64(imagePath: string): Promise<{ base64: string; mediaType: string }> {
+  assertSafePath(imagePath);
   const fullPath = path.join(IMAGES_DIR, imagePath);
   const buffer = await fs.readFile(fullPath);
   const base64 = buffer.toString('base64');

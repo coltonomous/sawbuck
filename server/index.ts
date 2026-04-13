@@ -4,6 +4,9 @@ import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import { cleanupOrphanedImages } from './images/cleanup.js';
 import { startScheduler, stopScheduler } from './agents/scheduler.js';
 import { promoteAdmin } from './lib/seed-admin.js';
+import { db } from './db/index.js';
+import { sessions } from './db/schema.js';
+import { lt } from 'drizzle-orm';
 import logger from './lib/logger.js';
 
 const port = parseInt(process.env.PORT || '3001');
@@ -32,6 +35,16 @@ setTimeout(runImageCleanup, 30_000);
 const cleanupTimer = setInterval(runImageCleanup, IMAGE_CLEANUP_INTERVAL_MS);
 cleanupTimer.unref();
 
+// Purge expired sessions daily (same cadence as image cleanup)
+function purgeExpiredSessions() {
+  db.delete(sessions).where(lt(sessions.expiresAt, new Date())).catch((err) => {
+    logger.error({ err }, 'Session cleanup failed');
+  });
+}
+setTimeout(purgeExpiredSessions, 60_000);
+const sessionCleanupTimer = setInterval(purgeExpiredSessions, IMAGE_CLEANUP_INTERVAL_MS);
+sessionCleanupTimer.unref();
+
 // Agent pipeline scheduler — runs automatically if AWS Bedrock is configured
 if (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION) {
   setTimeout(() => startScheduler(), 10_000);
@@ -43,6 +56,7 @@ if (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION) {
 async function shutdown() {
   logger.info('Shutting down...');
   clearInterval(cleanupTimer);
+  clearInterval(sessionCleanupTimer);
   stopScheduler();
   server.close(() => {
     logger.info('Server closed');

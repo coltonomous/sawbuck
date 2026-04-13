@@ -437,6 +437,4 @@ export const api = {
     request<{ ok: boolean; resolved: Record<string, unknown> }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
   deleteAgentListings: (ids: number[]) =>
     request<{ ok: boolean; deleted: number }>('/admin/listings', { method: 'DELETE', body: JSON.stringify({ ids }) }),
-  cleanupPassListings: () =>
-    request<{ ok: boolean; dismissed: number }>('/admin/listings/cleanup', { method: 'POST' }),
 };

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { listings, listingImages, conceptRenders, users } from '../db/schema.js';
-import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull } from 'drizzle-orm';
+import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
 import { processListingImages } from '../images/processor.js';
@@ -10,6 +10,7 @@ import { getPrimaryImagePath, getPrimaryImagePaths } from '../lib/images.js';
 import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema, editSawbuckListingSchema } from '../lib/validation.js';
 import { parsePagination, buildOrderBy } from '../lib/pagination.js';
 import { fingerprint } from '../lib/fingerprint.js';
+import { backgroundJobs } from '../db/schema.js';
 import logger from '../lib/logger.js';
 import crypto from 'crypto';
 import path from 'path';
@@ -18,6 +19,7 @@ import { ORIGINALS_DIR, IMAGES_DIR } from '../lib/paths.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { inArray } from 'drizzle-orm';
 import type { Platform } from '../../shared/constants.js';
+import { parseId, escapeLike, getVisibleListing, getEditableListing, getOwnedListing } from './helpers.js';
 
 export const listingsRouter = new Hono();
 
@@ -95,7 +97,7 @@ listingsRouter.get('/', async (c) => {
       try {
         const styles = JSON.parse(userPrefs.stylePreferences) as string[];
         if (styles.length > 0) {
-          const styleConditions = styles.map((s) => sql`${listings.furnitureStyle} LIKE ${'%' + s + '%'}`);
+          const styleConditions = styles.map((s) => sql`${listings.furnitureStyle} LIKE ${'%' + escapeLike(s) + '%'} ESCAPE '\\'`);
           conditions.push(
             or(
               sql`${listings.userId} IS NOT NULL`,
@@ -122,12 +124,12 @@ listingsRouter.get('/', async (c) => {
   }
   if (search || pagination.search) {
     const term = search || pagination.search!;
-    conditions.push(sql`${listings.title} LIKE ${'%' + term + '%'}`);
+    conditions.push(sql`${listings.title} LIKE ${'%' + escapeLike(term) + '%'} ESCAPE '\\'`);
   }
 
   const whereClause = and(...conditions);
 
-  const sortColumns: Record<string, typeof listings.title> = {
+  const sortColumns: Record<string, Column> = {
     title: listings.title,
     platform: listings.platform,
     askingPrice: listings.askingPrice,
@@ -259,7 +261,7 @@ listingsRouter.post('/import', async (c) => {
     url,
     title: '(imported — loading details…)',
     matchedSearchTerms: JSON.stringify(['manual-import']),
-    fingerprint: fingerprint({ externalId, platform: match.platform, title: '' }),
+    fingerprint: fingerprint({ platform: match.platform, title: externalId }),
     userId: user.id,
   }).returning();
 
@@ -341,7 +343,8 @@ listingsRouter.post('/create', async (c) => {
 // PATCH /create/:id — edit a user-posted sawbuck listing
 listingsRouter.patch('/create/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const raw = await c.req.json();
   const parsed = editSawbuckListingSchema.safeParse(raw);
   if (!parsed.success) {
@@ -361,10 +364,10 @@ listingsRouter.patch('/create/:id', async (c) => {
 // GET /:id — single listing with images (auto-enriches if missing details)
 listingsRouter.get('/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  // Visible: user's own, any sawbuck listing, or agent-discovered (userId IS NULL)
-  let listing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck'), isNull(listings.userId)))).then(r => r[0]);
+  let listing = await getVisibleListing(id, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-fetch details if missing description, images, or description looks like a page dump
@@ -419,15 +422,15 @@ listingsRouter.patch('/bulk', async (c) => {
 // PATCH /:id — update listing
 listingsRouter.patch('/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const raw = await c.req.json();
   const parsed = updateListingSchema.safeParse(raw);
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  // Allow updating own listings + agent-discovered listings (userId IS NULL)
-  const existing = await db.select().from(listings).where(and(eq(listings.id, id), or(eq(listings.userId, user.id), isNull(listings.userId)))).then(r => r[0]);
+  const existing = await getEditableListing(id, user.id);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   await db.update(listings).set(parsed.data).where(eq(listings.id, id));
@@ -439,9 +442,10 @@ listingsRouter.patch('/:id', async (c) => {
 // DELETE /:id — delete a listing (owner only)
 listingsRouter.delete('/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const existing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
+  const existing = await getOwnedListing(id, user.id);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   // Delete image files from disk before removing DB records
@@ -460,37 +464,55 @@ listingsRouter.delete('/:id', async (c) => {
 // POST /:id/analyze — kick off analysis in background, return 202
 listingsRouter.post('/:id/analyze', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  // Allow analysis of own listings + any sawbuck listing
-  const listing = await db.select().from(listings).where(
-    and(eq(listings.id, id), or(eq(listings.userId, user.id), eq(listings.platform, 'sawbuck')))
-  ).then(r => r[0]);
+  const listing = await getVisibleListing(id, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
-  // Fire and forget — results/errors are persisted to DB
+  // Track the analysis job in backgroundJobs so clients can poll status
+  const jobId = crypto.randomUUID();
+  await db.insert(backgroundJobs).values({
+    id: jobId,
+    type: 'analyze',
+    status: 'running',
+    userId: user.id,
+  });
+
   (async () => {
     try {
       await downloadListingImages(id);
       await processListingImages(id);
       const analysis = await analyzeListing(id);
       if (analysis) await calculatePricing(id);
+      await db.update(backgroundJobs).set({ status: 'completed', completedAt: new Date() }).where(eq(backgroundJobs.id, jobId));
     } catch (err: any) {
       const errorMsg = `Analysis failed: ${err?.message || 'Unknown error'}`;
       logger.error({ err, listingId: id }, 'Error analyzing listing');
       await db.update(listings).set({ analysisError: errorMsg }).where(eq(listings.id, id));
+      await db.update(backgroundJobs).set({ status: 'failed', error: errorMsg, completedAt: new Date() }).where(eq(backgroundJobs.id, jobId));
     }
   })();
 
-  return c.json({ status: 'analyzing' }, 202);
+  return c.json({ status: 'analyzing', jobId }, 202);
+});
+
+// GET /jobs/:jobId — poll analysis job status
+listingsRouter.get('/jobs/:jobId', async (c) => {
+  const user = c.get('user');
+  const jobId = c.req.param('jobId');
+  const job = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.id, jobId), eq(backgroundJobs.userId, user.id))).then(r => r[0]);
+  if (!job) return c.json({ error: 'Not found' }, 404);
+  return c.json(job);
 });
 
 // GET /:id/price — get or calculate pricing
 listingsRouter.get('/:id/price', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const listing = await db.select().from(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id))).then(r => r[0]);
+  const listing = await getOwnedListing(id, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
   const pricing = await calculatePricing(id);

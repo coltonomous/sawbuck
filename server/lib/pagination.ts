@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { asc, desc, type SQLiteColumn } from 'drizzle-orm';
+import { asc, desc, type Column } from 'drizzle-orm';
 
 export interface PaginationParams {
   page: number;
@@ -42,7 +42,7 @@ export function parsePagination(c: Context): PaginationParams {
  */
 export function buildOrderBy(
   params: PaginationParams,
-  columns: Record<string, SQLiteColumn>,
+  columns: Record<string, Column>,
   defaultOrder: ReturnType<typeof desc>,
 ) {
   const col = params.sort ? columns[params.sort] : undefined;

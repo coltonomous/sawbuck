@@ -3,7 +3,7 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
-import { eq, and, or, desc, isNull } from 'drizzle-orm';
+import { eq, and, desc } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
@@ -12,6 +12,7 @@ import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
 import { tryIngestProject } from '../rag/ingest/projects.js';
+import { parseId, getOwnedProject, getEditableListing } from './helpers.js';
 import logger from '../lib/logger.js';
 
 export const projectsRouter = new Hono();
@@ -34,8 +35,9 @@ projectsRouter.get('/', async (c) => {
 // GET /:id — single project with listing, plan, and materials
 projectsRouter.get('/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
@@ -67,7 +69,7 @@ projectsRouter.post('/', async (c) => {
   const { listingId, name, purchasePrice, purchaseDate, purchaseNotes } = parsed.data;
 
   // Verify the listing is accessible: user's own, or agent-discovered (shared)
-  const listing = await db.select().from(listings).where(and(eq(listings.id, listingId), or(eq(listings.userId, user.id), isNull(listings.userId)))).then(r => r[0]);
+  const listing = await getEditableListing(listingId, user.id);
   if (!listing) return c.json({ error: 'Listing not found' }, 404);
 
   const project = await db.transaction(async (tx) => {
@@ -91,14 +93,15 @@ projectsRouter.post('/', async (c) => {
 // PATCH /:id — update project
 projectsRouter.patch('/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const raw = await c.req.json();
   const parsed = updateProjectSchema.safeParse(raw);
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const existing = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const existing = await getOwnedProject(id, user.id);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   // Auto-set soldDate when marking as sold (if not already set)
@@ -129,18 +132,15 @@ projectsRouter.patch('/:id', async (c) => {
 // DELETE /:id — delete project and reset listing status
 projectsRouter.delete('/:id', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
-  // Delete photo files first (outside transaction — file I/O isn't rollbackable)
+  // Collect photo paths before deleting DB records
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
-  for (const photo of photos) {
-    const filePath = path.join(IMAGES_DIR, photo.localPath);
-    await fs.unlink(filePath).catch(() => {});
-  }
 
-  // Delete all DB records atomically
+  // Delete all DB records atomically first — if this fails, no files are lost
   await db.transaction(async (tx) => {
     await tx.delete(projectPhotos).where(eq(projectPhotos.projectId, id));
     await tx.delete(materials).where(eq(materials.projectId, id));
@@ -154,14 +154,22 @@ projectsRouter.delete('/:id', async (c) => {
     }
   });
 
+  // Clean up photo files after DB commit — orphaned files are harmless and will
+  // be caught by the scheduled image cleanup if these deletes fail
+  for (const photo of photos) {
+    const filePath = path.join(IMAGES_DIR, photo.localPath);
+    await fs.unlink(filePath).catch(() => {});
+  }
+
   return c.json({ ok: true });
 });
 
 // POST /:id/refinish — generate refinishing plan
 projectsRouter.post('/:id/refinish', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   // Check if the listing has been analyzed first
@@ -197,8 +205,8 @@ projectsRouter.post('/:id/refinish', async (c) => {
       materials: storedPlan ? await getMaterialsForProject(id) : [],
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ err, projectId: id }, 'Error generating refinishing plan');
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to generate refinishing plan' : (err instanceof Error ? err.message : 'Unknown error');
     return c.json({ error: message }, 500);
   }
 });
@@ -206,12 +214,13 @@ projectsRouter.post('/:id/refinish', async (c) => {
 // POST /:id/listing-text — generate marketplace listing copy (cached)
 projectsRouter.post('/:id/listing-text', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const raw = await c.req.json().catch(() => ({}));
   const parsed = generateListingTextSchema.safeParse(raw);
   const regenerate = parsed.success ? parsed.data.regenerate : false;
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   if (project.listingText && !regenerate) {
@@ -261,8 +270,8 @@ Rules:
     await db.update(projects).set({ listingText: text }).where(eq(projects.id, id));
     return c.json({ text });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
     logger.error({ err, projectId: id }, 'Error generating listing text');
+    const message = process.env.NODE_ENV === 'production' ? 'Failed to generate listing text' : (err instanceof Error ? err.message : 'Unknown error');
     return c.json({ error: message }, 500);
   }
 });
@@ -270,9 +279,10 @@ Rules:
 // GET /:id/refinish — get existing refinishing plan
 projectsRouter.get('/:id/refinish', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const plans = await db.select()
@@ -288,9 +298,10 @@ projectsRouter.get('/:id/refinish', async (c) => {
 // GET /:id/materials — get materials for project
 projectsRouter.get('/:id/materials', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const mats = await getMaterialsForProject(id);
@@ -300,15 +311,16 @@ projectsRouter.get('/:id/materials', async (c) => {
 // PATCH /:id/materials/:materialId — update material (actual price, purchased)
 projectsRouter.patch('/:id/materials/:materialId', async (c) => {
   const user = c.get('user');
-  const projectId = parseInt(c.req.param('id'));
-  const materialId = parseInt(c.req.param('materialId'));
+  const projectId = parseId(c);
+  const materialId = parseId(c, 'materialId');
+  if (isNaN(projectId) || isNaN(materialId)) return c.json({ error: 'Invalid ID' }, 400);
   const raw = await c.req.json();
   const parsed = updateMaterialSchema.safeParse(raw);
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.userId, user.id))).then(r => r[0]);
+  const project = await getOwnedProject(projectId, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   await db.update(materials).set(parsed.data).where(eq(materials.id, materialId));
@@ -322,14 +334,15 @@ projectsRouter.patch('/:id/materials/:materialId', async (c) => {
 // PATCH /:id/costs — update cost-related fields
 projectsRouter.patch('/:id/costs', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const raw = await c.req.json();
   const parsed = updateCostsSchema.safeParse(raw);
   if (!parsed.success) {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const existing = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const existing = await getOwnedProject(id, user.id);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const updates: Record<string, unknown> = { ...parsed.data };
@@ -387,9 +400,10 @@ async function recalculateFinancials(projectId: number) {
 
 projectsRouter.get('/:id/photos', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
@@ -398,8 +412,9 @@ projectsRouter.get('/:id/photos', async (c) => {
 
 projectsRouter.post('/:id/photos', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Project not found' }, 404);
 
   const formData = await c.req.formData();
@@ -444,12 +459,14 @@ projectsRouter.post('/:id/photos', async (c) => {
 
 projectsRouter.delete('/:id/photos/:photoId', async (c) => {
   const user = c.get('user');
-  const id = parseInt(c.req.param('id'));
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const project = await db.select().from(projects).where(and(eq(projects.id, id), eq(projects.userId, user.id))).then(r => r[0]);
+  const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
-  const photoId = parseInt(c.req.param('photoId'));
+  const photoId = parseId(c, 'photoId');
+  if (isNaN(photoId)) return c.json({ error: 'Invalid ID' }, 400);
   const photo = await db.select().from(projectPhotos).where(eq(projectPhotos.id, photoId)).then(r => r[0]);
 
   if (photo) {

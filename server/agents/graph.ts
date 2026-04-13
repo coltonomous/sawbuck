@@ -11,8 +11,8 @@ import { generatePlanOptions } from './nodes/plan-options.js';
 import { generateConcepts } from './nodes/render.js';
 import { summarizeRun } from './nodes/summarize.js';
 
-const MAX_SCRAPE_ATTEMPTS = 5;
-const MIN_QUALIFIED_TARGET = 3;
+const MAX_SCRAPE_ATTEMPTS = 3;
+const MIN_QUALIFIED_TARGET = 1;
 
 function afterTriage(state: AgentState): 'enrich' | 'scrape' | 'summarize' {
   if (state.passedTriage.length > 0) {

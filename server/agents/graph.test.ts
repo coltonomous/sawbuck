@@ -60,9 +60,9 @@ describe('afterEvaluate', () => {
 describe('afterRender', () => {
   it('loops to scrape when under all caps and target not met', () => {
     expect(afterRender(makeState({
-      qualifiedCount: 1,
+      qualifiedCount: 0,
       evalCount: 3,
-      scrapeAttempts: 2,
+      scrapeAttempts: 1,
     }))).toBe('scrape');
   });
 
@@ -76,15 +76,15 @@ describe('afterRender', () => {
 
   it('summarizes when eval cap hit', () => {
     expect(afterRender(makeState({
-      qualifiedCount: 1,
+      qualifiedCount: 0,
       evalCount: 10,
-      scrapeAttempts: 2,
+      scrapeAttempts: 1,
     }))).toBe('summarize');
   });
 
   it('summarizes when scrape attempts exhausted', () => {
     expect(afterRender(makeState({
-      qualifiedCount: 1,
+      qualifiedCount: 0,
       evalCount: 3,
       scrapeAttempts: MAX_SCRAPE_ATTEMPTS,
     }))).toBe('summarize');
@@ -128,7 +128,7 @@ describe('afterPlanOptions', () => {
 
   it('loops to scrape when no FAL_KEY and under target', () => {
     delete process.env.FAL_KEY;
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 1, evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 0, evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
   });
 
   it('summarizes when no FAL_KEY and target met', () => {

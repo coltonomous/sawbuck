@@ -211,59 +211,15 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
 
   logger.info({ triaged: count, textPassed: textPassed.length }, 'Triage pass 1 complete');
 
-  // ── Pass 2: Visual confirmation for text-passed candidates ──────
-  // Only items with images get the visual check. Items without images
-  // pass through (they'll be caught by the full evaluate node later).
-  const passed: TriagedCandidate[] = [];
-
-  for (const { candidate, triage } of textPassed) {
-    const imageUrl = candidate.imageUrls[0];
-    if (!imageUrl) {
-      // No image available — let it through, evaluate will catch bad ones
-      passed.push(triage);
-      continue;
-    }
-
-    try {
-      const image = await fetchImageAsBase64(imageUrl);
-      if (!image) {
-        // Image fetch failed — let it through
-        passed.push(triage);
-        continue;
-      }
-
-      const prompt = `Title: "${candidate.title}"\nPrice: ${candidate.askingPrice != null ? '$' + candidate.askingPrice : 'not listed'}\n\nIs this actually wood furniture worth evaluating for a flip?`;
-
-      const check = await analyzeWithVisionStructured(
-        [image],
-        prompt,
-        VISUAL_CHECK_JSON_SCHEMA,
-        VisualCheckSchema,
-        'visual_check',
-        'Confirm or reject this as wood furniture',
-        VISUAL_CHECK_SYSTEM,
-        agentConfig.evaluationModel,
-      );
-
-      if (check.confirmed) {
-        passed.push(triage);
-        logger.debug({ externalId: candidate.externalId, reasoning: check.reasoning }, 'Triage pass 2: confirmed');
-      } else {
-        logger.info({ externalId: candidate.externalId, title: candidate.title, reasoning: check.reasoning }, 'Triage pass 2: rejected');
-      }
-    } catch (err) {
-      // Visual check failed — let it through rather than dropping a good candidate
-      passed.push(triage);
-      logger.warn({ externalId: candidate.externalId, error: String(err) }, 'Triage pass 2: check failed, passing through');
-    }
-  }
+  // Pass 2 (visual confirmation) removed — the text-only classifier at ≥0.6
+  // confidence is accurate enough. False positives are caught by the full
+  // evaluate node which does proper vision analysis anyway.
+  const passed = textPassed.map(({ triage }) => triage);
 
   logger.info({
     triaged: count,
-    textPassed: textPassed.length,
-    visualConfirmed: passed.length,
-    rejected: textPassed.length - passed.length,
-    apiCalls: Math.ceil(toProcess.length / BATCH_SIZE) + textPassed.length,
+    passed: passed.length,
+    apiCalls: Math.ceil(toProcess.length / BATCH_SIZE),
   }, 'Triage node complete');
 
   return {

@@ -64,6 +64,12 @@ export async function downloadListingImages(listingId: number): Promise<number> 
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
+      // Validate Content-Type is an image
+      const contentType = response.headers.get('content-type');
+      if (contentType && !contentType.startsWith('image/')) {
+        throw new Error(`Invalid content type: ${contentType}`);
+      }
+
       // Check Content-Length before downloading full body
       const contentLength = parseInt(response.headers.get('content-length') || '0');
       if (contentLength > config.images.maxSizeBytes) {

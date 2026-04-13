@@ -52,7 +52,7 @@ export function getAgentConfig() {
     conceptsPerListing: resolveInt('agent.concepts_per_listing', 'AGENT_CONCEPTS_PER_LISTING', 1),
 
     // Quality gates
-    triageConfidenceThreshold: resolveFloat('agent.triage_threshold', 'AGENT_TRIAGE_THRESHOLD', 0.6),
+    triageConfidenceThreshold: resolveFloat('agent.triage_threshold', 'AGENT_TRIAGE_THRESHOLD', 0.75),
     dealScoreThreshold: resolveFloat('agent.deal_score_threshold', 'AGENT_DEAL_SCORE_THRESHOLD', 1.3),
     flipRecommendationThreshold: ['strong_buy', 'buy'] as const,
 

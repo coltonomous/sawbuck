@@ -49,19 +49,24 @@ export async function embed(text: string): Promise<Float32Array> {
 }
 
 /**
- * Embed multiple texts in one call. Returns an array of Float32Array.
- * More efficient than calling embed() in a loop because the model
- * batches the tokenization.
+ * Embed multiple texts in batches. Returns an array of Float32Array.
+ * Processes in batches of 16 to balance throughput and memory.
  */
+const EMBED_BATCH_SIZE = 16;
+
 export async function embedBatch(texts: string[]): Promise<Float32Array[]> {
   if (texts.length === 0) return [];
   const ext = await getExtractor();
 
   const results: Float32Array[] = [];
-  // Process one-at-a-time to keep memory predictable
-  for (const text of texts) {
-    const output = await ext(text, { pooling: 'mean', normalize: true });
-    results.push(new Float32Array(output.data as Float64Array));
+  for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
+    const batch = texts.slice(i, i + EMBED_BATCH_SIZE);
+    const output = await ext(batch, { pooling: 'mean', normalize: true });
+    // output.data is a flat Float64Array of all embeddings concatenated
+    for (let j = 0; j < batch.length; j++) {
+      const start = j * DIMENSIONS;
+      results.push(new Float32Array(output.data.slice(start, start + DIMENSIONS) as Float64Array));
+    }
   }
   return results;
 }

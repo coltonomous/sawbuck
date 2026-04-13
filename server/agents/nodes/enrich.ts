@@ -1,5 +1,5 @@
 import { enrich } from '../../integrations/craigslist/index.js';
-import type { AgentState } from '../state.js';
+import type { AgentState, TriagedCandidate } from '../state.js';
 import logger from '../../lib/logger.js';
 
 /** Fetch detail pages only for candidates that passed triage. */
@@ -14,7 +14,16 @@ export async function enrichPassed(state: AgentState): Promise<Partial<AgentStat
 
   try {
     const { enriched, removedIds } = await enrich(passed);
-    return { passedTriage: enriched, removedIds };
+
+    // Map enriched ScrapedCandidates back to TriagedCandidates by
+    // re-attaching the triageResult from the original passed list
+    const triageMap = new Map(passed.map((p) => [p.externalId, p.triageResult]));
+    const enrichedWithTriage: TriagedCandidate[] = enriched.map((e) => ({
+      ...e,
+      triageResult: triageMap.get(e.externalId)!,
+    }));
+
+    return { passedTriage: enrichedWithTriage, removedIds };
   } catch (err) {
     logger.error({ error: String(err) }, 'Enrich node failed');
     return {
