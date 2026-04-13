@@ -28,7 +28,7 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
       // Insert listing into DB as agent-discovered (userId = null)
       const inserted = await db.insert(listings).values({
         externalId: candidate.externalId,
-        platform: 'craigslist',
+        platform: candidate.platform as 'craigslist' | 'offerup' | 'ebay' | 'sawbuck',
         url: candidate.url,
         title: candidate.title,
         description: candidate.description ?? null,

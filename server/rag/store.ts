@@ -6,10 +6,15 @@
  * pgvector types not supported by Drizzle.
  */
 
+import { createHash } from 'crypto';
 import { pool } from '../db/index.js';
 import { DIMENSIONS } from './embeddings.js';
 import logger from '../lib/logger.js';
 import pgvector from 'pgvector';
+
+function contentHash(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
 
 export type ChunkType = 'project' | 'product' | 'guide';
 
@@ -43,9 +48,15 @@ export async function initStore(): Promise<void> {
       title TEXT NOT NULL,
       content TEXT NOT NULL,
       metadata JSONB NOT NULL DEFAULT '{}',
+      content_hash TEXT,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(type, source, title)
     )
+  `);
+
+  // Add content_hash column if it doesn't exist (migration for existing installs)
+  await pool.query(`
+    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_hash TEXT
   `);
 
   await pool.query(`
@@ -69,19 +80,27 @@ export async function upsertChunk(
 ): Promise<number | null> {
   await initStore();
 
+  const hash = contentHash(chunk.content);
+
   const result = await pool.query(
-    `INSERT INTO knowledge_chunks (type, source, title, content, metadata)
-     VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (type, source, title) DO NOTHING
+    `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (type, source, title) DO UPDATE
+       SET content = EXCLUDED.content,
+           metadata = EXCLUDED.metadata,
+           content_hash = EXCLUDED.content_hash
+       WHERE knowledge_chunks.content_hash IS DISTINCT FROM EXCLUDED.content_hash
      RETURNING id`,
-    [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata)],
+    [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata), hash],
   );
 
-  if (result.rows.length === 0) return null;
+  if (result.rows.length === 0) return null; // unchanged content, no update needed
 
   const chunkId = result.rows[0].id;
+  // Upsert embedding (update if content changed)
   await pool.query(
-    'INSERT INTO knowledge_vec (chunk_id, embedding) VALUES ($1, $2)',
+    `INSERT INTO knowledge_vec (chunk_id, embedding) VALUES ($1, $2)
+     ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
     [chunkId, pgvector.toSql(Array.from(embedding))],
   );
 
@@ -110,18 +129,24 @@ export async function upsertChunks(
 
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
+      const hash = contentHash(chunk.content);
       const result = await client.query(
-        `INSERT INTO knowledge_chunks (type, source, title, content, metadata)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (type, source, title) DO NOTHING
+        `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (type, source, title) DO UPDATE
+           SET content = EXCLUDED.content,
+               metadata = EXCLUDED.metadata,
+               content_hash = EXCLUDED.content_hash
+           WHERE knowledge_chunks.content_hash IS DISTINCT FROM EXCLUDED.content_hash
          RETURNING id`,
-        [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata)],
+        [chunk.type, chunk.source, chunk.title, chunk.content, JSON.stringify(chunk.metadata), hash],
       );
 
       if (result.rows.length > 0) {
         const chunkId = result.rows[0].id;
         await client.query(
-          'INSERT INTO knowledge_vec (chunk_id, embedding) VALUES ($1, $2)',
+          `INSERT INTO knowledge_vec (chunk_id, embedding) VALUES ($1, $2)
+           ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding`,
           [chunkId, pgvector.toSql(Array.from(embeddings[i]))],
         );
         inserted++;

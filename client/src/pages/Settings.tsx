@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, type AdminUser, type AgentRun } from '../api';
+import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region } from '../api';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
@@ -20,11 +20,12 @@ const STYLES = [
   'danish modern', 'colonial', 'craftsman', 'rustic', 'modern',
 ];
 
-type Tab = 'preferences' | 'users' | 'agent' | 'runs';
+type Tab = 'preferences' | 'users' | 'platforms' | 'agent' | 'runs';
 
 const ADMIN_TABS: { key: Tab; label: string }[] = [
   { key: 'preferences', label: 'Preferences' },
   { key: 'users', label: 'Users' },
+  { key: 'platforms', label: 'Platforms & Regions' },
   { key: 'agent', label: 'Agent Config' },
   { key: 'runs', label: 'Agent Runs' },
 ];
@@ -41,6 +42,9 @@ export default function Settings() {
   const [agentOverrides, setAgentOverrides] = useState<Record<string, string>>({});
   const [agentDraft, setAgentDraft] = useState<Record<string, string>>({});
   const [savingAgent, setSavingAgent] = useState(false);
+  const [platforms, setPlatforms] = useState<PlatformSetting[]>([]);
+  const [regionsData, setRegionsData] = useState<Region[]>([]);
+  const [newRegion, setNewRegion] = useState({ name: '', latitude: '', longitude: '', radiusMiles: '30', clSubdomain: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
@@ -57,6 +61,8 @@ export default function Settings() {
       setAgentOverrides(overrides);
       setAgentDraft({});
     }).catch(() => {});
+    api.getPlatforms().then(setPlatforms).catch(() => {});
+    api.getRegions().then(setRegionsData).catch(() => {});
   };
 
   useEffect(() => {
@@ -342,6 +348,145 @@ export default function Settings() {
             </div>
           )}
         </Card>
+      )}
+
+      {/* Platforms & Regions tab (admin) */}
+      {tab === 'platforms' && isAdmin && (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>Platforms</CardHeader>
+            <p className="text-xs text-gray-500 mb-3">Enable or disable platforms for the agent pipeline.</p>
+            {platforms.length === 0 ? (
+              <p className="text-sm text-gray-400">No platforms configured.</p>
+            ) : (
+              <div className="space-y-2">
+                {platforms.map((p) => (
+                  <div key={p.platform} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
+                    <span className="text-sm font-medium text-gray-900 capitalize">{p.platform}</span>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await api.updatePlatform(p.platform, !p.enabled);
+                          setPlatforms((prev) => prev.map((x) => x.platform === p.platform ? { ...x, enabled: !x.enabled } : x));
+                          toast('success', `${p.platform} ${!p.enabled ? 'enabled' : 'disabled'}`);
+                        } catch (err) {
+                          toast('error', err instanceof Error ? err.message : 'Failed');
+                        }
+                      }}
+                      className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                        p.enabled ? 'bg-blue-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                        p.enabled ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader>Regions</CardHeader>
+            <p className="text-xs text-gray-500 mb-3">The agent scrapes every enabled region for each enabled platform.</p>
+            {regionsData.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {regionsData.map((r) => (
+                  <div key={r.id} className="flex items-center justify-between rounded-lg border border-gray-200 px-4 py-3">
+                    <div>
+                      <span className="text-sm font-medium text-gray-900">{r.name}</span>
+                      <span className="text-xs text-gray-400 ml-2">
+                        {r.latitude.toFixed(2)}, {r.longitude.toFixed(2)} / {r.radiusMiles}mi
+                        {r.clSubdomain ? ` (CL: ${r.clSubdomain})` : ''}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.updateRegion(r.id, { enabled: !r.enabled });
+                            setRegionsData((prev) => prev.map((x) => x.id === r.id ? { ...x, enabled: !x.enabled } : x));
+                          } catch (err) {
+                            toast('error', err instanceof Error ? err.message : 'Failed');
+                          }
+                        }}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+                          r.enabled ? 'bg-blue-600' : 'bg-gray-200'
+                        }`}
+                      >
+                        <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                          r.enabled ? 'translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </button>
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Delete region "${r.name}"?`)) return;
+                          try {
+                            await api.deleteRegion(r.id);
+                            setRegionsData((prev) => prev.filter((x) => x.id !== r.id));
+                            toast('success', 'Region deleted');
+                          } catch (err) {
+                            toast('error', err instanceof Error ? err.message : 'Failed');
+                          }
+                        }}
+                        className="text-xs text-red-400 hover:text-red-600"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-4">
+              <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide mb-2">Add Region</h4>
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                <input type="text" placeholder="Name (e.g. seattle)" value={newRegion.name}
+                  onChange={(e) => setNewRegion({ ...newRegion, name: e.target.value })}
+                  className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
+                <input type="text" placeholder="CL subdomain (optional)" value={newRegion.clSubdomain}
+                  onChange={(e) => setNewRegion({ ...newRegion, clSubdomain: e.target.value })}
+                  className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
+                <input type="number" step="any" placeholder="Latitude" value={newRegion.latitude}
+                  onChange={(e) => setNewRegion({ ...newRegion, latitude: e.target.value })}
+                  className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
+                <input type="number" step="any" placeholder="Longitude" value={newRegion.longitude}
+                  onChange={(e) => setNewRegion({ ...newRegion, longitude: e.target.value })}
+                  className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
+                <input type="number" placeholder="Radius (miles)" value={newRegion.radiusMiles}
+                  onChange={(e) => setNewRegion({ ...newRegion, radiusMiles: e.target.value })}
+                  className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
+              </div>
+              <button
+                onClick={async () => {
+                  if (!newRegion.name || !newRegion.latitude || !newRegion.longitude) {
+                    toast('error', 'Name, latitude, and longitude are required');
+                    return;
+                  }
+                  try {
+                    const created = await api.createRegion({
+                      name: newRegion.name,
+                      latitude: parseFloat(newRegion.latitude),
+                      longitude: parseFloat(newRegion.longitude),
+                      radiusMiles: parseInt(newRegion.radiusMiles) || 30,
+                      clSubdomain: newRegion.clSubdomain || null,
+                    });
+                    setRegionsData((prev) => [...prev, created]);
+                    setNewRegion({ name: '', latitude: '', longitude: '', radiusMiles: '30', clSubdomain: '' });
+                    toast('success', `Region "${created.name}" added`);
+                  } catch (err) {
+                    toast('error', err instanceof Error ? err.message : 'Failed to create region');
+                  }
+                }}
+                className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Add Region
+              </button>
+            </div>
+          </Card>
+        </div>
       )}
 
       {/* Agent Config tab (admin) */}

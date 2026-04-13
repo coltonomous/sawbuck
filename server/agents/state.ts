@@ -1,5 +1,5 @@
 import { Annotation } from '@langchain/langgraph';
-import type { ScrapedCandidate } from '../integrations/common/types.js';
+import type { ScrapedCandidate, Region } from '../integrations/common/types.js';
 
 export type { ScrapedCandidate };
 
@@ -70,6 +70,12 @@ export interface RunSummary {
   errors: number;
 }
 
+export interface ScrapeTask {
+  platform: string;
+  region: Region;
+  page: number;
+}
+
 export interface AgentState {
   runId: string;
   startedAt: string;
@@ -88,6 +94,7 @@ export interface AgentState {
   conceptsRendered: number;
   scrapeAttempts: number;
   seenExternalIds: string[]; // track IDs across retries to avoid re-triaging
+  scrapeTask: ScrapeTask | null; // current task for scrapeOne node (set by Send)
   errors: AgentError[];
   summary: RunSummary | null;
 }
@@ -98,7 +105,7 @@ export const AgentAnnotation = Annotation.Root({
   startedAt: Annotation<string>,
 
   scrapedCandidates: Annotation<ScrapedCandidate[]>({
-    reducer: (prev, next) => next, // replace on each scrape
+    reducer: (prev, next) => [...prev, ...next], // append — fan-out results merge
     default: () => [],
   }),
   triagedCandidates: Annotation<TriagedCandidate[]>({
@@ -159,6 +166,10 @@ export const AgentAnnotation = Annotation.Root({
   seenExternalIds: Annotation<string[]>({
     reducer: (prev, next) => [...new Set([...prev, ...next])],
     default: () => [],
+  }),
+  scrapeTask: Annotation<ScrapeTask | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
   }),
 
   errors: Annotation<AgentError[]>({

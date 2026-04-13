@@ -1,25 +1,27 @@
-import { StateGraph, END } from '@langchain/langgraph';
+import { StateGraph, END, Send } from '@langchain/langgraph';
 import { PostgresSaver } from '@langchain/langgraph-checkpoint-postgres';
 import { AgentAnnotation, type AgentState } from './state.js';
 import { agentConfig } from './config.js';
-import { scrapeCategory } from './nodes/scrape.js';
+import { dispatchScrapes, afterScrapesMerge } from './nodes/scrape.js';
+import { scrapeOne } from './nodes/scrape-one.js';
 import { triageCandidates } from './nodes/triage.js';
 import { enrichPassed } from './nodes/enrich.js';
 import { reconcileListings } from './nodes/reconcile.js';
 import { evaluateCandidates } from './nodes/evaluate.js';
 import { generatePlanOptions } from './nodes/plan-options.js';
 import { generateConcepts } from './nodes/render.js';
+import { discoverKnowledge } from './nodes/discover-knowledge.js';
 import { summarizeRun } from './nodes/summarize.js';
 
 const MAX_SCRAPE_ATTEMPTS = 3;
 const MIN_QUALIFIED_TARGET = 1;
 
-function afterTriage(state: AgentState): 'enrich' | 'scrape' | 'summarize' {
+function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summarize' {
   if (state.passedTriage.length > 0) {
     if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
     return 'enrich';
   }
-  if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'scrape';
+  if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'dispatchScrapes';
   return 'summarize';
 }
 
@@ -28,29 +30,27 @@ function afterReconcile(state: AgentState): 'evaluate' | 'summarize' {
   return 'evaluate';
 }
 
-function afterEvaluate(state: AgentState): 'planOptions' | 'scrape' | 'summarize' {
-  if (state.qualifiedListings.length > 0) return 'planOptions';
-  // No qualified listings this iteration — try another page if under caps
+function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrapes' | 'summarize' {
+  if (state.qualifiedListings.length > 0) return 'discoverKnowledge';
   if (
     state.evalCount < agentConfig.maxEvals &&
     state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS
   ) {
-    return 'scrape';
+    return 'dispatchScrapes';
   }
   return 'summarize';
 }
 
-function afterPlanOptions(state: AgentState): 'render' | 'scrape' | 'summarize' {
+function afterPlanOptions(state: AgentState): 'render' | 'dispatchScrapes' | 'summarize' {
   if (state.listingsWithOptions.length > 0 && process.env.FAL_KEY && state.conceptsRendered < agentConfig.maxListingsRendered) {
     return 'render';
   }
-  // No render possible — check if we should loop for more qualified listings
-  if (shouldLoop(state)) return 'scrape';
+  if (shouldLoop(state)) return 'dispatchScrapes';
   return 'summarize';
 }
 
-function afterRender(state: AgentState): 'scrape' | 'summarize' {
-  if (shouldLoop(state)) return 'scrape';
+function afterRender(state: AgentState): 'dispatchScrapes' | 'summarize' {
+  if (shouldLoop(state)) return 'dispatchScrapes';
   return 'summarize';
 }
 
@@ -63,21 +63,25 @@ function shouldLoop(state: AgentState): boolean {
 }
 
 // Graph flow:
-// scrape → triage → [retry?] → enrich → reconcile → evaluate → planOptions → render → summarize
+// dispatchScrapes → [Send → scrapeOne × N] → mergeScrapes → triage → [retry?] → enrich → reconcile → evaluate → planOptions → render → summarize
 const graph = new StateGraph(AgentAnnotation)
-  .addNode('scrape', scrapeCategory)
+  .addNode('dispatchScrapes', dispatchScrapes)
+  .addNode('scrapeOne', scrapeOne)
+  .addNode('mergeScrapes', afterScrapesMerge)
   .addNode('triage', triageCandidates)
   .addNode('enrich', enrichPassed)
   .addNode('reconcile', reconcileListings)
   .addNode('evaluate', evaluateCandidates)
+  .addNode('discoverKnowledge', discoverKnowledge)
   .addNode('planOptions', generatePlanOptions)
   .addNode('render', generateConcepts)
   .addNode('summarize', summarizeRun)
-  .addEdge('__start__', 'scrape')
-  .addEdge('scrape', 'triage')
+  .addEdge('__start__', 'dispatchScrapes')
+  .addEdge('scrapeOne', 'mergeScrapes')
+  .addEdge('mergeScrapes', 'triage')
   .addConditionalEdges('triage', afterTriage, {
     enrich: 'enrich',
-    scrape: 'scrape',
+    dispatchScrapes: 'dispatchScrapes',
     summarize: 'summarize',
   })
   .addEdge('enrich', 'reconcile')
@@ -86,17 +90,18 @@ const graph = new StateGraph(AgentAnnotation)
     summarize: 'summarize',
   })
   .addConditionalEdges('evaluate', afterEvaluate, {
-    planOptions: 'planOptions',
-    scrape: 'scrape',
+    discoverKnowledge: 'discoverKnowledge',
+    dispatchScrapes: 'dispatchScrapes',
     summarize: 'summarize',
   })
+  .addEdge('discoverKnowledge', 'planOptions')
   .addConditionalEdges('planOptions', afterPlanOptions, {
     render: 'render',
-    scrape: 'scrape',
+    dispatchScrapes: 'dispatchScrapes',
     summarize: 'summarize',
   })
   .addConditionalEdges('render', afterRender, {
-    scrape: 'scrape',
+    dispatchScrapes: 'dispatchScrapes',
     summarize: 'summarize',
   })
   .addEdge('summarize', END);

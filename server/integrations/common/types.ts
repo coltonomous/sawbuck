@@ -1,5 +1,15 @@
+export interface Region {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMiles: number;
+  clSubdomain: string | null;
+}
+
 export interface ScrapedCandidate {
   externalId: string;
+  platform: string;
   url: string;
   title: string;
   askingPrice: number | null;
@@ -11,7 +21,13 @@ export interface ScrapedCandidate {
   postedAt?: string;
 }
 
-export interface Integration {
+export interface EnrichResult {
+  enriched: ScrapedCandidate[];
+  removedIds: string[];
+}
+
+export interface PlatformIntegration {
   platform: string;
-  ingest(): Promise<ScrapedCandidate[]>;
+  discover(region: Region, page?: number): Promise<ScrapedCandidate[]>;
+  enrich(candidates: ScrapedCandidate[]): Promise<EnrichResult>;
 }

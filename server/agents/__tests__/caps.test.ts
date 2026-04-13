@@ -4,12 +4,12 @@ import { MAX_SCRAPE_ATTEMPTS, afterReconcile } from '../graph.js';
 import type { AgentState } from '../state.js';
 
 // Mirror conditional edge logic from graph.ts
-function afterTriage(state: AgentState): 'enrich' | 'scrape' | 'summarize' {
+function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summarize' {
   if (state.passedTriage.length > 0) {
     if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
     return 'enrich';
   }
-  if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'scrape';
+  if (state.scrapeAttempts < MAX_SCRAPE_ATTEMPTS) return 'dispatchScrapes';
   return 'summarize';
 }
 
@@ -44,13 +44,14 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     removedIds: [],
     reconciledCount: 0,
     seenExternalIds: [],
+    scrapeTask: null,
     errors: [],
     summary: null,
     ...overrides,
   };
 }
 
-const mockTriaged = { externalId: '1', url: '', title: 'test', askingPrice: null, location: '', imageUrls: [], triageResult: { isWoodFurniture: true, hasFlipPotential: true, furnitureType: 'table', reasoning: '', confidenceScore: 0.9 } };
+const mockTriaged = { externalId: '1', platform: 'craigslist', url: '', title: 'test', askingPrice: null, location: '', imageUrls: [], triageResult: { isWoodFurniture: true, hasFlipPotential: true, furnitureType: 'table', reasoning: '', confidenceScore: 0.9 } };
 const mockEvaluated = { ...mockTriaged, listingId: 1, evaluation: { furnitureType: 'table', furnitureStyle: 'modern', conditionScore: 7, woodSpecies: 'oak', estimatedValue: 200, dealScore: 2, flipRecommendation: 'buy' as const, refinishingPotential: 'high' as const, profitVerdict: 'good' } };
 const mockWithOptions = { ...mockEvaluated, options: [{ difficulty: 'simple' as const, label: 'Clean', summary: 'test', estimatedHours: 2, estimatedMaterialCost: 30, estimatedResalePrice: 200 }] };
 
@@ -64,7 +65,7 @@ describe('afterTriage', () => {
   });
 
   it('retries scrape when 0 passed and attempts remain', () => {
-    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: 1 }))).toBe('scrape');
+    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: 1 }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when 0 passed and max attempts', () => {
@@ -83,8 +84,8 @@ describe('afterReconcile', () => {
 });
 
 describe('afterEvaluate', () => {
-  it('routes to planOptions when qualified listings exist', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [mockEvaluated] }))).toBe('planOptions');
+  it('routes to discoverKnowledge when qualified listings exist', () => {
+    expect(afterEvaluate(makeState({ qualifiedListings: [mockEvaluated] }))).toBe('discoverKnowledge');
   });
 
   it('routes to summarize when no qualified listings', () => {

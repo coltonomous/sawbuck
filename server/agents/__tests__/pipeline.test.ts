@@ -34,7 +34,7 @@ vi.mock('@fal-ai/client', () => ({
 import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { analyzeListing } from '../../analysis/vision.js';
 import { calculatePricing } from '../../analysis/pricing.js';
-import { scrapeCategory } from '../nodes/scrape.js';
+import { dispatchScrapes } from '../nodes/scrape.js';
 import { triageCandidates } from '../nodes/triage.js';
 import { evaluateCandidates } from '../nodes/evaluate.js';
 import { summarizeRun } from '../nodes/summarize.js';
@@ -67,6 +67,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     removedIds: [],
     reconciledCount: 0,
     seenExternalIds: [],
+    scrapeTask: null,
     summary: null,
     ...overrides,
   };
@@ -75,6 +76,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
 function makeCandidate(id: string, title: string): ScrapedCandidate {
   return {
     externalId: `agent-test-${id}-${Date.now()}`,
+    platform: 'craigslist',
     url: `https://seattle.craigslist.org/test/${id}.html`,
     title,
     askingPrice: 75,

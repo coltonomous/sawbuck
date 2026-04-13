@@ -8,7 +8,7 @@
  */
 
 import { embedBatch } from '../embeddings.js';
-import { upsertChunks, clearChunks } from '../store.js';
+import { upsertChunks } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
 import logger from '../../lib/logger.js';
 
@@ -153,8 +153,6 @@ export async function ingestGuides(
   }
 
   logger.info({ count: sources.length }, 'Ingesting guide sources');
-
-  await clearChunks('guide');
 
   const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = [];
   let failed = 0;

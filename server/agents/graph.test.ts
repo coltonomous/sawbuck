@@ -33,6 +33,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     conceptsRendered: 0,
     scrapeAttempts: 0,
     seenExternalIds: [],
+    scrapeTask: null,
     errors: [],
     summary: null,
     ...overrides,
@@ -40,12 +41,12 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
 }
 
 describe('afterEvaluate', () => {
-  it('routes to planOptions when qualified listings exist', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [{} as any] }))).toBe('planOptions');
+  it('routes to discoverKnowledge when qualified listings exist', () => {
+    expect(afterEvaluate(makeState({ qualifiedListings: [{} as any] }))).toBe('discoverKnowledge');
   });
 
   it('loops to scrape when no qualified but under caps', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
+    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: 3, scrapeAttempts: 1 }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when no qualified and eval cap hit', () => {
@@ -63,7 +64,7 @@ describe('afterRender', () => {
       qualifiedCount: 0,
       evalCount: 3,
       scrapeAttempts: 1,
-    }))).toBe('scrape');
+    }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when qualified target met', () => {
@@ -97,7 +98,7 @@ describe('afterTriage', () => {
   });
 
   it('retries scrape when nothing passed and attempts remain', () => {
-    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: 1 }))).toBe('scrape');
+    expect(afterTriage(makeState({ passedTriage: [], scrapeAttempts: 1 }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when nothing passed and scrape exhausted', () => {
@@ -128,7 +129,7 @@ describe('afterPlanOptions', () => {
 
   it('loops to scrape when no FAL_KEY and under target', () => {
     delete process.env.FAL_KEY;
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 0, evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 0, evalCount: 3, scrapeAttempts: 1 }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when no FAL_KEY and target met', () => {
@@ -147,6 +148,6 @@ describe('afterPlanOptions', () => {
   });
 
   it('loops to scrape when no listings with options and under target', () => {
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [], qualifiedCount: 0, evalCount: 3, scrapeAttempts: 1 }))).toBe('scrape');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [], qualifiedCount: 0, evalCount: 3, scrapeAttempts: 1 }))).toBe('dispatchScrapes');
   });
 });

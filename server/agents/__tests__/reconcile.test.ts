@@ -21,7 +21,7 @@ vi.mock('../../lib/logger.js', () => ({
 
 // Track DB updates
 const dbUpdates: { status: string; ids: number[] }[] = [];
-let mockDbListings: { id: number; externalId: string; url: string }[] = [];
+let mockDbListings: { id: number; externalId: string; url: string; platform: string }[] = [];
 
 vi.mock('../../db/index.js', () => {
   const makeSelectChain = () => {
@@ -66,6 +66,10 @@ vi.mock('../../db/schema.js', () => ({
   },
 }));
 
+vi.mock('../../integrations/registry.js', () => ({
+  getEnabledPlatforms: () => Promise.resolve([{ platform: 'craigslist' }]),
+}));
+
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
@@ -95,6 +99,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     conceptsRendered: 0,
     scrapeAttempts: 1,
     seenExternalIds: [],
+    scrapeTask: null,
     errors: [],
     summary: null,
     ...overrides,
@@ -128,7 +133,7 @@ describe('reconcileListings', () => {
 
   it('probes DB listings missing from RSS and marks 404s as removed', async () => {
     mockDbListings = [
-      { id: 100, externalId: 'old-1', url: 'https://seattle.craigslist.org/old/1.html' },
+      { id: 100, externalId: 'old-1', url: 'https://seattle.craigslist.org/old/1.html', platform: 'craigslist' },
     ];
 
     mockFetch.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
@@ -144,7 +149,7 @@ describe('reconcileListings', () => {
 
   it('probes DB listings and detects deletion notice pages', async () => {
     mockDbListings = [
-      { id: 200, externalId: 'deleted-1', url: 'https://seattle.craigslist.org/d/200.html' },
+      { id: 200, externalId: 'deleted-1', url: 'https://seattle.craigslist.org/d/200.html', platform: 'craigslist' },
     ];
 
     // Single GET returns deletion notice page
@@ -163,7 +168,7 @@ describe('reconcileListings', () => {
 
   it('does not mark listings that are still live', async () => {
     mockDbListings = [
-      { id: 300, externalId: 'alive-1', url: 'https://seattle.craigslist.org/d/300.html' },
+      { id: 300, externalId: 'alive-1', url: 'https://seattle.craigslist.org/d/300.html', platform: 'craigslist' },
     ];
 
     // HEAD returns 200
@@ -195,7 +200,7 @@ describe('reconcileListings', () => {
 
   it('handles network errors during probe gracefully', async () => {
     mockDbListings = [
-      { id: 400, externalId: 'flaky-1', url: 'https://seattle.craigslist.org/d/400.html' },
+      { id: 400, externalId: 'flaky-1', url: 'https://seattle.craigslist.org/d/400.html', platform: 'craigslist' },
     ];
 
     mockFetch.mockRejectedValueOnce(new Error('ECONNRESET'));

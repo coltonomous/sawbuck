@@ -34,6 +34,7 @@ QR Code Link to This Post</section>
 function makeCandidate(overrides: Partial<Parameters<typeof enrich>[0][0]> = {}) {
   return {
     externalId: `test-${Math.random().toString(36).slice(2)}`,
+    platform: 'craigslist',
     url: 'https://seattle.craigslist.org/d/test/1234567.html',
     title: 'Test item',
     askingPrice: 50 as number | null,

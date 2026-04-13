@@ -9,7 +9,7 @@
  */
 
 import { embedBatch } from '../embeddings.js';
-import { upsertChunks, clearChunks } from '../store.js';
+import { upsertChunks } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
 import logger from '../../lib/logger.js';
 
@@ -118,9 +118,6 @@ export async function ingestProducts(
   }
 
   logger.info({ count: sources.length }, 'Ingesting product sources');
-
-  // Clear and re-ingest
-  await clearChunks('product');
 
   const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = [];
   let failed = 0;

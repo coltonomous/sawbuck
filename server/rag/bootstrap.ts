@@ -13,6 +13,7 @@ import { chunkCount, initStore } from './store.js';
 import { ingestProjects } from './ingest/projects.js';
 import { ingestProducts, type ProductSource } from './ingest/products.js';
 import { ingestGuides, type GuideSource } from './ingest/guides.js';
+import { processSourceQueue } from './ingest/worker.js';
 import logger from '../lib/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -29,12 +30,9 @@ export async function bootstrapKnowledgeBase(): Promise<void> {
     await initStore(); // ensure vector tables exist
 
     const total = await chunkCount();
-    if (total > 0) {
-      logger.info({ chunks: total }, 'Knowledge base already populated');
-      return;
-    }
-
-    logger.info('Knowledge base empty — running initial ingestion');
+    logger.info({ chunks: total }, total > 0
+      ? 'Knowledge base: running incremental sync'
+      : 'Knowledge base empty — running initial ingestion');
 
     const sources: Sources = JSON.parse(
       readFileSync(resolve(__dirname, 'sources.json'), 'utf-8'),
@@ -44,13 +42,17 @@ export async function bootstrapKnowledgeBase(): Promise<void> {
     const productResult = await ingestProducts(sources.products);
     const guideResult = await ingestGuides(sources.guides);
 
+    // Process any pending auto-discovered sources
+    const workerResult = await processSourceQueue();
+
     logger.info(
       {
         projects: projectResult.ingested,
         products: productResult.ingested,
         guides: guideResult.ingested,
+        autoDiscovered: workerResult.ingested,
       },
-      'Initial knowledge base ingestion complete',
+      'Knowledge base sync complete',
     );
   } catch (err) {
     logger.error({ err: (err as Error).message }, 'Knowledge base bootstrap failed');

@@ -4,6 +4,7 @@ import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import { cleanupOrphanedImages } from './images/cleanup.js';
 import { startScheduler, stopScheduler } from './agents/scheduler.js';
 import { promoteAdmin } from './lib/seed-admin.js';
+import { seedPlatformDefaults } from './integrations/registry.js';
 import { db, pool } from './db/index.js';
 import { sessions } from './db/schema.js';
 import { lt } from 'drizzle-orm';
@@ -16,6 +17,9 @@ const server = serve({ fetch: app.fetch, port });
 
 // Promote ADMIN_EMAIL user to admin role (idempotent)
 promoteAdmin();
+
+// Seed platform settings and initial region if tables are empty
+seedPlatformDefaults();
 
 // Background: load embedding model + seed knowledge base if empty
 bootstrapKnowledgeBase();

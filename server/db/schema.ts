@@ -347,6 +347,38 @@ export const appSettings = pgTable('app_settings', {
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
 
+// ============================================================
+// Regions (multi-region agent scraping)
+// ============================================================
+
+export const regions = pgTable('regions', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull().unique(),
+  latitude: real('latitude').notNull(),
+  longitude: real('longitude').notNull(),
+  radiusMiles: integer('radius_miles').notNull().default(30),
+  clSubdomain: text('cl_subdomain'),
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// ============================================================
+// Knowledge Sources (DB-backed RAG source registry)
+// ============================================================
+
+export const knowledgeSources = pgTable('knowledge_sources', {
+  id: serial('id').primaryKey(),
+  type: text('type', { enum: ['product', 'guide'] }).notNull(),
+  url: text('url').notNull().unique(),
+  title: text('title').notNull(),
+  metadata: text('metadata').notNull().default('{}'),
+  autoDiscovered: boolean('auto_discovered').notNull().default(false),
+  lastIngestedAt: timestamp('last_ingested_at'),
+  contentHash: text('content_hash'),
+  enabled: boolean('enabled').notNull().default(true),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 export const projectPhotos = pgTable('project_photos', {
   id: serial('id').primaryKey(),
   projectId: integer('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),

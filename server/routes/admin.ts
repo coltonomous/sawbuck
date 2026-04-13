@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings } from '../db/schema.js';
+import { users, listings, platformSettings, regions } from '../db/schema.js';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
@@ -139,6 +139,81 @@ adminRouter.delete('/listings', async (c) => {
   await db.delete(listings).where(inArray(listings.id, validIds));
 
   return c.json({ ok: true, deleted: validIds.length });
+});
+
+// ── Platforms ───────────────────────────────────────────────────────
+
+adminRouter.get('/platforms', async (c) => {
+  const all = await db.select().from(platformSettings);
+  return c.json(all);
+});
+
+adminRouter.patch('/platforms/:platform', async (c) => {
+  const platform = c.req.param('platform') as 'craigslist' | 'offerup' | 'ebay' | 'sawbuck';
+  const { enabled } = await c.req.json<{ enabled: boolean }>();
+  if (typeof enabled !== 'boolean') {
+    return c.json({ error: 'enabled must be a boolean' }, 400);
+  }
+  await db.update(platformSettings).set({ enabled }).where(eq(platformSettings.platform, platform));
+  return c.json({ ok: true });
+});
+
+// ── Regions ─────────────────────────────────────────────────────────
+
+const regionCreateSchema = z.object({
+  name: z.string().min(1).max(50),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusMiles: z.number().int().min(1).max(200).default(30),
+  clSubdomain: z.string().max(50).nullable().optional(),
+});
+
+adminRouter.get('/regions', async (c) => {
+  const all = await db.select().from(regions);
+  return c.json(all);
+});
+
+adminRouter.post('/regions', async (c) => {
+  const raw = await c.req.json();
+  const parsed = regionCreateSchema.safeParse(raw);
+  if (!parsed.success) {
+    return c.json({ error: parsed.error.issues[0].message }, 400);
+  }
+  const [created] = await db.insert(regions).values({
+    name: parsed.data.name,
+    latitude: parsed.data.latitude,
+    longitude: parsed.data.longitude,
+    radiusMiles: parsed.data.radiusMiles,
+    clSubdomain: parsed.data.clSubdomain ?? null,
+  }).returning();
+  return c.json(created, 201);
+});
+
+adminRouter.patch('/regions/:id', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  const body = await c.req.json();
+  const updates: Record<string, unknown> = {};
+  if (typeof body.enabled === 'boolean') updates.enabled = body.enabled;
+  if (typeof body.name === 'string') updates.name = body.name;
+  if (typeof body.latitude === 'number') updates.latitude = body.latitude;
+  if (typeof body.longitude === 'number') updates.longitude = body.longitude;
+  if (typeof body.radiusMiles === 'number') updates.radiusMiles = body.radiusMiles;
+  if (body.clSubdomain !== undefined) updates.clSubdomain = body.clSubdomain;
+
+  if (Object.keys(updates).length === 0) {
+    return c.json({ error: 'No valid fields to update' }, 400);
+  }
+
+  await db.update(regions).set(updates).where(eq(regions.id, id));
+  return c.json({ ok: true });
+});
+
+adminRouter.delete('/regions/:id', async (c) => {
+  const id = parseInt(c.req.param('id'));
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+  await db.delete(regions).where(eq(regions.id, id));
+  return c.json({ ok: true });
 });
 
 export { adminRouter };

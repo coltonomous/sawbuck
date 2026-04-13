@@ -21,6 +21,7 @@ const mockAnalyze = vi.mocked(analyzeWithVisionStructured);
 function makeCandidate(overrides: Partial<ScrapedCandidate> = {}): ScrapedCandidate {
   return {
     externalId: `test-${Math.random().toString(36).slice(2)}`,
+    platform: 'craigslist',
     url: 'https://seattle.craigslist.org/test/1.html',
     title: 'Test item',
     askingPrice: 50,
@@ -49,6 +50,7 @@ function makeState(candidates: ScrapedCandidate[], overrides: Partial<AgentState
     removedIds: [],
     reconciledCount: 0,
     seenExternalIds: [],
+    scrapeTask: null,
     errors: [],
     summary: null,
     ...overrides,

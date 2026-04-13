@@ -23,6 +23,22 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
 // Shared types
 
+export interface PlatformSetting {
+  platform: string;
+  enabled: boolean;
+}
+
+export interface Region {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  radiusMiles: number;
+  clSubdomain: string | null;
+  enabled: boolean;
+  createdAt: string;
+}
+
 export interface AdminUser {
   id: string;
   name: string;
@@ -437,4 +453,18 @@ export const api = {
     request<{ ok: boolean; resolved: Record<string, unknown> }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
   deleteAgentListings: (ids: number[]) =>
     request<{ ok: boolean; deleted: number }>('/admin/listings', { method: 'DELETE', body: JSON.stringify({ ids }) }),
+
+  // Platforms
+  getPlatforms: () => request<PlatformSetting[]>('/admin/platforms'),
+  updatePlatform: (platform: string, enabled: boolean) =>
+    request<{ ok: boolean }>(`/admin/platforms/${platform}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+
+  // Regions
+  getRegions: () => request<Region[]>('/admin/regions'),
+  createRegion: (data: { name: string; latitude: number; longitude: number; radiusMiles?: number; clSubdomain?: string | null }) =>
+    request<Region>('/admin/regions', { method: 'POST', body: JSON.stringify(data) }),
+  updateRegion: (id: number, data: Partial<Region>) =>
+    request<{ ok: boolean }>(`/admin/regions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteRegion: (id: number) =>
+    request<{ ok: boolean }>(`/admin/regions/${id}`, { method: 'DELETE' }),
 };

@@ -4,6 +4,7 @@ import { eq, and, inArray, isNull, notInArray } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { AntiBlockingController } from '../anti-blocking.js';
 import { clFetch } from '../../integrations/craigslist/client.js';
+import { getEnabledPlatforms } from '../../integrations/registry.js';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -37,21 +38,28 @@ export async function reconcileListings(state: AgentState): Promise<Partial<Agen
       return { reconciledCount };
     }
 
-    // Find agent-discovered CL listings in 'new' or 'analyzed' status
-    // that weren't seen in this run's RSS feeds
+    // Find agent-discovered listings in 'new' or 'analyzed' status
+    // that weren't seen in this run's search feeds
+    const enabledPlatforms = await getEnabledPlatforms();
+    const platformNames = enabledPlatforms.map((p) => p.platform) as ('craigslist' | 'offerup' | 'ebay' | 'sawbuck')[];
+    if (platformNames.length === 0) {
+      return { reconciledCount };
+    }
+
     const candidates = await db.select({
       id: listings.id,
       externalId: listings.externalId,
       url: listings.url,
+      platform: listings.platform,
     })
       .from(listings)
       .where(and(
-        eq(listings.platform, 'craigslist'),
+        inArray(listings.platform, platformNames),
         isNull(listings.userId),
         inArray(listings.status, ['new', 'analyzed']),
         notInArray(listings.externalId, recentRssIds),
       ))
-      .limit(5); // cap to avoid hammering CL
+      .limit(5); // cap to avoid hammering platforms
 
     if (candidates.length === 0) {
       return { reconciledCount };
@@ -68,6 +76,9 @@ export async function reconcileListings(state: AgentState): Promise<Partial<Agen
     const removedListingIds: number[] = [];
 
     for (const listing of candidates) {
+      // Only probe CL listings for now — other platforms TBD
+      if (listing.platform !== 'craigslist') continue;
+
       try {
         await antiBlocking.beforeRequest();
         const res = await clFetch(listing.url);

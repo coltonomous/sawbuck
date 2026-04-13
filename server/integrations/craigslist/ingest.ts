@@ -4,7 +4,7 @@ import { eq, and, inArray } from 'drizzle-orm';
 import { agentConfig } from '../../agents/config.js';
 import { AntiBlockingController } from '../../agents/anti-blocking.js';
 import { clFetch, warmCookies } from './client.js';
-import type { ScrapedCandidate } from '../common/types.js';
+import type { ScrapedCandidate, Region, EnrichResult } from '../common/types.js';
 import logger from '../../lib/logger.js';
 
 const SEARCH_URL = (city: string, page = 0) =>
@@ -128,14 +128,14 @@ function parseSearchPage(html: string): Array<{
  * Phase 1: Discover new listings from CL search page.
  * Parses JSON-LD structured data embedded in HTML — no RSS needed.
  */
-export async function discover(page = 0): Promise<ScrapedCandidate[]> {
-  const city = agentConfig.targetCity;
+export async function discover(region: Region, page = 0): Promise<ScrapedCandidate[]> {
+  const city = region.clSubdomain ?? region.name;
 
   // Warm cookies on first request to establish a session
   await warmCookies(city);
 
   const searchUrl = SEARCH_URL(city, page);
-  logger.info({ searchUrl, page }, 'CL integration: fetching search page');
+  logger.info({ searchUrl, page, region: region.name }, 'CL integration: fetching search page');
 
   const res = await clFetch(searchUrl, {
     referer: `https://${city}.craigslist.org/`,
@@ -165,6 +165,7 @@ export async function discover(page = 0): Promise<ScrapedCandidate[]> {
 
   return newItems.map((item) => ({
     externalId: item.externalId,
+    platform: 'craigslist',
     url: item.url,
     title: item.title,
     askingPrice: item.askingPrice,
@@ -174,11 +175,6 @@ export async function discover(page = 0): Promise<ScrapedCandidate[]> {
     imageUrls: item.imageUrls,
     description: item.description,
   }));
-}
-
-export interface EnrichResult {
-  enriched: ScrapedCandidate[];
-  removedIds: string[]; // externalIds of listings confirmed gone (404)
 }
 
 /**
