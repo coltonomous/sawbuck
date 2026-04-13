@@ -14,7 +14,6 @@ services:
       options:
         awslogs-region: ${AWS_REGION:-us-west-2}
         awslogs-group: /sawbuck/postgres
-        awslogs-stream-prefix: pg
         awslogs-create-group: "true"
 
   app:
@@ -36,7 +35,6 @@ services:
       options:
         awslogs-region: ${AWS_REGION:-us-west-2}
         awslogs-group: /sawbuck/app
-        awslogs-stream-prefix: app
         awslogs-create-group: "true"
 
 volumes:
