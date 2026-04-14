@@ -42,11 +42,17 @@ function RNode({ x, y, w, h, label, subtitle, status }: {
       <rect x={x} y={y} width={w} height={h} rx={5} fill={s.fill} stroke={s.stroke} strokeWidth={1.5} />
       {status === 'active' && (
         <g>
-          <rect x={x} y={y} width={w} height={h} rx={5} fill="none" stroke="#3b82f6" strokeWidth={2.5} opacity={0.5}>
-            <animate attributeName="opacity" values="0.5;0.1;0.5" dur="1.5s" repeatCount="indefinite" />
+          {/* Outer expanding ring */}
+          <rect x={x - 4} y={y - 4} width={w + 8} height={h + 8} rx={9} fill="none" stroke="#60a5fa" strokeWidth={2}>
+            <animate attributeName="opacity" values="0.6;0;0.6" dur="2s" repeatCount="indefinite" />
+            <animate attributeName="x" values={`${x - 4};${x - 7};${x - 4}`} dur="2s" repeatCount="indefinite" />
+            <animate attributeName="y" values={`${y - 4};${y - 7};${y - 4}`} dur="2s" repeatCount="indefinite" />
+            <animate attributeName="width" values={`${w + 8};${w + 14};${w + 8}`} dur="2s" repeatCount="indefinite" />
+            <animate attributeName="height" values={`${h + 8};${h + 14};${h + 8}`} dur="2s" repeatCount="indefinite" />
           </rect>
-          <rect x={x - 2} y={y - 2} width={w + 4} height={h + 4} rx={7} fill="none" stroke="#93c5fd" strokeWidth={1} opacity={0.3}>
-            <animate attributeName="opacity" values="0.3;0;0.3" dur="1.5s" repeatCount="indefinite" />
+          {/* Inner glow border */}
+          <rect x={x} y={y} width={w} height={h} rx={5} fill="none" stroke="#3b82f6" strokeWidth={2.5}>
+            <animate attributeName="stroke-width" values="2.5;1.5;2.5" dur="2s" repeatCount="indefinite" />
           </rect>
         </g>
       )}

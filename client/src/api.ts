@@ -1,5 +1,6 @@
 import type { Platform, ListingStatus, ProjectStatus, FlipRecommendation, PhotoType, UserRole } from '../../shared/constants.js';
-export type { Region, PlatformSetting, RagSource, AgentRunSummary } from '../../shared/types.js';
+import type { Region, PlatformSetting, RagSource, AgentRunSummary } from '../../shared/types.js';
+export type { Region, PlatformSetting, RagSource, AgentRunSummary };
 
 const BASE = '/api';
 
@@ -332,6 +333,8 @@ export const api = {
   getProject: (id: number) => request<ProjectDetail>(`/projects/${id}`),
   createProject: (data: CreateProjectInput) =>
     request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
+  createProjectFromConcept: (data: { listingId: number; difficulty: string; label?: string; summary?: string; estimatedHours?: number; estimatedMaterialCost?: number; estimatedResalePrice?: number }) =>
+    request<{ project: Project; planGenerated: boolean }>('/projects/from-concept', { method: 'POST', body: JSON.stringify(data) }),
   updateProject: (id: number, data: Partial<Project>) =>
     request<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteProject: (id: number) =>

@@ -244,12 +244,32 @@ export default function ListingDetail() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {listing.conceptImages.map((opt) => (
               <div key={opt.difficulty} className="border border-gray-200 rounded-lg overflow-hidden">
-                {opt.localPath && (
+                {opt.localPath ? (
                   <img
                     src={resolveImageUrl(opt.localPath)}
                     alt={opt.label}
                     className="w-full h-40 object-cover bg-gray-100"
                   />
+                ) : (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { render } = await api.generateConceptRender(listing.id, opt.difficulty as 'simple' | 'moderate' | 'full');
+                        if (render?.localPath) {
+                          setListing((prev) => prev ? {
+                            ...prev,
+                            conceptImages: prev.conceptImages?.map((c) =>
+                              c.difficulty === opt.difficulty ? { ...c, localPath: render.localPath } : c
+                            ) ?? null,
+                          } : prev);
+                        }
+                      } catch {}
+                    }}
+                    className="w-full h-40 bg-gray-50 flex flex-col items-center justify-center gap-1.5 hover:bg-gray-100 transition-colors"
+                  >
+                    <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a2.25 2.25 0 002.25-2.25V5.25a2.25 2.25 0 00-2.25-2.25H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" /></svg>
+                    <span className="text-[10px] text-gray-400 font-medium">Generate concept</span>
+                  </button>
                 )}
                 <div className="p-3">
                   <div className="flex items-center justify-between mb-1.5">
@@ -289,6 +309,27 @@ export default function ListingDetail() {
                       </>
                     )}
                   </div>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { project } = await api.createProjectFromConcept({
+                          listingId: listing.id,
+                          difficulty: opt.difficulty,
+                          label: opt.label,
+                          summary: opt.summary,
+                          estimatedHours: opt.estimatedHours ?? undefined,
+                          estimatedMaterialCost: opt.estimatedMaterialCost ?? undefined,
+                          estimatedResalePrice: opt.estimatedResalePrice ?? undefined,
+                        });
+                        navigate(`/projects/${project.id}`);
+                      } catch (err) {
+                        toast('error', err instanceof Error ? err.message : 'Failed to create project');
+                      }
+                    }}
+                    className="mt-2 w-full py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
+                  >
+                    Use this plan
+                  </button>
                 </div>
               </div>
             ))}

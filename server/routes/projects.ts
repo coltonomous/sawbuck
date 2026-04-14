@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
-import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
+import { generateRefinishingPlan, parsePlanSteps, type DifficultyContext } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/bedrock.js';
@@ -88,6 +88,77 @@ projectsRouter.post('/', async (c) => {
   });
 
   return c.json(project, 201);
+});
+
+// POST /from-concept — create project + generate plan from a concept option in one step
+projectsRouter.post('/from-concept', async (c) => {
+  const user = c.get('user');
+  const body = await c.req.json();
+  const { listingId, difficulty, label, summary, estimatedHours, estimatedMaterialCost, estimatedResalePrice } = body;
+
+  if (!listingId || !difficulty) {
+    return c.json({ error: 'listingId and difficulty are required' }, 400);
+  }
+
+  const listing = await getEditableListing(listingId, user.id);
+  if (!listing) return c.json({ error: 'Listing not found' }, 404);
+  if (!listing.furnitureType) {
+    return c.json({ error: 'Listing must be analyzed first' }, 422);
+  }
+
+  // Check if a project already exists for this listing
+  let project = await db.select().from(projects)
+    .where(and(eq(projects.listingId, listingId), eq(projects.userId, user.id)))
+    .then(r => r[0]);
+
+  if (!project) {
+    // Create the project
+    project = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(projects).values({
+        listingId,
+        name: listing.title,
+        purchasePrice: listing.askingPrice ?? 0,
+        purchaseDate: new Date(),
+        userId: user.id,
+      }).returning();
+      await tx.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId));
+      return created;
+    });
+  }
+
+  // Generate the plan seeded with the chosen concept option
+  try {
+    const difficultyCtx: DifficultyContext = {
+      difficulty,
+      label: label ?? difficulty,
+      summary: summary ?? '',
+      estimatedHours,
+      estimatedMaterialCost,
+      estimatedResalePrice,
+    };
+
+    const result = await generateRefinishingPlan(listing.id, project.id, difficultyCtx);
+    if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+
+    const storedPlans = await db.select()
+      .from(refinishingPlans)
+      .where(eq(refinishingPlans.projectId, project.id));
+    const storedPlan = storedPlans[storedPlans.length - 1];
+
+    if (storedPlan) {
+      await generateMaterialsFromPlanSync(storedPlan.id, project.id);
+    }
+
+    await db.update(projects).set({
+      status: 'refinishing',
+      updatedAt: new Date(),
+    }).where(eq(projects.id, project.id));
+
+    return c.json({ project, planGenerated: true }, 201);
+  } catch (err) {
+    logger.error({ err, listingId, difficulty }, 'Error in from-concept flow');
+    return c.json({ error: 'Failed to generate refinishing plan' }, 500);
+  }
 });
 
 // PATCH /:id — update project
@@ -178,8 +249,19 @@ projectsRouter.post('/:id/refinish', async (c) => {
     return c.json({ error: 'Analyze the listing first — the refinishing plan needs furniture type, condition, and wood data to be useful.' }, 422);
   }
 
+  // Accept optional difficulty context from concept option selection
+  const body = await c.req.json().catch(() => ({}));
+  const difficultyCtx: DifficultyContext | undefined = body.difficulty ? {
+    difficulty: body.difficulty,
+    label: body.label ?? body.difficulty,
+    summary: body.summary ?? '',
+    estimatedHours: body.estimatedHours,
+    estimatedMaterialCost: body.estimatedMaterialCost,
+    estimatedResalePrice: body.estimatedResalePrice,
+  } : undefined;
+
   try {
-    const result = await generateRefinishingPlan(project.listingId, id);
+    const result = await generateRefinishingPlan(project.listingId, id, difficultyCtx);
     if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
     // Generate materials + update project status atomically

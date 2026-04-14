@@ -45,9 +45,19 @@ You recommend specific products by brand name and provide precise quantities. Yo
 
 IMPORTANT: Respond with ONLY a valid JSON object matching the requested schema. No markdown, no explanation, just JSON.`;
 
-function buildPrompt(listing: typeof listings.$inferSelect): string {
+export interface DifficultyContext {
+  difficulty: 'simple' | 'moderate' | 'full';
+  label: string;
+  summary: string;
+  estimatedHours?: number;
+  estimatedMaterialCost?: number;
+  estimatedResalePrice?: number;
+}
+
+function buildPrompt(listing: typeof listings.$inferSelect, difficultyCtx?: DifficultyContext): string {
   const parts = [
     `Generate a detailed refinishing plan for this furniture piece to maximize resale value.`,
+    difficultyCtx ? `\nThe user has chosen the "${difficultyCtx.difficulty}" approach: "${difficultyCtx.label}" — ${difficultyCtx.summary}\nTarget this difficulty level specifically. Use the following estimates as guidelines:\n- Estimated hours: ${difficultyCtx.estimatedHours ?? 'unknown'}\n- Estimated material cost: $${difficultyCtx.estimatedMaterialCost ?? 'unknown'}\n- Estimated resale price: $${difficultyCtx.estimatedResalePrice ?? 'unknown'}` : null,
     ``,
     `Piece details:`,
     `- Type: ${listing.furnitureType || 'Unknown'}`,
@@ -109,13 +119,13 @@ export interface RefinishingResult {
   ragSources: RagSourceRef[];
 }
 
-export async function generateRefinishingPlan(listingId: number, projectId?: number): Promise<RefinishingResult | null> {
+export async function generateRefinishingPlan(listingId: number, projectId?: number, difficultyCtx?: DifficultyContext): Promise<RefinishingResult | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
-  logger.info({ listingId, title: listing.title }, 'Generating refinishing plan');
+  logger.info({ listingId, title: listing.title, difficulty: difficultyCtx?.difficulty }, 'Generating refinishing plan');
 
-  let prompt = buildPrompt(listing);
+  let prompt = buildPrompt(listing, difficultyCtx);
 
   // Augment prompt with RAG context (past flips, product specs, technique guides)
   let ragChunksUsed = 0;
