@@ -458,7 +458,7 @@ describe('Admin operations', () => {
     const adminEntry = body.find((u: any) => u.id === admin.id);
     expect(adminEntry).toBeDefined();
     expect(adminEntry.role).toBe('admin');
-    expect(adminEntry).toHaveProperty('listingCount');
+    expect(adminEntry).toHaveProperty('projectCount');
   });
 
   it('promotes and demotes a user', async () => {
