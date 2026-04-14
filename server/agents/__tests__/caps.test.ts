@@ -6,7 +6,7 @@ import type { AgentState } from '../state.js';
 // Mirror conditional edge logic from graph.ts
 function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summarize' {
   if (state.passedTriage.length > 0) {
-    if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
+    if (Object.values(state.evalCount).length > 0 && Object.values(state.evalCount).every((c) => c >= agentConfig.maxEvals)) return 'summarize';
     return 'enrich';
   }
   if (Object.values(state.scrapeAttempts).length === 0 || Object.values(state.scrapeAttempts).some((a) => a < MAX_SCRAPE_ATTEMPTS)) return 'dispatchScrapes';
@@ -37,7 +37,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     listingsWithOptions: [],
     conceptRenders: [],
     triageCount: {},
-    evalCount: 0,
+    evalCount: {},
     qualifiedCount: 0,
     conceptsRendered: 0,
     scrapeAttempts: {},
@@ -61,7 +61,7 @@ describe('afterTriage', () => {
   });
 
   it('routes to summarize when eval cap reached', () => {
-    expect(afterTriage(makeState({ passedTriage: [mockTriaged], evalCount: agentConfig.maxEvals }))).toBe('summarize');
+    expect(afterTriage(makeState({ passedTriage: [mockTriaged], evalCount: { craigslist: agentConfig.maxEvals } }))).toBe('summarize');
   });
 
   it('retries scrape when 0 passed and attempts remain', () => {

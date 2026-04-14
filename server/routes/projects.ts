@@ -340,15 +340,18 @@ ${context.join('\n')}
 
 Rules:
 - 2-3 short paragraphs, like a real Facebook Marketplace or Craigslist post
-- Casual, friendly tone — not a magazine ad. Write like a person, not a brand
+- Casual, friendly tone. Write like a person, not a brand or a copywriter
 - Mention what it is, the style/wood if known, and that it's been refinished
-- Keep it factual and brief — no flowery language or over-selling
+- Keep it factual and brief. No flowery language or over-selling
+- Use commas instead of em dashes. Never use the — character
 - Do NOT include a title line, price, or dimensions
 - Do NOT invent a reason for selling or mention pickup/shipping logistics
-- Do NOT use words like "stunning", "gorgeous", "exquisite", "timeless", or "elevate"`;
+- Do NOT use words like "stunning", "gorgeous", "exquisite", "timeless", "elevate", "boasts", "showcases", or "perfect for"
+- Avoid starting sentences with "This" repeatedly
+- Sound like something a real person typed on their phone, not AI-generated marketing copy`;
 
   try {
-    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace — friendly, brief, and honest. No copywriting voice.', 400);
+    const text = await generateText(prompt, 'You write furniture listings the way a normal person posts on Facebook Marketplace. Short, direct, no filler. You never use em dashes, never use marketing language. You sound like someone selling furniture out of their garage.', 400);
     await db.update(projects).set({ listingText: text }).where(eq(projects.id, id));
     return c.json({ text });
   } catch (err: unknown) {

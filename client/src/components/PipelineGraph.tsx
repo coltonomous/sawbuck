@@ -23,11 +23,47 @@ const STATUS_STYLES = {
 
 type Status = keyof typeof STATUS_STYLES;
 
+// Ordered pipeline stages with their stat keys for progress inference
+const STAGE_ORDER: { id: string; key?: keyof AgentRun }[] = [
+  { id: 'dispatch' },
+  { id: 'scrapeOne', key: 'scraped' },
+  { id: 'mergeScrapes', key: 'scraped' },
+  { id: 'triage', key: 'triaged' },
+  { id: 'enrich', key: 'passedTriage' },
+  { id: 'reconcile' },
+  { id: 'evaluate', key: 'evaluated' },
+  { id: 'knowledge', key: 'qualified' },
+  { id: 'plan' },
+  { id: 'render', key: 'rendered' },
+  { id: 'summarize' },
+];
+
+function inferActiveStage(run: AgentRun): string | null {
+  // Walk backward through stages; the first one with a nonzero count is done,
+  // so the next one after it is active.
+  for (let i = STAGE_ORDER.length - 1; i >= 0; i--) {
+    const stage = STAGE_ORDER[i];
+    if (stage.key && run[stage.key] != null && (run[stage.key] as number) > 0) {
+      return STAGE_ORDER[i + 1]?.id ?? null;
+    }
+  }
+  // No progress at all — first node is active
+  return 'dispatch';
+}
+
 function nodeStatus(statKey: keyof AgentRun | undefined, run: AgentRun | null, nodeId?: string): Status {
   if (!run) return 'idle';
   if (run.status === 'failed' && run.errorDetails?.some((e) => e.node === nodeId)) return 'error';
   if (statKey && run[statKey] != null && (run[statKey] as number) > 0) return 'done';
-  if (run.status === 'running') return 'active';
+  if (run.status === 'running') {
+    const activeStage = inferActiveStage(run);
+    if (nodeId === activeStage) return 'active';
+    // Nodes before the active stage with no stat key are implicitly done
+    const activeIdx = STAGE_ORDER.findIndex((s) => s.id === activeStage);
+    const thisIdx = STAGE_ORDER.findIndex((s) => s.id === nodeId);
+    if (thisIdx >= 0 && thisIdx < activeIdx) return 'done';
+    return 'idle';
+  }
   if (run.status === 'completed') return 'done';
   return 'idle';
 }
@@ -77,9 +113,10 @@ interface Props {
   regions: Region[];
   onTriggerRun: () => void;
   triggerDisabled?: boolean;
+  configChanged?: boolean;
 }
 
-export default function PipelineGraph({ latestRun, platforms, regions, onTriggerRun, triggerDisabled }: Props) {
+export default function PipelineGraph({ latestRun, platforms, regions, onTriggerRun, triggerDisabled, configChanged }: Props) {
   const isRunning = latestRun?.status === 'running';
   const enabledPlatforms = platforms.filter((p) => p.enabled);
   const enabledRegions = regions.filter((r) => r.enabled);
@@ -141,7 +178,7 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
         </div>
       </div>
 
-      {isRunning && (
+      {isRunning && configChanged && (
         <p className="text-xs text-amber-600 bg-amber-50 rounded px-2.5 py-1.5 mb-3">
           Platform and region changes are queued for the next run.
         </p>

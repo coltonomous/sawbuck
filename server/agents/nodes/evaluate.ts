@@ -15,10 +15,27 @@ import sharp from 'sharp';
 import { IMAGES_DIR } from '../../lib/paths.js';
 
 export async function evaluateCandidates(state: AgentState): Promise<Partial<AgentState>> {
-  const toEvaluate = state.passedTriage.slice(
-    0,
-    agentConfig.maxEvals - state.evalCount,
-  );
+  const evalCounts = state.evalCount;
+  const maxPerPlatform = agentConfig.maxEvals;
+
+  // Group by platform and apply per-platform budget
+  const byPlatform = new Map<string, typeof state.passedTriage>();
+  for (const c of state.passedTriage) {
+    const group = byPlatform.get(c.platform) ?? [];
+    group.push(c);
+    byPlatform.set(c.platform, group);
+  }
+
+  const toEvaluate: typeof state.passedTriage = [];
+  for (const [platform, candidates] of byPlatform) {
+    const used = evalCounts[platform] ?? 0;
+    const remaining = Math.max(0, maxPerPlatform - used);
+    if (remaining > 0) {
+      toEvaluate.push(...candidates.slice(0, remaining));
+    } else {
+      logger.info({ platform, used }, 'Evaluate: platform budget exhausted');
+    }
+  }
 
   const evaluated: EvaluatedCandidate[] = [];
   const qualified: EvaluatedCandidate[] = [];
@@ -150,15 +167,22 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
 
   logger.info({ evaluated: evaluated.length, qualified: qualified.length }, 'Evaluate node complete');
 
+  // Update per-platform eval counts
+  const updatedEvalCounts = { ...evalCounts };
+  for (const e of evaluated) {
+    updatedEvalCounts[e.platform] = (updatedEvalCounts[e.platform] ?? 0) + 1;
+  }
+
+  const totalEvaluated = Object.values(updatedEvalCounts).reduce((a, b) => a + b, 0);
   reportProgress(state.runId, {
-    evaluated: state.evalCount + evaluated.length,
+    evaluated: totalEvaluated,
     qualified: state.qualifiedCount + qualified.length,
   });
 
   return {
     evaluatedCandidates: evaluated,
     qualifiedListings: qualified,
-    evalCount: state.evalCount + evaluated.length,
+    evalCount: updatedEvalCounts,
     qualifiedCount: state.qualifiedCount + qualified.length,
     errors,
   };

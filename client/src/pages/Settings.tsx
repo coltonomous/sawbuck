@@ -46,6 +46,7 @@ export default function Settings() {
   const [platforms, setPlatforms] = useState<PlatformSetting[]>([]);
   const [regionsData, setRegionsData] = useState<Region[]>([]);
   const [newRegion, setNewRegion] = useState({ name: '', latitude: '', longitude: '', radiusMiles: '30', clSubdomain: '' });
+  const [configChangedDuringRun, setConfigChangedDuringRun] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
@@ -391,6 +392,7 @@ export default function Settings() {
                         try {
                           await api.updatePlatform(p.platform, !p.enabled);
                           setPlatforms((prev) => prev.map((x) => x.platform === p.platform ? { ...x, enabled: !x.enabled } : x));
+                          if (agentRuns[0]?.status === 'running') setConfigChangedDuringRun(true);
                           toast('success', `${p.platform} ${!p.enabled ? 'enabled' : 'disabled'}`);
                         } catch (err) {
                           toast('error', err instanceof Error ? err.message : 'Failed');
@@ -430,6 +432,7 @@ export default function Settings() {
                           try {
                             await api.updateRegion(r.id, { enabled: !r.enabled });
                             setRegionsData((prev) => prev.map((x) => x.id === r.id ? { ...x, enabled: !x.enabled } : x));
+                            if (agentRuns[0]?.status === 'running') setConfigChangedDuringRun(true);
                           } catch (err) {
                             toast('error', err instanceof Error ? err.message : 'Failed');
                           }
@@ -562,7 +565,9 @@ export default function Settings() {
           latestRun={agentRuns[0] ?? null}
           platforms={platforms}
           regions={regionsData}
+          configChanged={configChangedDuringRun}
           onTriggerRun={async () => {
+            setConfigChangedDuringRun(false);
             try {
               await api.triggerAgentRun();
               toast('success', 'Agent pipeline run started');

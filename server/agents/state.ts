@@ -89,7 +89,7 @@ export interface AgentState {
   removedIds: string[]; // externalIds of listings confirmed gone (404)
   reconciledCount: number;
   triageCount: Record<string, number>; // per-platform triage budget
-  evalCount: number;
+  evalCount: Record<string, number>; // per-platform eval budget
   qualifiedCount: number;
   conceptsRendered: number;
   scrapeAttempts: Record<string, number>; // per-platform retry budget
@@ -147,9 +147,9 @@ export const AgentAnnotation = Annotation.Root({
     reducer: (prev, next) => ({ ...prev, ...next }),
     default: () => ({}),
   }),
-  evalCount: Annotation<number>({
-    reducer: (_prev, next) => next,
-    default: () => 0,
+  evalCount: Annotation<Record<string, number>>({
+    reducer: (prev, next) => ({ ...prev, ...next }),
+    default: () => ({}),
   }),
   qualifiedCount: Annotation<number>({
     reducer: (_prev, next) => next,

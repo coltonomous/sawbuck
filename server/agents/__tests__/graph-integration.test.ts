@@ -129,7 +129,7 @@ describe('Graph Integration', () => {
       removedIds: [],
       reconciledCount: 0,
       triageCount: {},
-      evalCount: 0,
+      evalCount: {},
       qualifiedCount: 0,
       conceptsRendered: 0,
       scrapeAttempts: {},

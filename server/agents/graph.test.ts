@@ -28,7 +28,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     removedIds: [],
     reconciledCount: 0,
     triageCount: {},
-    evalCount: 0,
+    evalCount: {},
     qualifiedCount: 0,
     conceptsRendered: 0,
     scrapeAttempts: {},
@@ -46,15 +46,15 @@ describe('afterEvaluate', () => {
   });
 
   it('loops to scrape when no qualified but under caps', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: 3, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
+    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when no qualified and eval cap hit', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: 10, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
+    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: { craigslist: 10 }, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
   });
 
   it('summarizes when no qualified and scrape attempts exhausted', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: 3, scrapeAttempts: { craigslist: MAX_SCRAPE_ATTEMPTS } }))).toBe('summarize');
+    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: MAX_SCRAPE_ATTEMPTS } }))).toBe('summarize');
   });
 });
 
@@ -62,7 +62,7 @@ describe('afterRender', () => {
   it('loops to scrape when under all caps and target not met', () => {
     expect(afterRender(makeState({
       qualifiedCount: 0,
-      evalCount: 3,
+      evalCount: { craigslist: 3 },
       scrapeAttempts: { craigslist: 1 },
     }))).toBe('dispatchScrapes');
   });
@@ -70,7 +70,7 @@ describe('afterRender', () => {
   it('summarizes when qualified target met', () => {
     expect(afterRender(makeState({
       qualifiedCount: MIN_QUALIFIED_TARGET,
-      evalCount: 3,
+      evalCount: { craigslist: 3 },
       scrapeAttempts: { craigslist: 2 },
     }))).toBe('summarize');
   });
@@ -78,7 +78,7 @@ describe('afterRender', () => {
   it('summarizes when eval cap hit', () => {
     expect(afterRender(makeState({
       qualifiedCount: 0,
-      evalCount: 10,
+      evalCount: { craigslist: 10 },
       scrapeAttempts: { craigslist: 1 },
     }))).toBe('summarize');
   });
@@ -86,7 +86,7 @@ describe('afterRender', () => {
   it('summarizes when scrape attempts exhausted', () => {
     expect(afterRender(makeState({
       qualifiedCount: 0,
-      evalCount: 3,
+      evalCount: { craigslist: 3 },
       scrapeAttempts: { craigslist: MAX_SCRAPE_ATTEMPTS },
     }))).toBe('summarize');
   });
@@ -94,7 +94,7 @@ describe('afterRender', () => {
 
 describe('afterTriage', () => {
   it('routes to enrich when candidates passed', () => {
-    expect(afterTriage(makeState({ passedTriage: [{} as any], evalCount: 0 }))).toBe('enrich');
+    expect(afterTriage(makeState({ passedTriage: [{} as any], evalCount: {}}))).toBe('enrich');
   });
 
   it('retries scrape when nothing passed and attempts remain', () => {
@@ -106,7 +106,7 @@ describe('afterTriage', () => {
   });
 
   it('summarizes when eval cap already hit', () => {
-    expect(afterTriage(makeState({ passedTriage: [{} as any], evalCount: 10 }))).toBe('summarize');
+    expect(afterTriage(makeState({ passedTriage: [{} as any], evalCount: { craigslist: 10 } }))).toBe('summarize');
   });
 });
 
@@ -129,12 +129,12 @@ describe('afterPlanOptions', () => {
 
   it('loops to scrape when no FAL_KEY and under target', () => {
     delete process.env.FAL_KEY;
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 0, evalCount: 3, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 0, evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
   });
 
   it('summarizes when no FAL_KEY and target met', () => {
     delete process.env.FAL_KEY;
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: MIN_QUALIFIED_TARGET, evalCount: 3, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: MIN_QUALIFIED_TARGET, evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
   });
 
   it('summarizes when render cap hit', () => {
@@ -148,6 +148,6 @@ describe('afterPlanOptions', () => {
   });
 
   it('loops to scrape when no listings with options and under target', () => {
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [], qualifiedCount: 0, evalCount: 3, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
+    expect(afterPlanOptions(makeState({ listingsWithOptions: [], qualifiedCount: 0, evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
   });
 });

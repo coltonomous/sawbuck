@@ -43,7 +43,7 @@ function makeState(candidates: ScrapedCandidate[], overrides: Partial<AgentState
     listingsWithOptions: [],
     conceptRenders: [],
     triageCount: {},
-    evalCount: 0,
+    evalCount: {},
     qualifiedCount: 0,
     conceptsRendered: 0,
     scrapeAttempts: { craigslist: 1 },

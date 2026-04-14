@@ -22,9 +22,15 @@ function hasScrapeBudget(state: AgentState): boolean {
   return Object.values(attempts).length === 0 || Object.values(attempts).some((a) => a < MAX_SCRAPE_ATTEMPTS);
 }
 
+/** True if at least one platform still has eval budget. */
+function hasEvalBudget(state: AgentState): boolean {
+  const counts = state.evalCount;
+  return Object.values(counts).length === 0 || Object.values(counts).some((c) => c < agentConfig.maxEvals);
+}
+
 function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summarize' {
   if (state.passedTriage.length > 0) {
-    if (state.evalCount >= agentConfig.maxEvals) return 'summarize';
+    if (!hasEvalBudget(state)) return 'summarize';
     return 'enrich';
   }
   if (hasScrapeBudget(state)) return 'dispatchScrapes';
@@ -38,7 +44,7 @@ function afterReconcile(state: AgentState): 'evaluate' | 'summarize' {
 
 function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrapes' | 'summarize' {
   if (state.qualifiedListings.length > 0) return 'discoverKnowledge';
-  if (state.evalCount < agentConfig.maxEvals && hasScrapeBudget(state)) {
+  if (hasEvalBudget(state) && hasScrapeBudget(state)) {
     return 'dispatchScrapes';
   }
   return 'summarize';
@@ -60,7 +66,7 @@ function afterRender(state: AgentState): 'dispatchScrapes' | 'summarize' {
 function shouldLoop(state: AgentState): boolean {
   return (
     state.qualifiedCount < MIN_QUALIFIED_TARGET &&
-    state.evalCount < agentConfig.maxEvals &&
+    hasEvalBudget(state) &&
     hasScrapeBudget(state)
   );
 }
