@@ -613,6 +613,69 @@ listingsRouter.post('/:id/render', async (c) => {
   }
 });
 
+// POST /:id/generate-concepts — generate refinishing concept options for a listing
+listingsRouter.post('/:id/generate-concepts', async (c) => {
+  const user = c.get('user');
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  const listing = await getVisibleListing(id, user.id);
+  if (!listing) return c.json({ error: 'Not found' }, 404);
+  if (!listing.furnitureType) {
+    return c.json({ error: 'Listing must be analyzed first' }, 422);
+  }
+
+  // Check if concepts already exist
+  const existing = await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, id));
+  if (existing.length > 0) {
+    return c.json({ concepts: existing });
+  }
+
+  try {
+    const { generatePlanOptions } = await import('../agents/nodes/plan-options.js');
+
+    const mockState = {
+      runId: 'on-demand',
+      startedAt: new Date().toISOString(),
+      qualifiedListings: [{
+        externalId: listing.externalId,
+        platform: listing.platform,
+        url: listing.url,
+        title: listing.title,
+        askingPrice: listing.askingPrice,
+        location: listing.location ?? '',
+        imageUrls: [],
+        listingId: id,
+        triageResult: { isWoodFurniture: true, hasFlipPotential: true, furnitureType: listing.furnitureType ?? '', reasoning: '', confidenceScore: 1 },
+        evaluation: {
+          furnitureType: listing.furnitureType ?? 'unknown',
+          furnitureStyle: listing.furnitureStyle ?? 'unknown',
+          conditionScore: listing.conditionScore ?? 5,
+          woodSpecies: listing.woodSpecies ?? null,
+          estimatedValue: listing.estimatedValue ?? 0,
+          dealScore: listing.dealScore ?? 0,
+          flipRecommendation: 'buy' as const,
+          refinishingPotential: 'medium' as const,
+          profitVerdict: '',
+        },
+      }],
+      scrapedCandidates: [], triagedCandidates: [], passedTriage: [],
+      evaluatedCandidates: [], listingsWithOptions: [], conceptRenders: [],
+      removedIds: [], reconciledCount: 0, triageCount: {}, evalCount: {},
+      qualifiedCount: 0, conceptsRendered: 0, scrapeAttempts: {},
+      seenExternalIds: [], scrapeTask: null, errors: [], summary: null,
+    };
+
+    await generatePlanOptions(mockState as any);
+
+    const concepts = await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, id));
+    return c.json({ concepts });
+  } catch (err) {
+    logger.error({ listingId: id, error: String(err) }, 'On-demand concept generation failed');
+    return c.json({ error: 'Failed to generate concepts' }, 500);
+  }
+});
+
 // POST /:id/preview-plan — generate a refinishing plan preview without creating a project
 listingsRouter.post('/:id/preview-plan', async (c) => {
   const user = c.get('user');

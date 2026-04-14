@@ -252,6 +252,7 @@ export default function ListingDetail() {
                 key={opt.difficulty}
                 onClick={async () => {
                   setSelectedConcept(opt.difficulty);
+                  setPreviewPlan(null); // clear stale plan immediately
                   setLoadingPlan(true);
                   try {
                     const { plan } = await api.previewPlan(listing.id, {
@@ -367,6 +368,28 @@ export default function ListingDetail() {
             ))}
           </div>
         </Card>
+      )}
+
+      {/* Generate concepts button (when analyzed but no concepts yet) */}
+      {listing.furnitureType && (!listing.conceptImages || listing.conceptImages.length === 0) && (
+        <div className="mb-4">
+          <button
+            onClick={async () => {
+              try {
+                const { concepts } = await api.generateConcepts(listing.id);
+                if (concepts.length > 0) {
+                  setListing((prev) => prev ? { ...prev, conceptImages: concepts } : prev);
+                  toast('success', 'Refinishing concepts generated');
+                }
+              } catch (err) {
+                toast('error', err instanceof Error ? err.message : 'Failed to generate concepts');
+              }
+            }}
+            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            Generate Refinishing Concepts
+          </button>
+        </div>
       )}
 
       {/* Plan Preview */}
