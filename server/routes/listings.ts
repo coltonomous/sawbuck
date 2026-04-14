@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { listings, listingImages, conceptRenders, refinishingPlans, users } from '../db/schema.js';
+import { listings, listingImages, conceptRenders, refinishingPlans, userDismissals, users } from '../db/schema.js';
 import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
@@ -119,8 +119,9 @@ listingsRouter.get('/', async (c) => {
   if (status) {
     conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed' | 'removed'));
   } else {
-    // Exclude removed and dismissed listings from the default feed
+    // Exclude removed/dismissed listings and user-dismissed listings from the default feed
     conditions.push(sql`${listings.status} NOT IN ('removed', 'dismissed')`);
+    conditions.push(sql`${listings.id} NOT IN (SELECT listing_id FROM user_dismissals WHERE user_id = ${user.id})`);
   }
   if (search || pagination.search) {
     const term = search || pagination.search!;
@@ -268,6 +269,20 @@ listingsRouter.post('/import', async (c) => {
   // Re-fetch the listing with updated data + images
   const listing = await db.select().from(listings).where(eq(listings.id, inserted.id)).then(r => r[0]);
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, inserted.id));
+
+  // Auto-analyze in background (fire-and-forget)
+  const listingId = inserted.id;
+  (async () => {
+    try {
+      await downloadListingImages(listingId);
+      await processListingImages(listingId);
+      await analyzeListing(listingId);
+      await calculatePricing(listingId).catch(() => {});
+      logger.info({ listingId }, 'Auto-analysis complete for imported listing');
+    } catch (err) {
+      logger.warn({ listingId, error: String(err) }, 'Auto-analysis failed for imported listing (non-fatal)');
+    }
+  })();
 
   return c.json({ listing: { ...listing, images }, alreadyExists: false }, 201);
 });
@@ -437,6 +452,33 @@ listingsRouter.patch('/:id', async (c) => {
   const updated = await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]);
 
   return c.json(updated);
+});
+
+// POST /:id/dismiss — dismiss a listing for the current user (per-user, not global)
+listingsRouter.post('/:id/dismiss', async (c) => {
+  const user = c.get('user');
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  await db.insert(userDismissals).values({
+    userId: user.id,
+    listingId: id,
+  }).onConflictDoNothing();
+
+  return c.json({ ok: true });
+});
+
+// DELETE /:id/dismiss — undismiss a listing for the current user
+listingsRouter.delete('/:id/dismiss', async (c) => {
+  const user = c.get('user');
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  await db.delete(userDismissals).where(
+    and(eq(userDismissals.userId, user.id), eq(userDismissals.listingId, id))
+  );
+
+  return c.json({ ok: true });
 });
 
 // DELETE /:id — delete a listing (owner only)

@@ -28,6 +28,14 @@ CREATE TABLE IF NOT EXISTS knowledge_sources (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS user_dismissals (
+  id SERIAL PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_dismissals_unique ON user_dismissals(user_id, listing_id);
+
 -- Consolidate knowledge_chunks: add embedding + content_hash columns
 -- so knowledge_vec is no longer needed as a separate table.
 DO $$ BEGIN

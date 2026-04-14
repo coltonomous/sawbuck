@@ -413,6 +413,10 @@ export const api = {
     request<{ comps: Comparable[] }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
   getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
 
+  dismissListing: (id: number) =>
+    request<{ ok: boolean }>(`/listings/${id}/dismiss`, { method: 'POST' }),
+  undismissListing: (id: number) =>
+    request<{ ok: boolean }>(`/listings/${id}/dismiss`, { method: 'DELETE' }),
   deleteListing: (id: number) =>
     request<{ ok: boolean }>(`/listings/${id}`, { method: 'DELETE' }),
 

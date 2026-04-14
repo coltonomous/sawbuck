@@ -156,6 +156,19 @@ export const platformSettings = pgTable('platform_settings', {
   enabled: boolean('enabled').notNull().default(true),
 });
 
+// ============================================================
+// User Dismissals (per-user, does not affect other users)
+// ============================================================
+
+export const userDismissals = pgTable('user_dismissals', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_user_dismissals_unique').on(table.userId, table.listingId),
+]);
+
 export const scrapeRuns = pgTable('scrape_runs', {
   id: serial('id').primaryKey(),
   platform: text('platform').notNull(),

@@ -39,6 +39,26 @@ export default function ListingDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Auto-select concept based on user's experience level and load plan
+  useEffect(() => {
+    if (!listing?.conceptImages?.length || selectedConcept || previewPlan) return;
+    const expMap: Record<string, string> = { beginner: 'simple', intermediate: 'moderate', advanced: 'full' };
+    const preferredDifficulty = expMap[session?.user?.experienceLevel ?? ''] ?? 'moderate';
+    const moderate = listing.conceptImages.find((c) => c.difficulty === preferredDifficulty) ?? listing.conceptImages.find((c) => c.difficulty === 'moderate') ?? listing.conceptImages[0];
+    setSelectedConcept(moderate.difficulty);
+    setLoadingPlan(true);
+    api.previewPlan(listing.id, {
+      difficulty: moderate.difficulty,
+      label: moderate.label,
+      summary: moderate.summary,
+      estimatedHours: moderate.estimatedHours ?? undefined,
+      estimatedMaterialCost: moderate.estimatedMaterialCost ?? undefined,
+      estimatedResalePrice: moderate.estimatedResalePrice ?? undefined,
+    }).then(({ plan }) => setPreviewPlan(plan))
+      .catch(() => {})
+      .finally(() => setLoadingPlan(false));
+  }, [listing?.conceptImages?.length]);
+
   const handleAnalyze = async () => {
     if (!listing || analyzing) return;
     setAnalyzing(true);
@@ -453,7 +473,7 @@ export default function ListingDetail() {
         )}
         {listing.status !== 'dismissed' && (
           <button
-            onClick={() => api.updateListing(listing.id, { status: 'dismissed' }).then(() => setListing({ ...listing, status: 'dismissed' })).catch((err) => toast('error', `Failed to dismiss: ${err instanceof Error ? err.message : 'Unknown error'}`))}
+            onClick={() => api.dismissListing(listing.id).then(() => navigate(-1)).catch((err) => toast('error', `Failed to dismiss: ${err instanceof Error ? err.message : 'Unknown error'}`))}
             className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
           >
             Dismiss

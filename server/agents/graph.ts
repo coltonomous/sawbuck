@@ -45,7 +45,7 @@ function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrape
 }
 
 function afterPlanOptions(state: AgentState): 'render' | 'dispatchScrapes' | 'summarize' {
-  if (state.listingsWithOptions.length > 0 && process.env.FAL_KEY && state.conceptsRendered < agentConfig.maxListingsRendered) {
+  if (state.listingsWithOptions.length > 0 && process.env.FAL_KEY) {
     return 'render';
   }
   if (shouldLoop(state)) return 'dispatchScrapes';

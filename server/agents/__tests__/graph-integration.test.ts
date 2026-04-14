@@ -69,8 +69,6 @@ vi.mock('../config.js', () => ({
   agentConfig: {
     maxTriages: 50,
     maxEvals: 10,
-    maxListingsRendered: 5,
-    conceptsPerListing: 1,
     triageConfidenceThreshold: 0.75,
     dealScoreThreshold: 1.3,
     flipRecommendationThreshold: ['strong_buy', 'buy'],

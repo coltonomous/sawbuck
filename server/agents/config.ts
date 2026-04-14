@@ -48,9 +48,6 @@ export function getAgentConfig() {
     // Per-run caps
     maxTriages: resolveInt('agent.max_triages', 'AGENT_MAX_TRIAGES', 50),
     maxEvals: resolveInt('agent.max_evals', 'AGENT_MAX_EVALS', 10),
-    maxListingsRendered: resolveInt('agent.max_renders', 'AGENT_MAX_RENDERS', 5),
-    conceptsPerListing: resolveInt('agent.concepts_per_listing', 'AGENT_CONCEPTS_PER_LISTING', 1),
-
     // Quality gates
     triageConfidenceThreshold: resolveFloat('agent.triage_threshold', 'AGENT_TRIAGE_THRESHOLD', 0.75),
     dealScoreThreshold: resolveFloat('agent.deal_score_threshold', 'AGENT_DEAL_SCORE_THRESHOLD', 1.3),

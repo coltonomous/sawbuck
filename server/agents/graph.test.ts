@@ -4,7 +4,6 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('./config.js', () => ({
   agentConfig: {
     maxEvals: 10,
-    maxListingsRendered: 5,
     flipRecommendationThreshold: ['strong_buy', 'buy'],
     triageConfidenceThreshold: 0.6,
     dealScoreThreshold: 1.3,
@@ -127,12 +126,6 @@ describe('afterPlanOptions', () => {
   it('summarizes when no FAL_KEY and target met', () => {
     delete process.env.FAL_KEY;
     expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: MIN_QUALIFIED_TARGET, evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
-  });
-
-  it('summarizes when render cap hit', () => {
-    process.env.FAL_KEY = 'test';
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], conceptsRendered: 5, qualifiedCount: MIN_QUALIFIED_TARGET }))).toBe('summarize');
-    delete process.env.FAL_KEY;
   });
 
   it('summarizes when no listings with options and target met', () => {

@@ -9,8 +9,8 @@ import { triggerRun } from '../agents/scheduler.js';
 // Derived from the DB key names used in agents/config.ts resolve*() calls.
 // Adding a new config option there automatically makes it settable here.
 const VALID_SETTINGS = new Set([
-  'agent.max_triages', 'agent.max_evals', 'agent.max_renders',
-  'agent.concepts_per_listing', 'agent.triage_threshold', 'agent.deal_score_threshold',
+  'agent.max_triages', 'agent.max_evals',
+  'agent.triage_threshold', 'agent.deal_score_threshold',
   'agent.min_delay_ms', 'agent.max_delay_ms', 'agent.daily_request_cap',
   'agent.run_interval_ms', 'agent.target_city', 'agent.triage_model',
   'agent.eval_model', 'agent.fal_model', 'agent.concept_size',

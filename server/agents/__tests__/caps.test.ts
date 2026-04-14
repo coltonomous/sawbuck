@@ -20,7 +20,6 @@ function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'summarize' {
 
 function afterPlanOptions(state: AgentState): 'render' | 'summarize' {
   if (state.listingsWithOptions.length === 0) return 'summarize';
-  if (state.conceptsRendered >= agentConfig.maxListingsRendered) return 'summarize';
   if (!process.env.FAL_KEY) return 'summarize';
   return 'render';
 }
@@ -99,10 +98,4 @@ describe('afterPlanOptions', () => {
     if (orig) process.env.FAL_KEY = orig;
   });
 
-  it('routes to summarize when render cap reached', () => {
-    expect(afterPlanOptions(makeState({
-      listingsWithOptions: [mockWithOptions],
-      conceptsRendered: agentConfig.maxListingsRendered,
-    }))).toBe('summarize');
-  });
 });

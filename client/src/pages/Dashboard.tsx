@@ -207,7 +207,7 @@ export default function Dashboard() {
                 to={`/listings/${listing.id}`}
                 className="group block bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md hover:border-gray-300 transition-all"
               >
-                <div className="aspect-[4/3] overflow-hidden bg-gray-100">
+                <div className="aspect-[4/3] overflow-hidden bg-gray-100 relative">
                   {listing.primaryImage ? (
                     <img
                       src={resolveImageUrl(listing.primaryImage)}
@@ -218,6 +218,19 @@ export default function Dashboard() {
                   ) : (
                     <div className="w-full h-full animate-pulse bg-gray-200" />
                   )}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      api.dismissListing(listing.id).then(() => {
+                        setAllListings((prev) => prev.filter((l) => l.id !== listing.id));
+                      }).catch(() => {});
+                    }}
+                    className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/40 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/60"
+                    title="Not interested"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
                 </div>
                 <div className="p-3.5">
                   <h3 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2">{listing.title}</h3>

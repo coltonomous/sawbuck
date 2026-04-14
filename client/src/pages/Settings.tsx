@@ -658,8 +658,6 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.fal_model', configKey: 'falModel', label: 'fal.ai model', type: 'text', group: 'Models' },
   { key: 'agent.max_triages', configKey: 'maxTriages', label: 'Max triages per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.max_evals', configKey: 'maxEvals', label: 'Max evaluations per run', type: 'number', group: 'Per-Run Caps' },
-  { key: 'agent.max_renders', configKey: 'maxListingsRendered', label: 'Max concept renders per run', type: 'number', group: 'Per-Run Caps' },
-  { key: 'agent.concepts_per_listing', configKey: 'conceptsPerListing', label: 'Concepts per listing', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.run_interval_ms', configKey: 'runIntervalMs', label: 'Run interval (ms)', type: 'number', group: 'Scheduling' },

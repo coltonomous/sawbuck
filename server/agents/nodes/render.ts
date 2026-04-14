@@ -45,11 +45,8 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
     return { conceptRenders: [], conceptsRendered: state.conceptsRendered };
   }
 
-  // All listings with options are already qualified — no need to re-filter by deal score.
-  // Sort by deal score (highest first) for rendering priority.
-  const listings = [...state.listingsWithOptions]
-    .sort((a, b) => (b.evaluation.dealScore || 0) - (a.evaluation.dealScore || 0))
-    .slice(0, agentConfig.maxListingsRendered - state.conceptsRendered);
+  // All listings with options are already qualified — render all of them.
+  const listings = state.listingsWithOptions;
 
   if (listings.length === 0) {
     return { conceptRenders: [], conceptsRendered: state.conceptsRendered };
@@ -62,7 +59,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
   for (const listing of listings) {
     const options = listing.options.length > 0 ? listing.options : DEFAULT_OPTIONS;
 
-    for (const option of options.slice(0, agentConfig.conceptsPerListing)) {
+    for (const option of options) {
       const prompt = buildRenderPrompt(listing.evaluation, option);
 
       try {
