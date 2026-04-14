@@ -32,6 +32,9 @@ export default function Listings() {
   const [platformFilter, setPlatformFilter] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [page, setPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const sentinelRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [showImport, setShowImport] = useState(false);
   const [importUrl, setImportUrl] = useState('');
@@ -65,11 +68,16 @@ export default function Listings() {
     if (showImport) importInputRef.current?.focus();
   }, [showImport]);
 
-  const fetchListings = useCallback(() => {
-    setLoading(true);
-    setSelected(new Set());
+  const fetchListings = useCallback((append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setSelected(new Set());
+    }
+    const currentPage = append ? page : 1;
     const params: Record<string, string> = {
-      page: String(page),
+      page: String(currentPage),
       limit: String(PER_PAGE),
       sort: sortKey,
       sort_dir: sortDir,
@@ -79,22 +87,53 @@ export default function Listings() {
 
     api.getListings(params)
       .then(({ listings: data, total: t }) => {
-        setListings(data);
+        if (append) {
+          setListings((prev) => [...prev, ...data]);
+        } else {
+          setListings(data);
+        }
         setTotal(t);
+        setHasMore(currentPage * PER_PAGE < t);
       })
       .catch(console.error)
-      .finally(() => setLoading(false));
+      .finally(() => {
+        setLoading(false);
+        setLoadingMore(false);
+      });
   }, [page, sortKey, sortDir, platformFilter, statusFilter]);
 
-  useEffect(() => { fetchListings(); }, [fetchListings]);
+  // Reset to page 1 when filters/sort change
+  useEffect(() => {
+    setPage(1);
+    setHasMore(true);
+    fetchListings(false);
+  }, [sortKey, sortDir, platformFilter, statusFilter]);
+
+  // Load more when page increments
+  useEffect(() => {
+    if (page > 1) fetchListings(true);
+  }, [page]);
+
+  // IntersectionObserver for infinite scroll
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting && hasMore && !loading && !loadingMore) {
+          setPage((p) => p + 1);
+        }
+      },
+      { rootMargin: '200px' },
+    );
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMore, loading, loadingMore]);
 
   const handleEnriched = useCallback((id: number, data: Partial<Listing>) => {
     setListings(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
   }, []);
 
   useBackgroundEnrich(listings, handleEnriched);
-
-  const totalPages = Math.ceil(total / PER_PAGE);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -313,40 +352,15 @@ export default function Listings() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4">
-              <span className="text-sm text-gray-500">
-                {(page - 1) * PER_PAGE + 1}-{Math.min(page * PER_PAGE, total)} of {total}
-              </span>
-              <div className="flex gap-1">
-                <button
-                  onClick={() => setPage(p => Math.max(1, p - 1))}
-                  disabled={page === 1}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-30 hover:bg-gray-50 transition-colors"
-                >
-                  Prev
-                </button>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                  <button
-                    key={p}
-                    onClick={() => setPage(p)}
-                    className={`px-3 py-1.5 border rounded-lg text-sm transition-colors ${
-                      p === page ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-                  disabled={page === totalPages}
-                  className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm disabled:opacity-30 hover:bg-gray-50 transition-colors"
-                >
-                  Next
-                </button>
-              </div>
+          {/* Infinite scroll sentinel */}
+          <div ref={sentinelRef} className="h-1" />
+          {loadingMore && (
+            <div className="flex justify-center py-4">
+              <Spinner />
             </div>
+          )}
+          {!hasMore && listings.length > 0 && (
+            <p className="text-center text-xs text-gray-400 py-4">{listings.length} of {total} listings</p>
           )}
         </>
       )}

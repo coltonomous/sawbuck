@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
+import { Navigate } from 'react-router-dom';
 import { api, type StatsResponse } from '../api';
+import { useSession } from '../lib/auth';
 import { SkeletonChartPage } from '../components/Skeleton';
 import {
   LineChart, Line, AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
@@ -8,8 +10,11 @@ import {
 import { CHART_COLORS } from '@shared/constants';
 
 export default function Analytics() {
+  const { data: session } = useSession();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  if (session?.user?.role !== 'admin') return <Navigate to="/" replace />;
 
   useEffect(() => {
     api.getStats()

@@ -35,6 +35,7 @@ export interface AdminUser {
   role: UserRole;
   projectCount: number;
   soldCount: number;
+  clickCount: number;
   createdAt: string;
 }
 
@@ -413,6 +414,8 @@ export const api = {
     request<{ comps: Comparable[] }>(`/comparables/search`, { method: 'POST', body: JSON.stringify({ listingId }) }),
   getComparables: (listingId: number) => request<Comparable[]>(`/comparables/${listingId}`),
 
+  trackListingClick: (id: number) =>
+    request<{ ok: boolean }>(`/listings/${id}/click`, { method: 'POST' }),
   dismissListing: (id: number) =>
     request<{ ok: boolean }>(`/listings/${id}/dismiss`, { method: 'POST' }),
   undismissListing: (id: number) =>

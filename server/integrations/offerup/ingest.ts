@@ -11,14 +11,27 @@ import logger from '../../lib/logger.js';
  * Build OfferUp search URL with location params.
  * OfferUp's search pages embed results in __NEXT_DATA__ JSON.
  */
+// Rotate search queries to cover more furniture types across runs.
+// OfferUp's keyword search is noisy, so specific terms reduce junk.
+const SEARCH_QUERIES = [
+  'solid wood dresser',
+  'wood table desk',
+  'wood cabinet hutch',
+  'vintage furniture wood',
+  'mid century modern furniture',
+  'wood bookcase shelf',
+];
+
 function searchUrl(region: Region, page: number): string {
+  // Pick query based on page offset to vary results across retries
+  const query = SEARCH_QUERIES[page % SEARCH_QUERIES.length];
   const params = new URLSearchParams({
-    q: 'wood furniture',
+    q: query,
     LOCATION_LATITUDE: String(region.latitude),
     LOCATION_LONGITUDE: String(region.longitude),
     SEARCH_RADIUS: String(region.radiusMiles),
   });
-  if (page > 0) params.set('page', String(page + 1)); // OfferUp uses 1-indexed pages
+  if (page > 0) params.set('page', String(page + 1));
   return `https://offerup.com/search?${params}`;
 }
 

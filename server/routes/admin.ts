@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings, projects, platformSettings, regions } from '../db/schema.js';
+import { users, listings, projects, listingClicks, platformSettings, regions } from '../db/schema.js';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
@@ -37,8 +37,14 @@ adminRouter.get('/users', async (c) => {
     total: count(),
   }).from(projects).where(eq(projects.status, 'sold')).groupBy(projects.userId);
 
+  const clickCounts = await db.select({
+    userId: listingClicks.userId,
+    total: count(),
+  }).from(listingClicks).groupBy(listingClicks.userId);
+
   const projectMap = new Map(projectCounts.map(p => [p.userId, p.total]));
   const soldMap = new Map(soldCounts.map(s => [s.userId, s.total]));
+  const clickMap = new Map(clickCounts.map(c => [c.userId, c.total]));
 
   return c.json(allUsers.map(u => ({
     id: u.id,
@@ -48,6 +54,7 @@ adminRouter.get('/users', async (c) => {
     role: u.role,
     projectCount: projectMap.get(u.id) ?? 0,
     soldCount: soldMap.get(u.id) ?? 0,
+    clickCount: clickMap.get(u.id) ?? 0,
     createdAt: u.createdAt,
   })));
 });

@@ -327,7 +327,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-gray-400">{u.projectCount} projects{u.soldCount > 0 ? `, ${u.soldCount} sold` : ''}</span>
+                    <span className="text-xs text-gray-400">{u.projectCount} projects{u.soldCount > 0 ? `, ${u.soldCount} sold` : ''}{u.clickCount > 0 ? `, ${u.clickCount} clicks` : ''}</span>
                     {u.id === session?.user?.id ? (
                       <span className="text-xs text-amber-600 font-medium px-2 py-1">Admin</span>
                     ) : (

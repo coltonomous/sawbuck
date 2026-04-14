@@ -43,6 +43,10 @@ Technical reference for the systems, data flows, and design decisions behind Saw
 
 The core of Sawbuck is an autonomous LangGraph pipeline that discovers, evaluates, and presents furniture flip opportunities across multiple platforms and regions. It runs on a configurable schedule (default: every 4 hours) and loops until it finds enough qualified listings or exhausts per-platform retry budgets.
 
+Every listing that qualifies (buy/strong_buy) automatically receives the full treatment: all 3 refinishing concept options (simple/moderate/full), all 3 plans, and all 3 concept renders (if FAL_KEY is set). No per-listing caps.
+
+Reconcile (stale listing detection) runs as a separate scheduled job every 6 hours, independent from the ingest pipeline, to avoid blocking the scrape -> evaluate flow.
+
 ### Node Graph
 
 ```
@@ -84,11 +88,6 @@ The core of Sawbuck is an autonomous LangGraph pipeline that discovers, evaluate
               |    +----+----+
               |         |
               |         v
-              |    +-----------+
-              |    | reconcile |  (probes CL listings only for now)
-              |    +-----+-----+
-              |          |
-              |          v
               |    +----------+
               |    | evaluate |  (writes progress to agent_runs incrementally)
               |    +-----+----+
@@ -145,7 +144,6 @@ Per-platform retry budgets (`scrapeAttempts: Record<string, number>`) ensure a b
 | **mergeScrapes** | - | Merged candidates | Per-platform attempt counts | Yes (agent_runs.scraped) |
 | **triage** | Qwen3 32B | Titles + prices (batch of 5) | `TriagedCandidate[]` | Yes (agent_runs.triaged) |
 | **enrich** | - | Detail page fetch (per platform) | Descriptions, images, lat/lng | No |
-| **reconcile** | - | HEAD/GET requests to CL | Removal signals | Yes (status -> removed) |
 | **evaluate** | Qwen3 VL 235B | Photos + listing context | Analysis, pricing, recommendation | Yes (listings, agent_runs) |
 | **discoverKnowledge** | - | Qualified listing metadata | Knowledge source URLs | Yes (knowledge_sources) |
 | **planOptions** | Qwen3 32B | Furniture metadata | 3 refinishing tiers | Yes (concept_renders) |
@@ -253,8 +251,6 @@ Platform Search ──scrapeOne──> ScrapedCandidate (title, price, images, l
                             |
                          enrich (fetch detail page for description, more images, lat/lng)
                             |
-                         reconcile (mark 404s in existing DB listings)
-                            |
                          evaluate --> INSERT listing into DB (status: analyzed)
                             |
                        +----+------- pass --> UPDATE status: dismissed
@@ -342,6 +338,8 @@ regions ------------- scrape target locations (admin-managed)
 platform_settings --- enable/disable platforms (admin-managed)
 knowledge_sources --- RAG source registry (seeded + auto-discovered)
 knowledge_chunks ---- RAG chunks with content, content_hash, AND embedding vector (single table)
+user_dismissals ----- per-user listing dismissals (does not affect other users)
+listing_clicks ------ tracks when users click to view original listing on source platform
 app_settings -------- admin-configurable key-value pairs
 checkpoints --------- LangGraph state persistence (PostgresSaver)
 ```
@@ -371,7 +369,7 @@ EC2 Instance:
 
 1. `entrypoint.sh`: create data dirs, run pre-push SQL migration (idempotent CREATE TABLE IF NOT EXISTS), `drizzle-kit push --force`, start server
 2. Server: promote ADMIN_EMAIL user, seed platform settings + default region, bootstrap RAG (incremental sync), start image cleanup scheduler
-3. If `AWS_REGION` set: start agent scheduler (first run after 10s, then every 4h)
+3. If `AWS_REGION` set: start agent scheduler (waits for first interval, use Run Now for immediate trigger). Reconcile runs independently every 6h.
 4. Docker HEALTHCHECK: `GET /health` every 30s (checks DB connectivity, returns 503 if unreachable)
 
 ## Admin Controls
@@ -382,5 +380,24 @@ Available in Settings page (admin role required):
 - **Agent Config**: model IDs, per-run caps, quality gates, scheduling, anti-blocking parameters
 - **Agent Runs**: run history with error details, pipeline visualization with real-time progress (polls every 5s during active runs), manual "Run Now" trigger
 - **Pipeline Visualization**: SVG graph showing fan-out from dispatch into platform x region scrape nodes, with nodes lighting up as the pipeline progresses
-- **Users**: role management (user/admin), deletion
+- **Users**: role management (user/admin), deletion, per-user metrics (projects, sold, clicks)
+- **Analytics**: admin-only page with deal flow, profit tracking, platform performance
 - **Bulk Actions**: select + dismiss/delete listings from the Listings tab
+
+## Multi-Tenancy
+
+- Agent-discovered listings are shared (userId = NULL), visible to all users
+- Dismissals are per-user via `user_dismissals` table (does not affect other users' feeds)
+- Agent "pass" verdicts set global `status='dismissed'` (not worth showing to anyone)
+- User preferences (location, budget, style) filter the shared feed per-user
+- Click tracking is per-user via `listing_clicks` table
+- Projects, refinishing plans, and materials are user-scoped
+
+## UX Features
+
+- **Auto-analyze on import**: imported listings automatically download images, run vision analysis, and calculate pricing in the background
+- **Smart concept defaults**: pre-selects the concept tier matching the user's experience level (beginner->simple, intermediate->moderate, advanced->full)
+- **Infinite scroll**: listings page uses IntersectionObserver for lazy-loading batches
+- **Dashboard dismiss**: X button on hover to dismiss listings without opening them
+- **"New" badges**: listings from the last 6 hours are badged in both dashboard and listings table
+- **Plan preview**: view refinishing plans directly from listing detail without creating a project

@@ -157,6 +157,17 @@ export const platformSettings = pgTable('platform_settings', {
 });
 
 // ============================================================
+// User Activity Tracking
+// ============================================================
+
+export const listingClicks = pgTable('listing_clicks', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
+// ============================================================
 // User Dismissals (per-user, does not affect other users)
 // ============================================================
 

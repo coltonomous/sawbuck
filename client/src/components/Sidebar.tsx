@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { useSession } from '../lib/auth';
 import UserMenu from './UserMenu';
 
 const links = [
@@ -33,6 +34,7 @@ const links = [
   {
     to: '/analytics',
     label: 'Analytics',
+    adminOnly: true,
     icon: (
       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -54,6 +56,9 @@ const links = [
 export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const location = useLocation();
+  const { data: session } = useSession();
+  const isAdmin = session?.user?.role === 'admin';
+  const visibleLinks = links.filter((l) => !l.adminOnly || isAdmin);
 
   // Close sidebar on navigation
   useEffect(() => { setOpen(false); }, [location.pathname]);
@@ -113,7 +118,7 @@ export default function Sidebar() {
           </button>
         </div>
         <ul className="flex-1 px-3 space-y-0.5">
-          {links.map(({ to, label, icon }) => (
+          {visibleLinks.map(({ to, label, icon }) => (
             <li key={to}>
               <NavLink
                 to={to}

@@ -16,7 +16,10 @@ AI-powered furniture flipping. An autonomous agent scrapes Craigslist and OfferU
 - **Project Tracking** — Full lifecycle from acquisition through refinishing to sale, with before/during/after photos and ROI calculations.
 - **Pipeline Visualization** — Live SVG graph in the admin panel shows the fan-out structure and lights up nodes as the pipeline progresses, with real-time polling during active runs.
 - **User Preferences** — Location radius, budget, shop space, experience level, and style preferences filter the shared deal feed per-user.
-- **Analytics** — Deal flow metrics, profit tracking, platform performance.
+- **Auto-Analyze on Import** — Imported listings automatically run vision analysis and pricing in the background.
+- **Smart Defaults** — Concept difficulty pre-selected based on user experience level. All 3 plans + renders generated automatically for qualified listings.
+- **Per-User Dismissals** — Dismissing a listing only affects your feed, not other users.
+- **Analytics (Admin)** — Deal flow metrics, profit tracking, platform performance.
 
 ## Tech Stack
 
@@ -133,7 +136,6 @@ dispatchScrapes (fans out via Send)
   v
 triage (Qwen batch) --> [retry if 0 pass, per-platform budget] -->
 enrich (fetch detail pages, grouped by platform) -->
-reconcile (mark removed listings) -->
 evaluate (Qwen VL vision + eBay pricing) -->
   +-- pass -> dismissed
   +-- maybe -> stays in feed
@@ -146,7 +148,7 @@ evaluate (Qwen VL vision + eBay pricing) -->
 - Each platform has its own retry budget (3 pages) and page offset
 - Deduplicates against DB and within retries (no wasted triage tokens)
 - Incremental progress: each node writes its counts to `agent_runs` as it finishes, and the admin UI polls every 5s to update the pipeline visualization in real time
-- Stale listing detection: enrichment detects 404s and deletion notices; reconcile probes existing DB listings missing from search results
+- Stale listing detection: enrichment detects 404s and deletion notices; reconcile runs independently every 6 hours (not in the pipeline)
 - Knowledge gap detection: after evaluation, the pipeline checks if the RAG knowledge base covers the furniture types it found and queues new sources if not
 - Config refreshed from DB before each run
 

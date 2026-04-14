@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { listings, listingImages, conceptRenders, refinishingPlans, userDismissals, users } from '../db/schema.js';
+import { listings, listingImages, conceptRenders, refinishingPlans, userDismissals, listingClicks, users } from '../db/schema.js';
 import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
@@ -452,6 +452,16 @@ listingsRouter.patch('/:id', async (c) => {
   const updated = await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]);
 
   return c.json(updated);
+});
+
+// POST /:id/click — track when user clicks to view the original listing
+listingsRouter.post('/:id/click', async (c) => {
+  const user = c.get('user');
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  await db.insert(listingClicks).values({ userId: user.id, listingId: id });
+  return c.json({ ok: true });
 });
 
 // POST /:id/dismiss — dismiss a listing for the current user (per-user, not global)
