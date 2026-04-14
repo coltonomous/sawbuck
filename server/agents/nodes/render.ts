@@ -40,9 +40,10 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
     return { conceptRenders: [], conceptsRendered: state.conceptsRendered };
   }
 
-  const listings = state.listingsWithOptions
-    .filter((l) => l.evaluation.dealScore >= agentConfig.dealScoreThreshold)
-    .sort((a, b) => b.evaluation.dealScore - a.evaluation.dealScore)
+  // All listings with options are already qualified — no need to re-filter by deal score.
+  // Sort by deal score (highest first) for rendering priority.
+  const listings = [...state.listingsWithOptions]
+    .sort((a, b) => (b.evaluation.dealScore || 0) - (a.evaluation.dealScore || 0))
     .slice(0, agentConfig.maxListingsRendered - state.conceptsRendered);
 
   if (listings.length === 0) {

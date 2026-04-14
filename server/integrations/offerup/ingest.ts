@@ -85,7 +85,7 @@ function parseSearchPage(html: string): Array<{
  * Parses __NEXT_DATA__ from the server-rendered HTML.
  */
 export async function discover(region: Region, page = 0): Promise<ScrapedCandidate[]> {
-  await warmCookies();
+  await warmCookies({ latitude: region.latitude, longitude: region.longitude, radiusMiles: region.radiusMiles, name: region.name });
 
   const url = searchUrl(region, page);
   logger.info({ url, page, region: region.name }, 'OfferUp integration: fetching search page');
