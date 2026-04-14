@@ -24,8 +24,8 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
     });
   };
 
-  const totalMinutes = plan.steps.reduce((s, step) => s + step.duration_minutes, 0);
-  const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+  const totalHours = plan.estimatedHours
+    ?? Math.round(plan.steps.reduce((s, step) => s + step.duration_minutes, 0) / 60 * 10) / 10;
 
   const difficultyColors: Record<string, string> = {
     beginner: 'bg-green-100 text-green-800',
@@ -68,11 +68,11 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase">Materials</p>
-            <p className="text-lg font-semibold text-gray-900">${plan.estimatedMaterialCost}</p>
+            <p className="text-lg font-semibold text-gray-900">{plan.estimatedMaterialCost != null ? `$${plan.estimatedMaterialCost}` : '—'}</p>
           </div>
           <div>
             <p className="text-xs text-gray-500 uppercase">Resale Est.</p>
-            <p className="text-lg font-semibold text-green-600">${plan.estimatedResalePrice}</p>
+            <p className="text-lg font-semibold text-green-600">{plan.estimatedResalePrice != null ? `$${plan.estimatedResalePrice}` : '—'}</p>
           </div>
         </div>
       </div>

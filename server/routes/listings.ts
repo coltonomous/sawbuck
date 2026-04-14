@@ -629,12 +629,25 @@ listingsRouter.post('/:id/render', async (c) => {
     const summary = SUMMARIES[difficulty];
     const prompt = `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
 
-    const result = await fal.subscribe(agentConfig.falModel, {
-      input: {
-        prompt,
-        image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
-        num_images: 1,
-      },
+    // Try to use original listing image as reference for img2img
+    const { getListingImageUrlForFal } = await import('../lib/images.js');
+    let referenceImageUrl: string | null = null;
+    try {
+      referenceImageUrl = await getListingImageUrlForFal(id);
+    } catch {}
+
+    const falInput: Record<string, unknown> = { prompt, num_images: 1 };
+    let falModel = agentConfig.falModel;
+    if (referenceImageUrl) {
+      falModel = 'fal-ai/flux/dev/image-to-image';
+      falInput.image_url = referenceImageUrl;
+      falInput.strength = difficulty === 'full' ? 0.85 : difficulty === 'moderate' ? 0.7 : 0.55;
+    } else {
+      falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
+    }
+
+    const result = await fal.subscribe(falModel, {
+      input: falInput,
     }) as { data: { images: Array<{ url: string }> } };
 
     const imageUrl = result.data?.images?.[0]?.url;
@@ -789,7 +802,21 @@ listingsRouter.post('/:id/preview-plan', async (c) => {
     const result = await generateRefinishingPlan(id, undefined, difficultyCtx);
     if (!result) return c.json({ error: 'Failed to generate plan' }, 422);
 
-    return c.json({ plan: result.plan });
+    // Return camelCase shape matching the DB schema (result.plan is snake_case from Zod)
+    const p = result.plan;
+    return c.json({ plan: {
+      styleRecommendation: p.style_recommendation,
+      description: p.description,
+      steps: p.steps,
+      estimatedHours: p.estimated_total_hours,
+      estimatedMaterialCost: p.estimated_material_cost,
+      estimatedResalePrice: p.estimated_resale_price,
+      difficultyLevel: p.difficulty_level,
+      beforeDescription: p.before_description,
+      afterDescription: p.after_description,
+      ragSourcesUsed: result.ragSourcesUsed,
+      ragSources: result.ragSources.length > 0 ? JSON.stringify(result.ragSources) : null,
+    }});
   } catch (err) {
     logger.error({ listingId: id, error: String(err) }, 'Plan preview failed');
     return c.json({ error: 'Failed to generate plan preview' }, 500);

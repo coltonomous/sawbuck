@@ -94,38 +94,58 @@ function parseSearchPage(html: string): Array<{
 }
 
 /**
- * Phase 1: Discover new listings from OfferUp search page.
- * Parses __NEXT_DATA__ from the server-rendered HTML.
+ * Phase 1: Discover new listings from OfferUp search pages.
+ * OfferUp SSR only returns 2-3 listings per query, so we scrape all
+ * search queries on every call to maximize coverage.
  */
-export async function discover(region: Region, page = 0): Promise<ScrapedCandidate[]> {
+export async function discover(region: Region, _page = 0): Promise<ScrapedCandidate[]> {
   await warmCookies({ latitude: region.latitude, longitude: region.longitude, radiusMiles: region.radiusMiles, name: region.name });
 
-  const url = searchUrl(region, page);
-  logger.info({ url, page, region: region.name }, 'OfferUp integration: fetching search page');
+  const allParsed: Array<{ externalId: string; title: string; askingPrice: number | null; location: string; imageUrl: string | null }> = [];
+  const seenIds = new Set<string>();
 
-  const res = await offerUpFetch(url);
+  for (let i = 0; i < SEARCH_QUERIES.length; i++) {
+    const url = searchUrl(region, i);
+    logger.info({ url, query: SEARCH_QUERIES[i], region: region.name }, 'OfferUp integration: fetching search page');
 
-  if (!res.ok) {
-    throw new Error(`OfferUp search page returned ${res.status}: ${res.statusText}`);
+    try {
+      const res = await offerUpFetch(url);
+      if (!res.ok) {
+        logger.warn({ status: res.status, query: SEARCH_QUERIES[i] }, 'OfferUp search page returned non-200');
+        continue;
+      }
+      const html = await res.text();
+      const parsed = parseSearchPage(html);
+      for (const item of parsed) {
+        if (!seenIds.has(item.externalId)) {
+          seenIds.add(item.externalId);
+          allParsed.push(item);
+        }
+      }
+    } catch (err) {
+      logger.warn({ query: SEARCH_QUERIES[i], error: String(err) }, 'OfferUp search fetch failed');
+    }
+
+    // Brief delay between queries to avoid rate limiting
+    if (i < SEARCH_QUERIES.length - 1) {
+      await new Promise((r) => setTimeout(r, 1500 + Math.random() * 1500));
+    }
   }
 
-  const html = await res.text();
-  const parsed = parseSearchPage(html);
+  logger.info({ count: allParsed.length, queries: SEARCH_QUERIES.length, region: region.name }, 'OfferUp integration: search items parsed');
 
-  logger.info({ count: parsed.length, region: region.name }, 'OfferUp integration: search items parsed');
-
-  if (parsed.length === 0) return [];
+  if (allParsed.length === 0) return [];
 
   // Dedup against DB
-  const externalIds = parsed.map((item) => item.externalId);
+  const externalIds = allParsed.map((item) => item.externalId);
   const existing = await db
     .select({ externalId: listings.externalId })
     .from(listings)
     .where(and(eq(listings.platform, 'offerup'), inArray(listings.externalId, externalIds)));
   const existingIds = new Set(existing.map((e) => e.externalId));
 
-  const newItems = parsed.filter((item) => !existingIds.has(item.externalId));
-  logger.info({ total: parsed.length, new: newItems.length, existing: existingIds.size }, 'OfferUp integration: dedup results');
+  const newItems = allParsed.filter((item) => !existingIds.has(item.externalId));
+  logger.info({ total: allParsed.length, new: newItems.length, existing: existingIds.size }, 'OfferUp integration: dedup results');
 
   return newItems.map((item) => ({
     externalId: item.externalId,

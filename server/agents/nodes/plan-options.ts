@@ -10,6 +10,7 @@ import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import { generateRefinishingPlan, type DifficultyContext } from '../../analysis/refinishing.js';
+import { getListingImageUrlForFal } from '../../lib/images.js';
 import type { AgentState, RefinishingOption, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -118,6 +119,16 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
       const hasFal = !!process.env.FAL_KEY;
       if (hasFal) await fs.mkdir(CONCEPTS_DIR, { recursive: true }).catch(() => {});
 
+      // Upload reference image once per listing for img2img
+      let referenceImageUrl: string | null = null;
+      if (hasFal) {
+        try {
+          referenceImageUrl = await getListingImageUrlForFal(listing.listingId);
+        } catch (err) {
+          logger.debug({ listingId: listing.listingId, error: String(err) }, 'Could not get reference image');
+        }
+      }
+
       for (const option of options) {
         const diffCtx: DifficultyContext = {
           difficulty: option.difficulty as DifficultyContext['difficulty'],
@@ -143,12 +154,20 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         if (hasFal) {
           try {
             renderPrompt = buildRenderPrompt(listing.evaluation, option);
-            const renderResult = await fal.subscribe(agentConfig.falModel, {
-              input: {
-                prompt: renderPrompt,
-                image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
-                num_images: 1,
-              },
+            const falInput: Record<string, unknown> = {
+              prompt: renderPrompt,
+              num_images: 1,
+            };
+            let falModel = agentConfig.falModel;
+            if (referenceImageUrl) {
+              falModel = 'fal-ai/flux/dev/image-to-image';
+              falInput.image_url = referenceImageUrl;
+              falInput.strength = option.difficulty === 'full' ? 0.85 : option.difficulty === 'moderate' ? 0.7 : 0.55;
+            } else {
+              falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
+            }
+            const renderResult = await fal.subscribe(falModel, {
+              input: falInput,
             }) as { data: { images: Array<{ url: string }> } };
 
             const imageUrl = renderResult.data?.images?.[0]?.url;

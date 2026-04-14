@@ -4,6 +4,7 @@ import { conceptRenders } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
+import { getListingImageUrlForFal } from '../../lib/images.js';
 import type { AgentState, ConceptRenderResult, ListingWithOptions, RefinishingOption } from '../state.js';
 import logger from '../../lib/logger.js';
 import fs from 'fs/promises';
@@ -59,19 +60,34 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
   for (const listing of listings) {
     const options = listing.options.length > 0 ? listing.options : DEFAULT_OPTIONS;
 
+    // Upload reference image once per listing for img2img
+    let referenceImageUrl: string | null = null;
+    try {
+      referenceImageUrl = await getListingImageUrlForFal(listing.listingId);
+    } catch (err) {
+      logger.debug({ listingId: listing.listingId, error: String(err) }, 'Could not get reference image for concept render');
+    }
+
     for (const option of options) {
       const prompt = buildRenderPrompt(listing.evaluation, option);
 
       try {
-        const result = await fal.subscribe(agentConfig.falModel, {
-          input: {
-            prompt,
-            image_size: {
-              width: agentConfig.conceptRenderSize,
-              height: agentConfig.conceptRenderSize,
-            },
-            num_images: 1,
-          },
+        // Use image-to-image when we have a reference image, text-to-image otherwise
+        const falInput: Record<string, unknown> = {
+          prompt,
+          num_images: 1,
+        };
+        let falModel = agentConfig.falModel;
+        if (referenceImageUrl) {
+          falModel = 'fal-ai/flux/dev/image-to-image';
+          falInput.image_url = referenceImageUrl;
+          falInput.strength = option.difficulty === 'full' ? 0.85 : option.difficulty === 'moderate' ? 0.7 : 0.55;
+        } else {
+          falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
+        }
+
+        const result = await fal.subscribe(falModel, {
+          input: falInput,
         }) as { data: { images: Array<{ url: string }> } };
 
         const imageUrl = result.data?.images?.[0]?.url;

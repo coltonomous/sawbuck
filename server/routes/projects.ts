@@ -312,8 +312,23 @@ projectsRouter.post('/:id/refinish', async (c) => {
             ? `Professional furniture photography of a completely redesigned ${type}, transformed into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware. Studio lighting, editorial photography style.`
             : `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${summary}. Warm natural lighting, product photography style.`;
 
-          const result = await fal.subscribe(agentConfig.falModel, {
-            input: { prompt, image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize }, num_images: 1 },
+          // Try to use original listing image as reference for img2img
+          const { getListingImageUrlForFal } = await import('../lib/images.js');
+          let referenceImageUrl: string | null = null;
+          try { referenceImageUrl = await getListingImageUrlForFal(project.listingId); } catch {}
+
+          const falInput: Record<string, unknown> = { prompt, num_images: 1 };
+          let falModel: string = agentConfig.falModel;
+          if (referenceImageUrl) {
+            falModel = 'fal-ai/flux/dev/image-to-image';
+            falInput.image_url = referenceImageUrl;
+            falInput.strength = renderDifficulty === 'full' ? 0.85 : renderDifficulty === 'moderate' ? 0.7 : 0.55;
+          } else {
+            falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
+          }
+
+          const result = await fal.subscribe(falModel, {
+            input: falInput,
           }) as { data: { images: Array<{ url: string }> } };
 
           const imageUrl = result.data?.images?.[0]?.url;
