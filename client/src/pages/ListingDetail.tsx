@@ -22,6 +22,7 @@ export default function ListingDetail() {
   const [showRagSources, setShowRagSources] = useState(false);
   const [previewPlan, setPreviewPlan] = useState<RefinishingPlanType | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
   const projectFormRef = useRef<HTMLDivElement>(null);
   const [showEdit, setShowEdit] = useState(false);
@@ -149,25 +150,16 @@ export default function ListingDetail() {
 
       {/* Images */}
       {listing.images?.length > 0 && (
-        <div className="mb-6">
-          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
-            {listing.images.map((img: ListingImage) => (
-              <img
-                key={img.id}
-                src={resolveImageUrl(img.localPathResized || img.localPathOriginal || img.sourceUrl || '')}
-                alt={listing.title}
-                loading="lazy"
-                className="h-52 rounded-lg object-cover shrink-0 bg-gray-100 snap-start"
-              />
-            ))}
-          </div>
-          {listing.images.length > 1 && (
-            <div className="flex justify-center gap-1.5 mt-2">
-              {listing.images.map((img: ListingImage) => (
-                <span key={img.id} className="w-1.5 h-1.5 rounded-full bg-gray-300" />
-              ))}
-            </div>
-          )}
+        <div className="flex gap-2 overflow-x-auto mb-6 pb-2 -mx-1 px-1">
+          {listing.images.map((img: ListingImage) => (
+            <img
+              key={img.id}
+              src={resolveImageUrl(img.localPathResized || img.localPathOriginal || img.sourceUrl || '')}
+              alt={listing.title}
+              loading="lazy"
+              className="h-52 rounded-lg object-cover shrink-0 bg-gray-100"
+            />
+          ))}
         </div>
       )}
 
@@ -256,7 +248,31 @@ export default function ListingDetail() {
           <CardHeader>Refinishing Options</CardHeader>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {listing.conceptImages.map((opt) => (
-              <div key={opt.difficulty} className="border border-gray-200 rounded-lg overflow-hidden">
+              <div
+                key={opt.difficulty}
+                onClick={async () => {
+                  setSelectedConcept(opt.difficulty);
+                  setLoadingPlan(true);
+                  try {
+                    const { plan } = await api.previewPlan(listing.id, {
+                      difficulty: opt.difficulty,
+                      label: opt.label,
+                      summary: opt.summary,
+                      estimatedHours: opt.estimatedHours ?? undefined,
+                      estimatedMaterialCost: opt.estimatedMaterialCost ?? undefined,
+                      estimatedResalePrice: opt.estimatedResalePrice ?? undefined,
+                    });
+                    setPreviewPlan(plan);
+                  } catch (err) {
+                    toast('error', err instanceof Error ? err.message : 'Failed to generate plan');
+                  }
+                  setLoadingPlan(false);
+                }}
+                className={`border rounded-lg overflow-hidden cursor-pointer transition-all ${
+                  selectedConcept === opt.difficulty
+                    ? 'border-blue-500 ring-2 ring-blue-200'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}>
                 {opt.localPath ? (
                   <div className="relative">
                     <img
@@ -353,12 +369,18 @@ export default function ListingDetail() {
         </Card>
       )}
 
-      {/* Plan Preview (without creating a project) */}
+      {/* Plan Preview */}
       {listing.furnitureType && (
         <div className="mb-4">
-          {previewPlan ? (
+          {loadingPlan && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+              <Spinner /> Generating refinishing plan...
+            </div>
+          )}
+          {previewPlan && !loadingPlan && (
             <RefinishingPlan plan={previewPlan} />
-          ) : (
+          )}
+          {!previewPlan && !loadingPlan && (!listing.conceptImages || listing.conceptImages.length === 0) && (
             <button
               onClick={async () => {
                 setLoadingPlan(true);
@@ -370,12 +392,13 @@ export default function ListingDetail() {
                 }
                 setLoadingPlan(false);
               }}
-              disabled={loadingPlan}
-              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
             >
-              {loadingPlan && <Spinner />}
-              {loadingPlan ? 'Generating plan...' : 'Preview Refinishing Plan'}
+              Preview Refinishing Plan
             </button>
+          )}
+          {!previewPlan && !loadingPlan && listing.conceptImages && listing.conceptImages.length > 0 && (
+            <p className="text-xs text-gray-400">Select a refinishing option above to see the detailed plan.</p>
           )}
         </div>
       )}

@@ -625,19 +625,27 @@ listingsRouter.post('/:id/preview-plan', async (c) => {
     return c.json({ error: 'Listing must be analyzed first' }, 422);
   }
 
-  // Check for existing plan on this listing (no project)
-  const existing = await db.select().from(refinishingPlans)
-    .where(eq(refinishingPlans.listingId, id))
-    .then(r => r[0]);
+  const body = await c.req.json().catch(() => ({}));
+  const requestedDifficulty = body.difficulty ?? null;
 
-  if (existing) {
-    const steps = typeof existing.steps === 'string' ? JSON.parse(existing.steps) : existing.steps;
-    return c.json({ plan: { ...existing, steps } });
+  // Check for existing plan on this listing matching the requested difficulty
+  const existingPlans = await db.select().from(refinishingPlans)
+    .where(eq(refinishingPlans.listingId, id));
+
+  if (requestedDifficulty) {
+    const match = existingPlans.find((p) => p.difficultyLevel === requestedDifficulty);
+    if (match) {
+      const steps = typeof match.steps === 'string' ? JSON.parse(match.steps) : match.steps;
+      return c.json({ plan: { ...match, steps } });
+    }
+  } else if (existingPlans.length > 0) {
+    const plan = existingPlans[0];
+    const steps = typeof plan.steps === 'string' ? JSON.parse(plan.steps) : plan.steps;
+    return c.json({ plan: { ...plan, steps } });
   }
 
   try {
     const { generateRefinishingPlan } = await import('../analysis/refinishing.js');
-    const body = await c.req.json().catch(() => ({}));
     const difficultyCtx = body.difficulty ? {
       difficulty: body.difficulty,
       label: body.label ?? body.difficulty,
