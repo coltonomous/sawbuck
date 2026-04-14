@@ -10,7 +10,7 @@ vi.mock('./config.js', () => ({
   },
 }));
 
-import { afterTriage, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET } from './graph.js';
+import { afterTriage, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET } from './graph.js';
 import type { AgentState } from './state.js';
 
 function makeState(overrides: Partial<AgentState> = {}): AgentState {
@@ -57,39 +57,6 @@ describe('afterEvaluate', () => {
   });
 });
 
-describe('afterRender', () => {
-  it('loops to scrape when under all caps and target not met', () => {
-    expect(afterRender(makeState({
-      qualifiedCount: 0,
-      evalCount: { craigslist: 3 },
-      scrapeAttempts: { craigslist: 1 },
-    }))).toBe('dispatchScrapes');
-  });
-
-  it('summarizes when qualified target met', () => {
-    expect(afterRender(makeState({
-      qualifiedCount: MIN_QUALIFIED_TARGET,
-      evalCount: { craigslist: 3 },
-      scrapeAttempts: { craigslist: 2 },
-    }))).toBe('summarize');
-  });
-
-  it('summarizes when eval cap hit', () => {
-    expect(afterRender(makeState({
-      qualifiedCount: 0,
-      evalCount: { craigslist: 10 },
-      scrapeAttempts: { craigslist: 1 },
-    }))).toBe('summarize');
-  });
-
-  it('summarizes when scrape attempts exhausted', () => {
-    expect(afterRender(makeState({
-      qualifiedCount: 0,
-      evalCount: { craigslist: 3 },
-      scrapeAttempts: { craigslist: MAX_SCRAPE_ATTEMPTS },
-    }))).toBe('summarize');
-  });
-});
 
 describe('afterTriage', () => {
   it('routes to enrich when candidates passed', () => {
@@ -112,19 +79,11 @@ describe('afterTriage', () => {
 
 
 describe('afterPlanOptions', () => {
-  it('routes to render when listings have options and FAL_KEY set', () => {
-    process.env.FAL_KEY = 'test';
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], conceptsRendered: 0 }))).toBe('render');
-    delete process.env.FAL_KEY;
-  });
-
-  it('loops to scrape when no FAL_KEY and under target', () => {
-    delete process.env.FAL_KEY;
+  it('loops to scrape when under target', () => {
     expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: 0, evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
   });
 
-  it('summarizes when no FAL_KEY and target met', () => {
-    delete process.env.FAL_KEY;
+  it('summarizes when target met', () => {
     expect(afterPlanOptions(makeState({ listingsWithOptions: [{} as any], qualifiedCount: MIN_QUALIFIED_TARGET, evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
   });
 

@@ -8,7 +8,6 @@ import { triageCandidates } from './nodes/triage.js';
 import { enrichPassed } from './nodes/enrich.js';
 import { evaluateCandidates } from './nodes/evaluate.js';
 import { generatePlanOptions } from './nodes/plan-options.js';
-import { generateConcepts } from './nodes/render.js';
 import { discoverKnowledge } from './nodes/discover-knowledge.js';
 import { summarizeRun } from './nodes/summarize.js';
 
@@ -44,15 +43,7 @@ function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrape
   return 'summarize';
 }
 
-function afterPlanOptions(state: AgentState): 'render' | 'dispatchScrapes' | 'summarize' {
-  if (state.listingsWithOptions.length > 0 && process.env.FAL_KEY) {
-    return 'render';
-  }
-  if (shouldLoop(state)) return 'dispatchScrapes';
-  return 'summarize';
-}
-
-function afterRender(state: AgentState): 'dispatchScrapes' | 'summarize' {
+function afterPlanOptions(state: AgentState): 'dispatchScrapes' | 'summarize' {
   if (shouldLoop(state)) return 'dispatchScrapes';
   return 'summarize';
 }
@@ -66,7 +57,7 @@ function shouldLoop(state: AgentState): boolean {
 }
 
 // Graph flow:
-// dispatchScrapes → [Send → scrapeOne × N] → mergeScrapes → triage → [retry?] → enrich → reconcile → evaluate → planOptions → render → summarize
+// dispatchScrapes → [Send → scrapeOne × N] → mergeScrapes → triage → [retry?] → enrich → evaluate → discoverKnowledge → planOptions (plans + renders) → summarize
 const graph = new StateGraph(AgentAnnotation)
   .addNode('dispatchScrapes', dispatchScrapes, { ends: ['scrapeOne'] })
   .addNode('scrapeOne', scrapeOne)
@@ -76,7 +67,6 @@ const graph = new StateGraph(AgentAnnotation)
   .addNode('evaluate', evaluateCandidates)
   .addNode('discoverKnowledge', discoverKnowledge)
   .addNode('planOptions', generatePlanOptions)
-  .addNode('render', generateConcepts)
   .addNode('summarize', summarizeRun)
   .addEdge('__start__', 'dispatchScrapes')
   .addEdge('scrapeOne', 'mergeScrapes')
@@ -94,11 +84,6 @@ const graph = new StateGraph(AgentAnnotation)
   })
   .addEdge('discoverKnowledge', 'planOptions')
   .addConditionalEdges('planOptions', afterPlanOptions, {
-    render: 'render',
-    dispatchScrapes: 'dispatchScrapes',
-    summarize: 'summarize',
-  })
-  .addConditionalEdges('render', afterRender, {
     dispatchScrapes: 'dispatchScrapes',
     summarize: 'summarize',
   })
@@ -119,4 +104,4 @@ export function initCheckpointer(): Promise<void> {
 
 export const agentPipeline = graph.compile({ checkpointer });
 
-export { afterTriage, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };
+export { afterTriage, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };

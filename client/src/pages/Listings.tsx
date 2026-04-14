@@ -102,14 +102,15 @@ export default function Listings() {
       });
   }, [page, sortKey, sortDir, platformFilter, statusFilter]);
 
-  // Reset to page 1 when filters/sort change
+  // Reset and reload when filters/sort change
   useEffect(() => {
     setPage(1);
     setHasMore(true);
+    setListings([]); // clear immediately to avoid stale data flash
     fetchListings(false);
   }, [sortKey, sortDir, platformFilter, statusFilter]);
 
-  // Load more when page increments
+  // Append more when page increments beyond 1
   useEffect(() => {
     if (page > 1) fetchListings(true);
   }, [page]);

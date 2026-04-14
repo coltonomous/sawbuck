@@ -6,7 +6,17 @@ import { useToast } from '../components/Toast';
 import { SkeletonCard } from '../components/Skeleton';
 import ListingsMap from '../components/ListingsMap';
 import { PlatformBadge, Spinner, EmptyState, SearchIcon } from '../components/ui';
+import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { resolveImageUrl } from '../utils';
+
+function getRecBadge(listing: Listing): { label: string; bg: string } | null {
+  if (!listing.analysisRaw) return null;
+  try {
+    const data = JSON.parse(listing.analysisRaw);
+    const rec = data?.flip_recommendation as FlipRecommendation | undefined;
+    return rec ? FLIP_REC_COLORS[rec] : null;
+  } catch { return null; }
+}
 
 type SortOption = 'newest' | 'price_low' | 'price_high';
 
@@ -235,8 +245,12 @@ export default function Dashboard() {
                 <div className="p-3.5">
                   <h3 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2">{listing.title}</h3>
                   <div className="mt-2.5 flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <PlatformBadge platform={listing.platform} />
+                      {(() => {
+                        const badge = getRecBadge(listing);
+                        return badge ? <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold ${badge.bg}`}>{badge.label}</span> : null;
+                      })()}
                       {Date.now() - new Date(listing.scrapedAt).getTime() < 6 * 60 * 60 * 1000 && (
                         <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-100 text-blue-700">New</span>
                       )}

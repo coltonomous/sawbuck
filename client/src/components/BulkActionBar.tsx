@@ -12,6 +12,17 @@ export default function BulkActionBar({ selected, isAdmin, onClear, onDone }: Pr
   const count = selected.size;
   const { toast } = useToast();
 
+  const handleBulkDismiss = async () => {
+    try {
+      await Promise.all([...selected].map((id) => api.dismissListing(id)));
+      toast('success', `${count} listing${count !== 1 ? 's' : ''} dismissed`);
+      onClear();
+      onDone();
+    } catch (err) {
+      toast('error', `Dismiss failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  };
+
   const handleAction = async (updates: Partial<Listing>) => {
     try {
       await api.bulkUpdateListings([...selected], updates);
@@ -40,7 +51,7 @@ export default function BulkActionBar({ selected, isAdmin, onClear, onDone }: Pr
       <span className="text-sm font-medium">{count} item{count !== 1 ? 's' : ''} selected</span>
       <div className="flex items-center gap-2">
         <button
-          onClick={() => handleAction({ status: 'dismissed' })}
+          onClick={handleBulkDismiss}
           className="px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition-colors"
         >
           Dismiss

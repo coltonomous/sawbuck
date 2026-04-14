@@ -137,19 +137,7 @@ export const listingImages = pgTable('listing_images', {
   index('idx_listing_images_download_status').on(table.downloadStatus),
 ]);
 
-export const searchConfigs = pgTable('search_configs', {
-  id: serial('id').primaryKey(),
-  platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).notNull(),
-  searchTerm: text('search_term').notNull(),
-  category: text('category'),
-  location: text('location'),
-  minPrice: real('min_price'),
-  maxPrice: real('max_price'),
-  isActive: boolean('is_active').notNull().default(true),
-  lastRunAt: timestamp('last_run_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-});
+// searchConfigs: removed — regions + platformSettings replaced this concept
 
 export const platformSettings = pgTable('platform_settings', {
   platform: text('platform', { enum: ['craigslist', 'offerup', 'ebay', 'sawbuck'] }).primaryKey(),
@@ -180,19 +168,7 @@ export const userDismissals = pgTable('user_dismissals', {
   uniqueIndex('idx_user_dismissals_unique').on(table.userId, table.listingId),
 ]);
 
-export const scrapeRuns = pgTable('scrape_runs', {
-  id: serial('id').primaryKey(),
-  platform: text('platform').notNull(),
-  searchConfigId: integer('search_config_id').references(() => searchConfigs.id),
-  startedAt: timestamp('started_at').notNull().defaultNow(),
-  completedAt: timestamp('completed_at'),
-  listingsFound: integer('listings_found').default(0),
-  listingsNew: integer('listings_new').default(0),
-  listingsDuplicate: integer('listings_duplicate').default(0),
-  error: text('error'),
-  status: text('status', { enum: ['running', 'completed', 'failed'] }).notNull().default('running'),
-  userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
-});
+// scrapeRuns: removed — agent_runs replaced this for the LangGraph pipeline
 
 export const comparables = pgTable('comparables', {
   id: serial('id').primaryKey(),

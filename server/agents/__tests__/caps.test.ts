@@ -18,10 +18,8 @@ function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'summarize' {
   return 'discoverKnowledge';
 }
 
-function afterPlanOptions(state: AgentState): 'render' | 'summarize' {
-  if (state.listingsWithOptions.length === 0) return 'summarize';
-  if (!process.env.FAL_KEY) return 'summarize';
-  return 'render';
+function afterPlanOptions(state: AgentState): 'summarize' {
+  return 'summarize';
 }
 
 function makeState(overrides: Partial<AgentState> = {}): AgentState {
@@ -84,18 +82,7 @@ describe('afterEvaluate', () => {
 });
 
 describe('afterPlanOptions', () => {
-  it('routes to render when listings with options exist and FAL_KEY set', () => {
-    const orig = process.env.FAL_KEY;
-    process.env.FAL_KEY = 'test';
-    expect(afterPlanOptions(makeState({ listingsWithOptions: [mockWithOptions] }))).toBe('render');
-    if (orig) process.env.FAL_KEY = orig; else delete process.env.FAL_KEY;
-  });
-
-  it('routes to summarize when no FAL_KEY', () => {
-    const orig = process.env.FAL_KEY;
-    delete process.env.FAL_KEY;
+  it('always summarizes (plans + renders handled internally by planOptions node)', () => {
     expect(afterPlanOptions(makeState({ listingsWithOptions: [mockWithOptions] }))).toBe('summarize');
-    if (orig) process.env.FAL_KEY = orig;
   });
-
 });

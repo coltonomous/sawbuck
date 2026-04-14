@@ -327,7 +327,10 @@ export default function Settings() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-gray-400">{u.projectCount} projects{u.soldCount > 0 ? `, ${u.soldCount} sold` : ''}{u.clickCount > 0 ? `, ${u.clickCount} clicks` : ''}</span>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <span className="text-xs text-gray-400">{u.projectCount} projects{u.soldCount > 0 ? `, ${u.soldCount} sold` : ''}{u.clickCount > 0 ? ` / ${u.clickCount} clicks` : ''}</span>
+                      <span className="text-[10px] text-gray-300">Joined {new Date(u.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}</span>
+                    </div>
                     {u.id === session?.user?.id ? (
                       <span className="text-xs text-amber-600 font-medium px-2 py-1">Admin</span>
                     ) : (
@@ -605,9 +608,12 @@ export default function Settings() {
                       }`} />
                       <span className="font-medium text-gray-900">{run.status}</span>
                     </div>
-                    <span className="text-xs text-gray-400">
-                      {new Date(run.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                      {run.completedAt && (
+                        <span>{Math.round((new Date(run.completedAt).getTime() - new Date(run.startedAt).getTime()) / 1000)}s</span>
+                      )}
+                      <span>{new Date(run.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+                    </div>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
                     <span>Scraped: {run.scraped ?? 0}</span>
@@ -661,7 +667,6 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.run_interval_ms', configKey: 'runIntervalMs', label: 'Run interval (ms)', type: 'number', group: 'Scheduling' },
-  { key: 'agent.target_city', configKey: 'targetCity', label: 'Target city', type: 'text', group: 'Scheduling' },
   { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },

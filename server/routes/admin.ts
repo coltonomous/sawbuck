@@ -12,7 +12,7 @@ const VALID_SETTINGS = new Set([
   'agent.max_triages', 'agent.max_evals',
   'agent.triage_threshold', 'agent.deal_score_threshold',
   'agent.min_delay_ms', 'agent.max_delay_ms', 'agent.daily_request_cap',
-  'agent.run_interval_ms', 'agent.target_city', 'agent.triage_model',
+  'agent.run_interval_ms', 'agent.triage_model',
   'agent.eval_model', 'agent.fal_model', 'agent.concept_size',
   'agent.image_retention_days',
 ]);
@@ -88,7 +88,7 @@ adminRouter.delete('/users/:id', async (c) => {
   if (!user) return c.json({ error: 'User not found' }, 404);
 
   // FK cascades handle all dependent records:
-  // users → sessions, accounts, listings, projects, searchConfigs, scrapeRuns, backgroundJobs, comparables, refinishingPlans
+  // users → sessions, accounts, listings, projects, backgroundJobs, comparables, refinishingPlans, userDismissals, listingClicks
   // listings → listingImages, refinishingPlans, comparables, conceptRenders, projects
   // projects → projectPhotos, and sets null on refinishingPlans.projectId, materials.projectId
   // refinishingPlans → materials

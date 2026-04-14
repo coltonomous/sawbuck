@@ -33,7 +33,6 @@ const STAGE_ORDER: { id: string; key?: keyof AgentRun }[] = [
   { id: 'evaluate', key: 'evaluated' },
   { id: 'knowledge', key: 'qualified' },
   { id: 'plan' },
-  { id: 'render', key: 'rendered' },
   { id: 'summarize' },
 ];
 
@@ -139,8 +138,7 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
     { id: 'enrich', label: 'Enrich', statKey: 'passedTriage' },
     { id: 'evaluate', label: 'Evaluate', statKey: 'evaluated' },
     { id: 'knowledge', label: 'Knowledge Gap', statKey: 'qualified' },
-    { id: 'plan', label: 'Plan Options' },
-    { id: 'render', label: 'Render', statKey: 'rendered' },
+    { id: 'plan', label: 'Plans + Renders', statKey: 'rendered' },
     { id: 'summarize', label: 'Summarize' },
   ];
 

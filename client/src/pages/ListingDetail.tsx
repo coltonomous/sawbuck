@@ -107,7 +107,7 @@ export default function ListingDetail() {
         name: projectForm.name,
         purchasePrice: parseFloat(projectForm.purchasePrice),
       });
-      navigate(`/projects/${project.id}`);
+      navigate(`/projects/${project.id}?tab=plan`);
     } catch (err) {
       toast('error', `Failed to create project: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
@@ -263,6 +263,13 @@ export default function ListingDetail() {
         </button>
       ) : null}
 
+      {/* eBay Comparables */}
+      {listing.furnitureType && (
+        <div className="mb-4">
+          <ComparablesList listingId={listing.id} />
+        </div>
+      )}
+
       {/* Refinishing Options (from agent pipeline) */}
       {listing.conceptImages && listing.conceptImages.length > 0 && (
         <Card className="mb-4">
@@ -377,7 +384,7 @@ export default function ListingDetail() {
                           estimatedMaterialCost: opt.estimatedMaterialCost ?? undefined,
                           estimatedResalePrice: opt.estimatedResalePrice ?? undefined,
                         });
-                        navigate(`/projects/${project.id}`);
+                        navigate(`/projects/${project.id}?tab=plan`);
                       } catch (err) {
                         toast('error', err instanceof Error ? err.message : 'Failed to create project');
                       }

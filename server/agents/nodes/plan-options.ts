@@ -1,10 +1,34 @@
 import { z } from 'zod';
+import { fal } from '@fal-ai/client';
+import sharp from 'sharp';
+import fs from 'fs/promises';
+import path from 'path';
 import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { db } from '../../db/index.js';
 import { conceptRenders } from '../../db/schema.js';
+import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
-import type { AgentState, RefinishingOption, ListingWithOptions } from '../state.js';
+import { reportProgress } from '../progress.js';
+import { generateRefinishingPlan, type DifficultyContext } from '../../analysis/refinishing.js';
+import type { AgentState, RefinishingOption, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
+
+const CONCEPTS_DIR = 'data/images/concepts';
+
+function buildRenderPrompt(
+  evaluation: ListingWithOptions['evaluation'],
+  option: RefinishingOption,
+): string {
+  const type = evaluation.furnitureType;
+  const style = evaluation.furnitureStyle;
+  const wood = evaluation.woodSpecies;
+
+  if (option.difficulty === 'full') {
+    return `Professional furniture photography of a completely redesigned ${type}, transformed from ${style || 'traditional'} style into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware, fresh upholstery or accent details. Styled in a high-end interior design setting. Studio lighting, editorial photography style.`;
+  }
+
+  return `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${option.summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
+}
 
 const PLAN_OPTIONS_SYSTEM = `You are a furniture refinishing cost estimator. Given a piece of furniture with its condition and type, generate three refinishing options at different difficulty levels. Be realistic about time, material costs, and resale values based on the furniture type and condition.`;
 
@@ -62,6 +86,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
   }
 
   const results: ListingWithOptions[] = [];
+  const renders: ConceptRenderResult[] = [];
   const errors: AgentState['errors'] = [];
 
   for (const listing of listings) {
@@ -87,8 +112,68 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         estimatedResalePrice: o.estimated_resale_price,
       }));
 
-      // Persist all options to DB so they're visible in the feed even without renders
+      results.push({ ...listing, options });
+
+      // For each option: persist concept metadata, generate full plan, render image
+      const hasFal = !!process.env.FAL_KEY;
+      if (hasFal) await fs.mkdir(CONCEPTS_DIR, { recursive: true }).catch(() => {});
+
       for (const option of options) {
+        const diffCtx: DifficultyContext = {
+          difficulty: option.difficulty as DifficultyContext['difficulty'],
+          label: option.label,
+          summary: option.summary,
+          estimatedHours: option.estimatedHours,
+          estimatedMaterialCost: option.estimatedMaterialCost,
+          estimatedResalePrice: option.estimatedResalePrice,
+        };
+
+        // 1. Generate refinishing plan
+        try {
+          await generateRefinishingPlan(listing.listingId, undefined, diffCtx);
+        } catch (err) {
+          logger.warn({ listingId: listing.listingId, difficulty: option.difficulty, error: String(err) }, 'Plan generation failed (non-fatal)');
+        }
+
+        // 2. Generate concept render + persist concept_renders row
+        let renderPrompt = '';
+        let localPath: string | null = null;
+        let renderedImageUrl: string | null = null;
+
+        if (hasFal) {
+          try {
+            renderPrompt = buildRenderPrompt(listing.evaluation, option);
+            const renderResult = await fal.subscribe(agentConfig.falModel, {
+              input: {
+                prompt: renderPrompt,
+                image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
+                num_images: 1,
+              },
+            }) as { data: { images: Array<{ url: string }> } };
+
+            const imageUrl = renderResult.data?.images?.[0]?.url;
+            if (imageUrl) {
+              renderedImageUrl = imageUrl;
+              const filename = `${listing.listingId}_${option.difficulty}.webp`;
+              localPath = path.join(CONCEPTS_DIR, filename);
+              const response = await fetch(imageUrl);
+              const buffer = Buffer.from(await response.arrayBuffer());
+              await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+
+              renders.push({
+                listingId: listing.listingId,
+                difficulty: option.difficulty,
+                conceptImageUrl: imageUrl,
+                localPath,
+                prompt: renderPrompt,
+              });
+            }
+          } catch (err) {
+            logger.warn({ listingId: listing.listingId, difficulty: option.difficulty, error: String(err) }, 'Concept render failed (non-fatal)');
+          }
+        }
+
+        // 3. Persist concept_renders row (with or without render)
         await db.insert(conceptRenders).values({
           listingId: listing.listingId,
           agentRunId: state.runId,
@@ -98,14 +183,13 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
           estimatedHours: option.estimatedHours,
           estimatedMaterialCost: option.estimatedMaterialCost,
           estimatedResalePrice: option.estimatedResalePrice,
-          prompt: '',     // render node fills this in later
-          localPath: null, // render node fills this in later
+          prompt: renderPrompt,
+          renderedImageUrl,
+          localPath,
         }).onConflictDoNothing();
       }
 
-      results.push({ ...listing, options });
-
-      logger.info({ listingId: listing.listingId, optionCount: options.length }, 'Plan options generated');
+      logger.info({ listingId: listing.listingId, optionCount: options.length }, 'Plan options + plans + renders generated');
     } catch (err) {
       logger.error({ listingId: listing.listingId, error: String(err) }, 'Plan options failed');
       errors.push({ node: 'planOptions', message: `Listing ${listing.listingId}: ${String(err)}`, timestamp: new Date().toISOString() });
@@ -114,7 +198,14 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
     }
   }
 
-  logger.info({ count: results.length }, 'Plan options node complete');
+  logger.info({ count: results.length, renders: renders.length }, 'Plan options node complete');
 
-  return { listingsWithOptions: results, errors };
+  reportProgress(state.runId, { rendered: renders.length });
+
+  return {
+    listingsWithOptions: results,
+    conceptRenders: renders,
+    conceptsRendered: renders.length,
+    errors,
+  };
 }

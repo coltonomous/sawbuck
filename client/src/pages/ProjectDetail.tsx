@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api, type Project, type ProjectDetail as ProjectDetailType, type Material } from '../api';
 import { PROJECT_PIPELINE_STATUSES } from '@shared/constants';
 import { useToast } from '../components/Toast';
@@ -17,10 +17,12 @@ type Tab = 'overview' | 'plan' | 'materials' | 'photos' | 'financials';
 export default function ProjectDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [project, setProject] = useState<ProjectDetailType | null>(null);
   const [loading, setLoading] = useState(true);
   const [generatingPlan, setGeneratingPlan] = useState(false);
-  const [tab, setTab] = useState<Tab>('overview');
+  const initialTab = (searchParams.get('tab') as Tab) || 'overview';
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [showExport, setShowExport] = useState(false);
   const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
   const [selectedConceptDifficulty, setSelectedConceptDifficulty] = useState<string | null>(null);
