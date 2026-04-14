@@ -56,11 +56,49 @@ if (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION) {
   logger.info('AWS_REGION not set — agent scheduler disabled');
 }
 
+// Reconcile stale listings — runs independently from the pipeline every 6 hours
+// so it doesn't block the scrape → triage → evaluate flow.
+const RECONCILE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+async function runReconcile() {
+  try {
+    const { reconcileListings } = await import('./agents/nodes/reconcile.js');
+    const result = await reconcileListings({
+      runId: 'reconcile-' + Date.now(),
+      startedAt: new Date().toISOString(),
+      scrapedCandidates: [],
+      triagedCandidates: [],
+      passedTriage: [],
+      evaluatedCandidates: [],
+      qualifiedListings: [],
+      listingsWithOptions: [],
+      conceptRenders: [],
+      removedIds: [],
+      reconciledCount: 0,
+      triageCount: {},
+      evalCount: {},
+      qualifiedCount: 0,
+      conceptsRendered: 0,
+      scrapeAttempts: {},
+      seenExternalIds: [],
+      scrapeTask: null,
+      errors: [],
+      summary: null,
+    });
+    logger.info({ reconciled: result.reconciledCount }, 'Standalone reconcile complete');
+  } catch (err) {
+    logger.error({ err }, 'Standalone reconcile failed');
+  }
+}
+setTimeout(runReconcile, 2 * 60_000); // first run 2 min after startup
+const reconcileTimer = setInterval(runReconcile, RECONCILE_INTERVAL_MS);
+reconcileTimer.unref();
+
 // Graceful shutdown
 async function shutdown() {
   logger.info('Shutting down...');
   clearInterval(cleanupTimer);
   clearInterval(sessionCleanupTimer);
+  clearInterval(reconcileTimer);
   stopScheduler();
 
   // Wait for in-flight requests to finish, then drain the connection pool

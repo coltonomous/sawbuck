@@ -6,7 +6,6 @@ import { dispatchScrapes, afterScrapesMerge } from './nodes/scrape.js';
 import { scrapeOne } from './nodes/scrape-one.js';
 import { triageCandidates } from './nodes/triage.js';
 import { enrichPassed } from './nodes/enrich.js';
-import { reconcileListings } from './nodes/reconcile.js';
 import { evaluateCandidates } from './nodes/evaluate.js';
 import { generatePlanOptions } from './nodes/plan-options.js';
 import { generateConcepts } from './nodes/render.js';
@@ -35,11 +34,6 @@ function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summari
   }
   if (hasScrapeBudget(state)) return 'dispatchScrapes';
   return 'summarize';
-}
-
-function afterReconcile(state: AgentState): 'evaluate' | 'summarize' {
-  if (state.passedTriage.length === 0) return 'summarize';
-  return 'evaluate';
 }
 
 function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrapes' | 'summarize' {
@@ -79,7 +73,6 @@ const graph = new StateGraph(AgentAnnotation)
   .addNode('mergeScrapes', afterScrapesMerge)
   .addNode('triage', triageCandidates)
   .addNode('enrich', enrichPassed)
-  .addNode('reconcile', reconcileListings)
   .addNode('evaluate', evaluateCandidates)
   .addNode('discoverKnowledge', discoverKnowledge)
   .addNode('planOptions', generatePlanOptions)
@@ -93,11 +86,7 @@ const graph = new StateGraph(AgentAnnotation)
     dispatchScrapes: 'dispatchScrapes',
     summarize: 'summarize',
   })
-  .addEdge('enrich', 'reconcile')
-  .addConditionalEdges('reconcile', afterReconcile, {
-    evaluate: 'evaluate',
-    summarize: 'summarize',
-  })
+  .addEdge('enrich', 'evaluate')
   .addConditionalEdges('evaluate', afterEvaluate, {
     discoverKnowledge: 'discoverKnowledge',
     dispatchScrapes: 'dispatchScrapes',
@@ -130,4 +119,4 @@ export function initCheckpointer(): Promise<void> {
 
 export const agentPipeline = graph.compile({ checkpointer });
 
-export { afterTriage, afterReconcile, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };
+export { afterTriage, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };

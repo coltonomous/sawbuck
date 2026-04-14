@@ -14,12 +14,17 @@ const BROWSER_HEADERS = {
 
 const cookies = new Map<string, string>();
 
+// Cookies we set manually that should not be overwritten by server responses
+const protectedCookies = new Set<string>();
+
 function parseCookies(setCookieHeaders: string[]): void {
   for (const header of setCookieHeaders) {
     const parts = header.split(';')[0];
     const [name, ...valueParts] = parts.split('=');
     if (name && valueParts.length > 0) {
-      cookies.set(name.trim(), valueParts.join('=').trim());
+      const trimmed = name.trim();
+      if (protectedCookies.has(trimmed)) continue; // don't overwrite manual cookies
+      cookies.set(trimmed, valueParts.join('=').trim());
     }
   }
 }
@@ -68,6 +73,7 @@ export async function warmCookies(region?: { latitude: number; longitude: number
       city: region.name.charAt(0).toUpperCase() + region.name.slice(1),
     });
     cookies.set('location', encodeURIComponent(locationJson));
+    protectedCookies.add('location');
   }
 
   if (cookies.size > 1) return; // already warmed (has more than just our location cookie)

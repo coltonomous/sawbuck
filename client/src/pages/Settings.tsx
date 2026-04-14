@@ -163,12 +163,12 @@ export default function Settings() {
 
       {/* Tab bar (admin only) */}
       {isAdmin && (
-        <div className="flex gap-1 mb-6 border-b border-gray-200">
+        <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto -mx-1 px-1">
           {ADMIN_TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => setSearchParams(t.key === 'preferences' ? {} : { tab: t.key })}
-              className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap shrink-0 ${
                 tab === t.key
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -481,7 +481,7 @@ export default function Settings() {
                 <input type="number" step="any" placeholder="Longitude" value={newRegion.longitude}
                   onChange={(e) => setNewRegion({ ...newRegion, longitude: e.target.value })}
                   className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
-                <input type="number" placeholder="Radius (miles)" value={newRegion.radiusMiles}
+                <input type="number" placeholder="OfferUp search radius (mi)" value={newRegion.radiusMiles}
                   onChange={(e) => setNewRegion({ ...newRegion, radiusMiles: e.target.value })}
                   className="border border-gray-300 rounded px-2.5 py-1.5 text-sm" />
               </div>

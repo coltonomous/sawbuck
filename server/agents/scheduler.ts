@@ -114,8 +114,7 @@ export async function startScheduler(): Promise<void> {
   // Clean up orphaned 'running' rows from previous process crashes
   await cleanupStaleRuns();
 
-  runOnce();
-
+  // Don't run immediately on startup/deploy — wait for the first interval
   timer = setInterval(runOnce, intervalMs);
   timer.unref();
 }

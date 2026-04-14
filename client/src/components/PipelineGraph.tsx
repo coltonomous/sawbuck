@@ -30,7 +30,6 @@ const STAGE_ORDER: { id: string; key?: keyof AgentRun }[] = [
   { id: 'mergeScrapes', key: 'scraped' },
   { id: 'triage', key: 'triaged' },
   { id: 'enrich', key: 'passedTriage' },
-  { id: 'reconcile' },
   { id: 'evaluate', key: 'evaluated' },
   { id: 'knowledge', key: 'qualified' },
   { id: 'plan' },
@@ -138,7 +137,6 @@ export default function PipelineGraph({ latestRun, platforms, regions, onTrigger
   const pipelineNodes: { id: string; label: string; statKey?: keyof AgentRun }[] = [
     { id: 'triage', label: 'Triage', statKey: 'triaged' },
     { id: 'enrich', label: 'Enrich', statKey: 'passedTriage' },
-    { id: 'reconcile', label: 'Reconcile' },
     { id: 'evaluate', label: 'Evaluate', statKey: 'evaluated' },
     { id: 'knowledge', label: 'Knowledge Gap', statKey: 'qualified' },
     { id: 'plan', label: 'Plan Options' },

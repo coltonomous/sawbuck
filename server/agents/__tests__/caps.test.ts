@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { agentConfig } from '../config.js';
-import { MAX_SCRAPE_ATTEMPTS, afterReconcile } from '../graph.js';
+import { MAX_SCRAPE_ATTEMPTS } from '../graph.js';
 import type { AgentState } from '../state.js';
 
 // Mirror conditional edge logic from graph.ts
@@ -73,15 +73,6 @@ describe('afterTriage', () => {
   });
 });
 
-describe('afterReconcile', () => {
-  it('routes to evaluate when candidates remain after reconciliation', () => {
-    expect(afterReconcile(makeState({ passedTriage: [mockTriaged] }))).toBe('evaluate');
-  });
-
-  it('routes to summarize when all candidates were removed', () => {
-    expect(afterReconcile(makeState({ passedTriage: [] }))).toBe('summarize');
-  });
-});
 
 describe('afterEvaluate', () => {
   it('routes to discoverKnowledge when qualified listings exist', () => {

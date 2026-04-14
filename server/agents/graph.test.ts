@@ -11,7 +11,7 @@ vi.mock('./config.js', () => ({
   },
 }));
 
-import { afterTriage, afterReconcile, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET } from './graph.js';
+import { afterTriage, afterEvaluate, afterPlanOptions, afterRender, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET } from './graph.js';
 import type { AgentState } from './state.js';
 
 function makeState(overrides: Partial<AgentState> = {}): AgentState {
@@ -110,15 +110,7 @@ describe('afterTriage', () => {
   });
 });
 
-describe('afterReconcile', () => {
-  it('routes to evaluate when passed triage has items', () => {
-    expect(afterReconcile(makeState({ passedTriage: [{} as any] }))).toBe('evaluate');
-  });
 
-  it('summarizes when passed triage is empty', () => {
-    expect(afterReconcile(makeState({ passedTriage: [] }))).toBe('summarize');
-  });
-});
 
 describe('afterPlanOptions', () => {
   it('routes to render when listings have options and FAL_KEY set', () => {
