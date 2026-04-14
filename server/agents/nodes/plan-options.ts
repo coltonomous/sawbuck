@@ -16,19 +16,29 @@ import logger from '../../lib/logger.js';
 
 const CONCEPTS_DIR = 'data/images/concepts';
 
+import type { RefinishingPlan } from '../../analysis/refinishing.js';
+
+/**
+ * Build a render prompt from the actual generated plan.
+ * When a plan is available, the prompt describes the exact changes to apply.
+ * Falls back to the concept summary if no plan was generated.
+ */
 function buildRenderPrompt(
   evaluation: ListingWithOptions['evaluation'],
   option: RefinishingOption,
+  plan?: RefinishingPlan | null,
 ): string {
   const type = evaluation.furnitureType;
-  const style = evaluation.furnitureStyle;
-  const wood = evaluation.woodSpecies;
 
-  if (option.difficulty === 'full') {
-    return `Professional furniture photography of a completely redesigned ${type}, transformed from ${style || 'traditional'} style into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware, fresh upholstery or accent details. Styled in a high-end interior design setting. Studio lighting, editorial photography style.`;
+  if (plan) {
+    // Build a concise description of the specific changes from the plan steps
+    const changes = plan.steps
+      .map((s) => s.title.toLowerCase())
+      .join(', ');
+    return `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${plan.after_description}. Specific steps applied: ${changes}. Style: ${plan.style_recommendation}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
   }
 
-  return `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${option.summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
+  return `The same ${type} shown in the reference photo, with these changes applied: ${option.summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
 }
 
 const PLAN_OPTIONS_SYSTEM = `You are a furniture refinishing cost estimator. Given a piece of furniture with its condition and type, generate three refinishing options at different difficulty levels. Be realistic about time, material costs, and resale values based on the furniture type and condition.`;
@@ -140,8 +150,10 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         };
 
         // 1. Generate refinishing plan
+        let generatedPlan: RefinishingPlan | null = null;
         try {
-          await generateRefinishingPlan(listing.listingId, undefined, diffCtx);
+          const planResult = await generateRefinishingPlan(listing.listingId, undefined, diffCtx);
+          generatedPlan = planResult?.plan ?? null;
         } catch (err) {
           logger.warn({ listingId: listing.listingId, difficulty: option.difficulty, error: String(err) }, 'Plan generation failed (non-fatal)');
         }
@@ -153,7 +165,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
 
         if (hasFal) {
           try {
-            renderPrompt = buildRenderPrompt(listing.evaluation, option);
+            renderPrompt = buildRenderPrompt(listing.evaluation, option, generatedPlan);
             const falInput: Record<string, unknown> = {
               prompt: renderPrompt,
               num_images: 1,
@@ -162,7 +174,8 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             if (referenceImageUrl) {
               falModel = 'fal-ai/flux/dev/image-to-image';
               falInput.image_url = referenceImageUrl;
-              falInput.strength = option.difficulty === 'full' ? 0.85 : option.difficulty === 'moderate' ? 0.7 : 0.55;
+              // Low strength to preserve the original piece — only apply finish changes
+              falInput.strength = option.difficulty === 'full' ? 0.55 : option.difficulty === 'moderate' ? 0.4 : 0.3;
             } else {
               falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
             }

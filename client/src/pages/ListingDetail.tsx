@@ -32,6 +32,17 @@ export default function ListingDetail() {
   const [savingEdit, setSavingEdit] = useState(false);
   const { toast } = useToast();
 
+  // Sync concept card hours from a loaded plan's step-sum
+  const syncConceptHours = (difficulty: string, plan: RefinishingPlanType) => {
+    const stepHours = Math.round(plan.steps.reduce((s, step) => s + step.duration_minutes, 0) / 60 * 10) / 10;
+    setListing((prev) => prev ? {
+      ...prev,
+      conceptImages: prev.conceptImages?.map((c) =>
+        c.difficulty === difficulty ? { ...c, estimatedHours: stepHours } : c
+      ) ?? null,
+    } : prev);
+  };
+
   useEffect(() => {
     if (!id) return;
     api.getListing(parseInt(id))
@@ -58,6 +69,7 @@ export default function ListingDetail() {
     }).then(({ plan }) => {
       setPreviewPlan(plan);
       setPlanCache((prev) => ({ ...prev, [moderate.difficulty]: plan }));
+      syncConceptHours(moderate.difficulty, plan);
     })
       .catch(() => {})
       .finally(() => setLoadingPlan(false));
@@ -305,6 +317,7 @@ export default function ListingDetail() {
                     });
                     setPreviewPlan(plan);
                     setPlanCache((prev) => ({ ...prev, [opt.difficulty]: plan }));
+                    syncConceptHours(opt.difficulty, plan);
                   } catch (err) {
                     toast('error', err instanceof Error ? err.message : 'Failed to generate plan');
                   }
@@ -448,6 +461,7 @@ export default function ListingDetail() {
                     });
                     setPreviewPlan(plan);
                     setPlanCache((prev) => ({ ...prev, [moderate.difficulty]: plan }));
+                    syncConceptHours(moderate.difficulty, plan);
                   }
                 } catch (err) {
                   toast('error', err instanceof Error ? err.message : 'Failed to generate refinishing plan');

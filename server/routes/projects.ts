@@ -3,7 +3,7 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps, type DifficultyContext } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
@@ -42,9 +42,10 @@ projectsRouter.get('/:id', async (c) => {
 
   const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
 
+  // Include plans associated with this project OR unassociated plans from the same listing
   const plans = await db.select()
     .from(refinishingPlans)
-    .where(eq(refinishingPlans.projectId, id))
+    .where(sql`${refinishingPlans.projectId} = ${id} OR (${refinishingPlans.listingId} = ${project.listingId} AND ${refinishingPlans.projectId} IS NULL)`)
     .orderBy(desc(refinishingPlans.createdAt));
 
   const allPlans = plans.map((p) => ({ ...p, steps: parsePlanSteps(p.steps) }));
@@ -132,19 +133,33 @@ projectsRouter.post('/from-concept', async (c) => {
     });
   }
 
-  // Generate the plan seeded with the chosen concept option
+  // Reuse existing plan for this listing+difficulty if available, otherwise generate
   try {
-    const difficultyCtx: DifficultyContext = {
-      difficulty,
-      label: label ?? difficulty,
-      summary: summary ?? '',
-      estimatedHours,
-      estimatedMaterialCost,
-      estimatedResalePrice,
-    };
+    const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
+    const planDifficulty = conceptToPlanDifficulty[difficulty] ?? 'intermediate' as const;
 
-    const result = await generateRefinishingPlan(listing.id, project.id, difficultyCtx);
-    if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+    // Check for existing plan on this listing (from preview-plan or agent pipeline)
+    const existingPlan = await db.select().from(refinishingPlans)
+      .where(and(eq(refinishingPlans.listingId, listingId), eq(refinishingPlans.difficultyLevel, planDifficulty)))
+      .then(r => r[0]);
+
+    if (existingPlan && !existingPlan.projectId) {
+      // Associate the existing plan with this project
+      await db.update(refinishingPlans)
+        .set({ projectId: project.id })
+        .where(eq(refinishingPlans.id, existingPlan.id));
+    } else if (!existingPlan) {
+      const difficultyCtx: DifficultyContext = {
+        difficulty,
+        label: label ?? difficulty,
+        summary: summary ?? '',
+        estimatedHours,
+        estimatedMaterialCost,
+        estimatedResalePrice,
+      };
+      const result = await generateRefinishingPlan(listing.id, project.id, difficultyCtx);
+      if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+    }
 
     const storedPlans = await db.select()
       .from(refinishingPlans)
@@ -305,12 +320,17 @@ projectsRouter.post('/:id/refinish', async (c) => {
           await fs.mkdir(CONCEPTS_DIR, { recursive: true });
 
           const type = listing.furnitureType || 'furniture';
-          const style = listing.furnitureStyle;
-          const wood = listing.woodSpecies;
           const summary = difficultyCtx.summary || renderDifficulty;
-          const prompt = renderDifficulty === 'full'
-            ? `Professional furniture photography of a completely redesigned ${type}, transformed into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware. Studio lighting, editorial photography style.`
-            : `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${summary}. Warm natural lighting, product photography style.`;
+
+          // Use the just-generated plan to build a specific render prompt
+          const planForRender = result?.plan;
+          let prompt: string;
+          if (planForRender) {
+            const changes = planForRender.steps.map((s: any) => s.title.toLowerCase()).join(', ');
+            prompt = `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${planForRender.after_description}. Specific steps applied: ${changes}. Style: ${planForRender.style_recommendation}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+          } else {
+            prompt = `The same ${type} shown in the reference photo, with these changes applied: ${summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+          }
 
           // Try to use original listing image as reference for img2img
           const { getListingImageUrlForFal } = await import('../lib/images.js');
@@ -322,16 +342,16 @@ projectsRouter.post('/:id/refinish', async (c) => {
           if (referenceImageUrl) {
             falModel = 'fal-ai/flux/dev/image-to-image';
             falInput.image_url = referenceImageUrl;
-            falInput.strength = renderDifficulty === 'full' ? 0.85 : renderDifficulty === 'moderate' ? 0.7 : 0.55;
+            falInput.strength = renderDifficulty === 'full' ? 0.55 : renderDifficulty === 'moderate' ? 0.4 : 0.3;
           } else {
             falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
           }
 
-          const result = await fal.subscribe(falModel, {
+          const renderResult = await fal.subscribe(falModel, {
             input: falInput,
           }) as { data: { images: Array<{ url: string }> } };
 
-          const imageUrl = result.data?.images?.[0]?.url;
+          const imageUrl = renderResult.data?.images?.[0]?.url;
           if (!imageUrl) return;
 
           const filename = `${project.listingId}_${renderDifficulty}.webp`;

@@ -1,6 +1,6 @@
 import { fal } from '@fal-ai/client';
 import { db } from '../../db/index.js';
-import { conceptRenders } from '../../db/schema.js';
+import { conceptRenders, refinishingPlans } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
@@ -17,20 +17,27 @@ async function ensureConceptsDir(): Promise<void> {
   await fs.mkdir(CONCEPTS_DIR, { recursive: true });
 }
 
+interface PlanData {
+  style_recommendation?: string;
+  after_description?: string;
+  steps?: Array<{ title: string }>;
+}
+
 function buildRenderPrompt(
   evaluation: ListingWithOptions['evaluation'],
   option: RefinishingOption,
+  plan?: PlanData | null,
 ): string {
   const type = evaluation.furnitureType;
-  const style = evaluation.furnitureStyle;
-  const wood = evaluation.woodSpecies;
 
-  if (option.difficulty === 'full') {
-    // Full transformation: dramatically different look, updated style, new hardware, contrasting finish
-    return `Professional furniture photography of a completely redesigned ${type}, transformed from ${style || 'traditional'} style into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware, fresh upholstery or accent details. Styled in a high-end interior design setting. Studio lighting, editorial photography style.`;
+  if (plan?.after_description) {
+    const changes = plan.steps
+      ?.map((s) => s.title.toLowerCase())
+      .join(', ') ?? option.summary;
+    return `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${plan.after_description}. Specific steps applied: ${changes}. Style: ${plan.style_recommendation ?? ''}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
   }
 
-  return `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${option.summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
+  return `The same ${type} shown in the reference photo, with these changes applied: ${option.summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
 }
 
 // Default options if plan generation failed
@@ -69,10 +76,26 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
     }
 
     for (const option of options) {
-      const prompt = buildRenderPrompt(listing.evaluation, option);
+      // Fetch the plan for this listing+difficulty to use in the render prompt
+      const difficultyMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
+      let planData: PlanData | null = null;
+      try {
+        const planDiff = difficultyMap[option.difficulty] ?? 'intermediate';
+        const plans = await db.select().from(refinishingPlans)
+          .where(and(eq(refinishingPlans.listingId, listing.listingId), eq(refinishingPlans.difficultyLevel, planDiff)));
+        if (plans[0]) {
+          const steps = typeof plans[0].steps === 'string' ? JSON.parse(plans[0].steps) : plans[0].steps;
+          planData = {
+            style_recommendation: plans[0].styleRecommendation ?? undefined,
+            after_description: plans[0].afterDescription ?? undefined,
+            steps,
+          };
+        }
+      } catch {}
+
+      const prompt = buildRenderPrompt(listing.evaluation, option, planData);
 
       try {
-        // Use image-to-image when we have a reference image, text-to-image otherwise
         const falInput: Record<string, unknown> = {
           prompt,
           num_images: 1,
@@ -81,7 +104,8 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
         if (referenceImageUrl) {
           falModel = 'fal-ai/flux/dev/image-to-image';
           falInput.image_url = referenceImageUrl;
-          falInput.strength = option.difficulty === 'full' ? 0.85 : option.difficulty === 'moderate' ? 0.7 : 0.55;
+          // Low strength to preserve the original piece — only apply finish changes
+          falInput.strength = option.difficulty === 'full' ? 0.55 : option.difficulty === 'moderate' ? 0.4 : 0.3;
         } else {
           falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
         }

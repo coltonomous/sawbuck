@@ -624,10 +624,23 @@ listingsRouter.post('/:id/render', async (c) => {
     };
 
     const type = listing.furnitureType;
-    const style = listing.furnitureStyle;
-    const wood = listing.woodSpecies;
     const summary = SUMMARIES[difficulty];
-    const prompt = `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
+
+    // Try to load existing plan for this difficulty to build a specific prompt
+    const difficultyMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
+    const planDiff = difficultyMap[difficulty] ?? 'intermediate' as const;
+    const existingPlan = await db.select().from(refinishingPlans)
+      .where(and(eq(refinishingPlans.listingId, id), eq(refinishingPlans.difficultyLevel, planDiff)))
+      .then(r => r[0]).catch(() => null);
+
+    let prompt: string;
+    if (existingPlan?.afterDescription) {
+      const steps = typeof existingPlan.steps === 'string' ? JSON.parse(existingPlan.steps) : existingPlan.steps;
+      const changes = Array.isArray(steps) ? steps.map((s: any) => s.title?.toLowerCase()).join(', ') : summary;
+      prompt = `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${existingPlan.afterDescription}. Specific steps applied: ${changes}. Style: ${existingPlan.styleRecommendation ?? ''}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+    } else {
+      prompt = `The same ${type} shown in the reference photo, with these changes applied: ${summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+    }
 
     // Try to use original listing image as reference for img2img
     const { getListingImageUrlForFal } = await import('../lib/images.js');
@@ -641,7 +654,7 @@ listingsRouter.post('/:id/render', async (c) => {
     if (referenceImageUrl) {
       falModel = 'fal-ai/flux/dev/image-to-image';
       falInput.image_url = referenceImageUrl;
-      falInput.strength = difficulty === 'full' ? 0.85 : difficulty === 'moderate' ? 0.7 : 0.55;
+      falInput.strength = difficulty === 'full' ? 0.55 : difficulty === 'moderate' ? 0.4 : 0.3;
     } else {
       falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
     }
