@@ -220,14 +220,14 @@ export default function Dashboard() {
                   )}
                 </div>
                 <div className="p-3.5">
-                  <h3 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2">
-                    {listing.title}
-                    {Date.now() - new Date(listing.scrapedAt).getTime() < 6 * 60 * 60 * 1000 && (
-                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-100 text-blue-700">New</span>
-                    )}
-                  </h3>
+                  <h3 className="font-medium text-gray-900 text-sm leading-snug line-clamp-2">{listing.title}</h3>
                   <div className="mt-2.5 flex items-center justify-between">
-                    <PlatformBadge platform={listing.platform} />
+                    <div className="flex items-center gap-1.5">
+                      <PlatformBadge platform={listing.platform} />
+                      {Date.now() - new Date(listing.scrapedAt).getTime() < 6 * 60 * 60 * 1000 && (
+                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-100 text-blue-700">New</span>
+                      )}
+                    </div>
                     {listing.askingPrice != null && (
                       <span className="font-semibold text-gray-900">${listing.askingPrice}</span>
                     )}

@@ -606,7 +606,7 @@ export default function Settings() {
                       <span className="font-medium text-gray-900">{run.status}</span>
                     </div>
                     <span className="text-xs text-gray-400">
-                      {new Date(run.startedAt).toLocaleString()}
+                      {new Date(run.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">

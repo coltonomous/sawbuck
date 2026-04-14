@@ -20,6 +20,7 @@ export default function ComparablesList({ listingId }: { listingId: number }) {
   }, [listingId]);
 
   const handleSearch = async () => {
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {

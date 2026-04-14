@@ -10,7 +10,7 @@ import ROICalculator from '../components/ROICalculator';
 import PhotoGallery from '../components/PhotoGallery';
 import ExportListingText from '../components/ExportListingText';
 import { Spinner, EmptyState, BackButton, NotFoundIcon, Card, CardHeader } from '../components/ui';
-import { resolveImageUrl } from '../utils';
+import { resolveImageUrl, formatDate } from '../utils';
 
 type Tab = 'overview' | 'plan' | 'materials' | 'photos' | 'financials';
 
@@ -40,6 +40,14 @@ export default function ProjectDetail() {
     if (!project || generatingPlan) return;
     setGeneratingPlan(true);
     try {
+      // Generate concepts first if they don't exist
+      if (!project.concepts || project.concepts.length === 0) {
+        try {
+          await api.generateConcepts(project.listingId);
+        } catch {
+          // Non-fatal — continue with plan generation
+        }
+      }
       await api.generateRefinishingPlan(project.id);
       load();
       setTab('plan');
@@ -209,7 +217,7 @@ export default function ProjectDetail() {
               {project.purchaseDate && (
                 <div className="flex justify-between">
                   <dt className="text-gray-500">Purchase date</dt>
-                  <dd>{project.purchaseDate}</dd>
+                  <dd>{formatDate(project.purchaseDate)}</dd>
                 </div>
               )}
             </dl>
@@ -459,7 +467,7 @@ function ProjectTimeline({ project }: { project: ProjectDetailType }) {
             </span>
             {event.date && (
               <span className="text-[10px] text-gray-400">
-                {new Date(event.date).toLocaleDateString()}
+                {formatDate(event.date)}
               </span>
             )}
           </div>

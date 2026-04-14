@@ -40,7 +40,7 @@ export default function ListingDetail() {
   }, [id]);
 
   const handleAnalyze = async () => {
-    if (!listing) return;
+    if (!listing || analyzing) return;
     setAnalyzing(true);
     try {
       await api.analyzeListing(listing.id);
@@ -286,7 +286,9 @@ export default function ListingDetail() {
                   </div>
                 ) : (
                   <button
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      if (loadingPlan || generatingConcepts) return;
                       try {
                         const { render } = await api.generateConceptRender(listing.id, opt.difficulty as 'simple' | 'moderate' | 'full');
                         if (render?.localPath) {
@@ -371,62 +373,54 @@ export default function ListingDetail() {
         </Card>
       )}
 
-      {/* Generate concepts button (when analyzed but no concepts yet) */}
-      {listing.furnitureType && (!listing.conceptImages || listing.conceptImages.length === 0) && (
-        <div className="mb-4">
-          <button
-            onClick={async () => {
-              if (generatingConcepts) return;
-              setGeneratingConcepts(true);
-              try {
-                const { concepts } = await api.generateConcepts(listing.id);
-                if (concepts.length > 0) {
-                  setListing((prev) => prev ? { ...prev, conceptImages: concepts } : prev);
-                  toast('success', 'Refinishing concepts generated');
-                }
-              } catch (err) {
-                toast('error', err instanceof Error ? err.message : 'Failed to generate concepts');
-              }
-              setGeneratingConcepts(false);
-            }}
-            disabled={generatingConcepts}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
-          >
-            {generatingConcepts && <Spinner />}
-            {generatingConcepts ? 'Generating...' : 'Generate Refinishing Concepts'}
-          </button>
-        </div>
-      )}
-
       {/* Plan Preview */}
       {listing.furnitureType && (
         <div className="mb-4">
-          {loadingPlan && (
+          {(loadingPlan || generatingConcepts) && (
             <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
-              <Spinner /> Generating refinishing plan...
+              <Spinner /> {generatingConcepts ? 'Generating refinishing options...' : 'Generating refinishing plan...'}
             </div>
           )}
           {previewPlan && !loadingPlan && (
             <RefinishingPlan plan={previewPlan} />
           )}
-          {!previewPlan && !loadingPlan && (!listing.conceptImages || listing.conceptImages.length === 0) && (
+          {!previewPlan && !loadingPlan && !generatingConcepts && (!listing.conceptImages || listing.conceptImages.length === 0) && (
             <button
               onClick={async () => {
-                setLoadingPlan(true);
+                if (generatingConcepts || loadingPlan) return;
+                setGeneratingConcepts(true);
                 try {
-                  const { plan } = await api.previewPlan(listing.id);
-                  setPreviewPlan(plan);
+                  // Generate concepts first, then auto-select moderate and generate plan
+                  const { concepts } = await api.generateConcepts(listing.id);
+                  if (concepts.length > 0) {
+                    setListing((prev) => prev ? { ...prev, conceptImages: concepts } : prev);
+                    const moderate = concepts.find((c) => c.difficulty === 'moderate') ?? concepts[0];
+                    setSelectedConcept(moderate.difficulty);
+                    setGeneratingConcepts(false);
+                    setLoadingPlan(true);
+                    const { plan } = await api.previewPlan(listing.id, {
+                      difficulty: moderate.difficulty,
+                      label: moderate.label,
+                      summary: moderate.summary,
+                      estimatedHours: moderate.estimatedHours ?? undefined,
+                      estimatedMaterialCost: moderate.estimatedMaterialCost ?? undefined,
+                      estimatedResalePrice: moderate.estimatedResalePrice ?? undefined,
+                    });
+                    setPreviewPlan(plan);
+                  }
                 } catch (err) {
-                  toast('error', err instanceof Error ? err.message : 'Failed to generate plan preview');
+                  toast('error', err instanceof Error ? err.message : 'Failed to generate refinishing plan');
                 }
+                setGeneratingConcepts(false);
                 setLoadingPlan(false);
               }}
-              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 transition-colors"
+              disabled={generatingConcepts || loadingPlan}
+              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
             >
-              Preview Refinishing Plan
+              Generate Refinishing Plan
             </button>
           )}
-          {!previewPlan && !loadingPlan && listing.conceptImages && listing.conceptImages.length > 0 && (
+          {!previewPlan && !loadingPlan && !generatingConcepts && listing.conceptImages && listing.conceptImages.length > 0 && (
             <p className="text-xs text-gray-400">Select a refinishing option above to see the detailed plan.</p>
           )}
         </div>
