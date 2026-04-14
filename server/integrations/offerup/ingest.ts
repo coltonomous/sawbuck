@@ -14,12 +14,26 @@ import logger from '../../lib/logger.js';
 // Rotate search queries to cover more furniture types across runs.
 // OfferUp's keyword search is noisy, so specific terms reduce junk.
 const SEARCH_QUERIES = [
-  'solid wood dresser',
-  'wood table desk',
-  'wood cabinet hutch',
-  'vintage furniture wood',
+  'wood dresser',
+  'wood desk',
+  'wood bookcase',
+  'wood cabinet',
+  'dining table wood',
+  'coffee table wood',
+  'wood nightstand',
+  'wood hutch buffet',
+  'wood armoire',
+  'vintage furniture',
   'mid century modern furniture',
-  'wood bookcase shelf',
+  'solid wood furniture',
+  'antique furniture',
+  'wood bench',
+  'wood console table',
+  'wood vanity',
+  'wood bed frame',
+  'wood shelf',
+  'wood end table',
+  'farmhouse furniture',
 ];
 
 function searchUrl(region: Region, page: number): string {

@@ -37,6 +37,9 @@ vi.mock('../../../agents/config.js', () => ({
   },
 }));
 
+// Eliminate inter-query delays in tests
+vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn: any) => { fn(); return 0 as any; });
+
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
@@ -80,19 +83,23 @@ function mockOfferUpPage(listings: Array<{ id: string; title: string; price: num
   };
 }
 
+const emptyPage = mockOfferUpPage([]);
+const warmCookieResp = { ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') };
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
 
 describe('OfferUp discover', () => {
   it('parses listings from __NEXT_DATA__', async () => {
-    // First call: warmCookies homepage
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') });
-    // Second call: search page
-    mockFetch.mockResolvedValueOnce(mockOfferUpPage([
-      { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
-      { id: 'def-456', title: 'Pine Table', price: 75, city: 'Bellevue, WA' },
-    ]));
+    // warmCookies, then return listings on first query, empty for the rest
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValueOnce(mockOfferUpPage([
+        { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
+        { id: 'def-456', title: 'Pine Table', price: 75, city: 'Bellevue, WA' },
+      ]))
+      .mockResolvedValue(emptyPage);
 
     const results = await discover(testRegion, 0);
 
@@ -107,48 +114,79 @@ describe('OfferUp discover', () => {
   });
 
   it('filters out non-listing tiles', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') });
-    mockFetch.mockResolvedValueOnce(mockOfferUpPage([
-      { id: 'only-one', title: 'Chair', price: 50, city: 'Renton, WA' },
-    ]));
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValueOnce(mockOfferUpPage([
+        { id: 'only-one', title: 'Chair', price: 50, city: 'Renton, WA' },
+      ]))
+      .mockResolvedValue(emptyPage);
 
     const results = await discover(testRegion, 0);
-    expect(results).toHaveLength(1); // ad tile was filtered out
+    expect(results).toHaveLength(1);
   });
 
   it('returns empty array when no __NEXT_DATA__ found', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') });
-    mockFetch.mockResolvedValueOnce({
+    const noDataPage = {
       ok: true, status: 200, headers: { getSetCookie: () => [] },
       text: () => Promise.resolve('<html><body>No data</body></html>'),
-    });
+    };
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValue(noDataPage);
 
     const results = await discover(testRegion, 0);
     expect(results).toHaveLength(0);
   });
 
-  it('throws on HTTP error', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') });
-    mockFetch.mockResolvedValueOnce({
-      ok: false, status: 403, statusText: 'Forbidden',
-      headers: { getSetCookie: () => [] },
-    });
+  it('continues on individual query failures', async () => {
+    // warmCookies succeeds, first query fails, second has results, rest empty
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValueOnce({ ok: false, status: 403, statusText: 'Forbidden', headers: { getSetCookie: () => [] } })
+      .mockResolvedValueOnce(mockOfferUpPage([
+        { id: 'recovered', title: 'Table', price: 100, city: 'Seattle, WA' },
+      ]))
+      .mockResolvedValue(emptyPage);
 
-    await expect(discover(testRegion, 0)).rejects.toThrow('403');
+    const results = await discover(testRegion, 0);
+    expect(results).toHaveLength(1);
+    expect(results[0].externalId).toBe('recovered');
   });
 
-  it('uses rotated search queries based on page', async () => {
-    mockFetch.mockResolvedValueOnce({ ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') });
-    mockFetch.mockResolvedValueOnce(mockOfferUpPage([]));
+  it('deduplicates listings across search queries', async () => {
+    // Same listing appears in two different query results
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValueOnce(mockOfferUpPage([
+        { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
+      ]))
+      .mockResolvedValueOnce(mockOfferUpPage([
+        { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
+        { id: 'def-456', title: 'Pine Table', price: 75, city: 'Bellevue, WA' },
+      ]))
+      .mockResolvedValue(emptyPage);
+
+    const results = await discover(testRegion, 0);
+    expect(results).toHaveLength(2); // abc-123 only counted once
+  });
+
+  it('fetches all search queries per call', async () => {
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValue(emptyPage);
 
     await discover(testRegion, 0);
 
-    // Check the URL used for the search (second fetch call)
-    const searchUrl = mockFetch.mock.calls[1][0];
-    expect(searchUrl).toContain('offerup.com/search');
-    expect(searchUrl).toContain('LOCATION_LATITUDE=47.6');
-    expect(searchUrl).toContain('SEARCH_RADIUS=30');
-    // Should NOT just be "wood furniture" (rotated queries)
-    expect(searchUrl).toMatch(/q=[^&]+/);
+    // 1 warmCookies call + N search query calls
+    const searchCalls = mockFetch.mock.calls.slice(1);
+    expect(searchCalls.length).toBeGreaterThan(1);
+    // All calls should be to offerup search
+    for (const call of searchCalls) {
+      expect(call[0]).toContain('offerup.com/search');
+    }
+    // Different queries should be used
+    const queries = searchCalls.map((c: any) => new URL(c[0]).searchParams.get('q'));
+    const uniqueQueries = new Set(queries);
+    expect(uniqueQueries.size).toBeGreaterThan(1);
   });
 });

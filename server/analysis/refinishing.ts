@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { listings, refinishingPlans } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { listings, refinishingPlans, conceptRenders } from '../db/schema.js';
+import { eq, and } from 'drizzle-orm';
 import { generateText, extractJson } from '../lib/bedrock.js';
 import { getFullContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
@@ -162,14 +162,13 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     return null;
   }
 
-  // When generated from a concept card, override Claude's estimates and difficulty
-  // so the plan stays consistent with what the user saw on the concept card
+  // When generated from a concept card, map difficulty and use concept estimates
+  // for material cost and resale price. Hours come from the step-sum (source of truth).
   if (difficultyCtx) {
     const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
       simple: 'beginner', moderate: 'intermediate', full: 'advanced',
     };
     plan.difficulty_level = conceptToPlanDifficulty[difficultyCtx.difficulty] ?? plan.difficulty_level;
-    if (difficultyCtx.estimatedHours != null) plan.estimated_total_hours = difficultyCtx.estimatedHours;
     if (difficultyCtx.estimatedMaterialCost != null) plan.estimated_material_cost = difficultyCtx.estimatedMaterialCost;
     if (difficultyCtx.estimatedResalePrice != null) plan.estimated_resale_price = difficultyCtx.estimatedResalePrice;
   }
@@ -192,6 +191,16 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     ragSourceTitles: ragSourceTitles.length > 0 ? JSON.stringify(ragSourceTitles) : null,
     ragSources: ragSources.length > 0 ? JSON.stringify(ragSources) : null,
   }).returning();
+
+  // Sync plan hours back to concept card so the card reflects the step-sum
+  if (difficultyCtx) {
+    await db.update(conceptRenders)
+      .set({ estimatedHours: plan.estimated_total_hours })
+      .where(and(
+        eq(conceptRenders.listingId, listingId),
+        eq(conceptRenders.difficulty, difficultyCtx.difficulty),
+      )).catch(() => {}); // non-fatal
+  }
 
   logger.info({
     planId: stored.id,
