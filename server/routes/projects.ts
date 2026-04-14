@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages } from '../db/schema.js';
+import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
 import { eq, and, desc } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps, type DifficultyContext } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
@@ -44,10 +44,11 @@ projectsRouter.get('/:id', async (c) => {
 
   const plans = await db.select()
     .from(refinishingPlans)
-    .where(eq(refinishingPlans.projectId, id));
+    .where(eq(refinishingPlans.projectId, id))
+    .orderBy(desc(refinishingPlans.createdAt));
 
-  const plan = plans[0] ?? null;
-  const planWithSteps = plan ? { ...plan, steps: parsePlanSteps(plan.steps) } : null;
+  const allPlans = plans.map((p) => ({ ...p, steps: parsePlanSteps(p.steps) }));
+  const plan = allPlans[0] ?? null;
 
   const mats = await getMaterialsForProject(id);
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
@@ -55,7 +56,12 @@ projectsRouter.get('/:id', async (c) => {
     ? await db.select().from(listingImages).where(eq(listingImages.listingId, listing.id))
     : [];
 
-  return c.json({ ...project, listing: listing ? { ...listing, images } : null, plan: planWithSteps, materials: mats, photos });
+  // Include concept options from the listing
+  const concepts = listing
+    ? await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, listing.id))
+    : [];
+
+  return c.json({ ...project, listing: listing ? { ...listing, images } : null, plan, plans: allPlans, concepts, materials: mats, photos });
 });
 
 // POST / — create project from listing

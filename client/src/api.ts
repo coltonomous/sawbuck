@@ -204,6 +204,8 @@ export interface Project {
 export interface ProjectDetail extends Project {
   listing: ListingDetail | null;
   plan: RefinishingPlan | null;
+  plans: RefinishingPlan[];
+  concepts: ConceptOption[];
   materials: Material[];
   photos: ProjectPhoto[];
 }

@@ -10,6 +10,7 @@ import ROICalculator from '../components/ROICalculator';
 import PhotoGallery from '../components/PhotoGallery';
 import ExportListingText from '../components/ExportListingText';
 import { Spinner, EmptyState, BackButton, NotFoundIcon, Card, CardHeader } from '../components/ui';
+import { resolveImageUrl } from '../utils';
 
 type Tab = 'overview' | 'plan' | 'materials' | 'photos' | 'financials';
 
@@ -21,6 +22,7 @@ export default function ProjectDetail() {
   const [generatingPlan, setGeneratingPlan] = useState(false);
   const [tab, setTab] = useState<Tab>('overview');
   const [showExport, setShowExport] = useState(false);
+  const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
   const { toast } = useToast();
 
   const load = () => {
@@ -232,7 +234,7 @@ export default function ProjectDetail() {
             <ProjectTimeline project={project} />
           </Card>
 
-          {!project.plan && (
+          {(!project.plans || project.plans.length === 0) && (
             <div className="md:col-span-2 text-center py-10 bg-white rounded-lg shadow-sm border border-gray-200">
               <p className="text-gray-500 mb-3 text-sm">No refinishing plan yet</p>
               <GeneratePlanButton />
@@ -242,14 +244,74 @@ export default function ProjectDetail() {
       )}
 
       {tab === 'plan' && (
-        project.plan ? (
-          <RefinishingPlan plan={project.plan} />
-        ) : (
-          <div className="text-center py-16">
-            <p className="text-gray-500 mb-3 text-sm">No refinishing plan yet</p>
-            <GeneratePlanButton />
-          </div>
-        )
+        <div className="space-y-4">
+          {/* Concept options from the agent pipeline */}
+          {project.concepts && project.concepts.length > 0 && (
+            <Card>
+              <CardHeader>Refinishing Concepts</CardHeader>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {project.concepts.map((opt) => (
+                  <div key={opt.difficulty} className="border border-gray-200 rounded-lg overflow-hidden">
+                    {opt.localPath ? (
+                      <div className="relative">
+                        <img src={resolveImageUrl(opt.localPath)} alt={opt.label} className="w-full h-32 object-cover bg-gray-100" />
+                        <span className="absolute top-1.5 left-1.5 text-[9px] font-medium bg-black/50 text-white px-1.5 py-0.5 rounded">AI Concept</span>
+                      </div>
+                    ) : (
+                      <div className="w-full h-32 bg-gray-50 flex items-center justify-center">
+                        <span className="text-[10px] text-gray-300">No render</span>
+                      </div>
+                    )}
+                    <div className="p-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-gray-900">{opt.label}</span>
+                        <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${
+                          opt.difficulty === 'simple' ? 'bg-green-100 text-green-700'
+                            : opt.difficulty === 'moderate' ? 'bg-amber-100 text-amber-700'
+                            : 'bg-red-100 text-red-700'
+                        }`}>{opt.difficulty}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 line-clamp-2 mb-1">{opt.summary}</p>
+                      <div className="flex gap-3 text-[10px] text-gray-400">
+                        {opt.estimatedHours != null && <span>{opt.estimatedHours}h</span>}
+                        {opt.estimatedMaterialCost != null && <span>${opt.estimatedMaterialCost}</span>}
+                        {opt.estimatedResalePrice != null && <span className="text-green-600">${opt.estimatedResalePrice}</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Plan picker and display */}
+          {project.plans && project.plans.length > 0 ? (
+            <div>
+              {project.plans.length > 1 && (
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-xs text-gray-500">Plan:</span>
+                  <select
+                    value={selectedPlanIdx}
+                    onChange={(e) => setSelectedPlanIdx(parseInt(e.target.value))}
+                    className="text-xs border border-gray-300 rounded px-2 py-1"
+                  >
+                    {project.plans.map((p, i) => (
+                      <option key={p.id} value={i}>
+                        {p.difficultyLevel ? `${p.difficultyLevel} - ` : ''}{p.styleRecommendation || `Plan ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <RefinishingPlan plan={project.plans[selectedPlanIdx]} />
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <p className="text-gray-500 mb-3 text-sm">No refinishing plan yet</p>
+              <GeneratePlanButton />
+            </div>
+          )}
+        </div>
       )}
 
       {tab === 'materials' && (

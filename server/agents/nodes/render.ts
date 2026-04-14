@@ -24,6 +24,11 @@ function buildRenderPrompt(
   const style = evaluation.furnitureStyle;
   const wood = evaluation.woodSpecies;
 
+  if (option.difficulty === 'full') {
+    // Full transformation: dramatically different look, updated style, new hardware, contrasting finish
+    return `Professional furniture photography of a completely redesigned ${type}, transformed from ${style || 'traditional'} style into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware, fresh upholstery or accent details. Styled in a high-end interior design setting. Studio lighting, editorial photography style.`;
+  }
+
   return `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${option.summary} Staged in a bright modern living room. Warm natural lighting, clean background, product photography style.`;
 }
 

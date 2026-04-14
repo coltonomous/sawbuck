@@ -245,11 +245,14 @@ export default function ListingDetail() {
             {listing.conceptImages.map((opt) => (
               <div key={opt.difficulty} className="border border-gray-200 rounded-lg overflow-hidden">
                 {opt.localPath ? (
-                  <img
-                    src={resolveImageUrl(opt.localPath)}
-                    alt={opt.label}
-                    className="w-full h-40 object-cover bg-gray-100"
-                  />
+                  <div className="relative">
+                    <img
+                      src={resolveImageUrl(opt.localPath)}
+                      alt={opt.label}
+                      className="w-full h-40 object-cover bg-gray-100"
+                    />
+                    <span className="absolute top-1.5 left-1.5 text-[9px] font-medium bg-black/50 text-white px-1.5 py-0.5 rounded">AI Concept</span>
+                  </div>
                 ) : (
                   <button
                     onClick={async () => {
@@ -370,23 +373,6 @@ export default function ListingDetail() {
             Dismiss
           </button>
         )}
-        {listing.userId === null && session?.user?.role === 'admin' && (
-          <button
-            onClick={async () => {
-              if (!confirm('Delete this agent-discovered listing?')) return;
-              try {
-                await api.deleteAgentListings([listing.id]);
-                toast('success', 'Listing deleted');
-                navigate(-1);
-              } catch (err) {
-                toast('error', err instanceof Error ? err.message : 'Failed to delete');
-              }
-            }}
-            className="px-4 py-2 bg-white border border-red-300 text-red-600 text-sm font-medium rounded-lg hover:bg-red-50 transition-colors"
-          >
-            Delete (Admin)
-          </button>
-        )}
         {listing.platform === 'sawbuck' && listing.userId === session?.user?.id && (
           <>
             <button
@@ -421,6 +407,28 @@ export default function ListingDetail() {
           </>
         )}
       </div>
+
+      {/* Admin actions (separated from user actions) */}
+      {listing.userId === null && session?.user?.role === 'admin' && (
+        <div className="flex items-center gap-2 mb-4 pt-2 border-t border-dashed border-gray-200">
+          <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Admin</span>
+          <button
+            onClick={async () => {
+              if (!confirm('Delete this agent-discovered listing?')) return;
+              try {
+                await api.deleteAgentListings([listing.id]);
+                toast('success', 'Listing deleted');
+                navigate(-1);
+              } catch (err) {
+                toast('error', err instanceof Error ? err.message : 'Failed to delete');
+              }
+            }}
+            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded hover:bg-red-100 transition-colors"
+          >
+            Delete Listing
+          </button>
+        </div>
+      )}
 
       {/* Edit form for own sawbuck listings */}
       {showEdit && (
