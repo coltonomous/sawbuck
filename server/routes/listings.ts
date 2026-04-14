@@ -632,15 +632,16 @@ listingsRouter.post('/:id/render', async (c) => {
     }
 
     const filename = `${id}_${difficulty}.webp`;
-    const localPath = path.join(CONCEPTS_DIR, filename);
+    const filePath = path.join(CONCEPTS_DIR, filename);
+    const relativePath = path.join('concepts', filename);
     const response = await fetch(imageUrl);
     const buffer = Buffer.from(await response.arrayBuffer());
-    await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+    await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
 
     // Upsert concept render row
     if (existing) {
       await db.update(conceptRenders)
-        .set({ prompt, renderedImageUrl: imageUrl, localPath })
+        .set({ prompt, renderedImageUrl: imageUrl, localPath: relativePath })
         .where(eq(conceptRenders.id, existing.id));
     } else {
       await db.insert(conceptRenders).values({
@@ -650,7 +651,7 @@ listingsRouter.post('/:id/render', async (c) => {
         summary,
         prompt,
         renderedImageUrl: imageUrl,
-        localPath,
+        localPath: relativePath,
       });
     }
 
@@ -743,12 +744,16 @@ listingsRouter.post('/:id/preview-plan', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const requestedDifficulty = body.difficulty ?? null;
 
+  // Map concept difficulties (simple/moderate/full) to plan difficulty levels (beginner/intermediate/advanced)
+  const conceptToPlanDifficulty: Record<string, string> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
+
   // Check for existing plan on this listing matching the requested difficulty
   const existingPlans = await db.select().from(refinishingPlans)
     .where(eq(refinishingPlans.listingId, id));
 
   if (requestedDifficulty) {
-    const match = existingPlans.find((p) => p.difficultyLevel === requestedDifficulty);
+    const planDifficulty = conceptToPlanDifficulty[requestedDifficulty] ?? requestedDifficulty;
+    const match = existingPlans.find((p) => p.difficultyLevel === planDifficulty || p.difficultyLevel === requestedDifficulty);
     if (match) {
       const steps = typeof match.steps === 'string' ? JSON.parse(match.steps) : match.steps;
       return c.json({ plan: { ...match, steps } });

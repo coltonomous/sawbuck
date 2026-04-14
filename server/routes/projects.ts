@@ -320,13 +320,14 @@ projectsRouter.post('/:id/refinish', async (c) => {
           if (!imageUrl) return;
 
           const filename = `${project.listingId}_${renderDifficulty}.webp`;
-          const localPath = path.join(CONCEPTS_DIR, filename);
+          const filePath = path.join(CONCEPTS_DIR, filename);
+          const relativePath = path.join('concepts', filename);
           const response = await fetch(imageUrl);
           const buffer = Buffer.from(await response.arrayBuffer());
-          await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+          await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
 
           if (existing) {
-            await db.update(conceptRenders).set({ prompt, renderedImageUrl: imageUrl, localPath }).where(eq(conceptRenders.id, existing.id));
+            await db.update(conceptRenders).set({ prompt, renderedImageUrl: imageUrl, localPath: relativePath }).where(eq(conceptRenders.id, existing.id));
           } else {
             await db.insert(conceptRenders).values({
               listingId: project.listingId,
@@ -335,7 +336,7 @@ projectsRouter.post('/:id/refinish', async (c) => {
               summary: difficultyCtx.summary || '',
               prompt,
               renderedImageUrl: imageUrl,
-              localPath,
+              localPath: relativePath,
             });
           }
           logger.info({ listingId: project.listingId, difficulty: renderDifficulty }, 'Concept render generated alongside plan');

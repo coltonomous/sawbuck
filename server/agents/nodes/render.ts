@@ -81,14 +81,15 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
         }
 
         const filename = `${listing.listingId}_${option.difficulty}.webp`;
-        const localPath = path.join(CONCEPTS_DIR, filename);
+        const filePath = path.join(CONCEPTS_DIR, filename);
+        const relativePath = path.join('concepts', filename);
         const response = await fetch(imageUrl);
         const buffer = Buffer.from(await response.arrayBuffer());
-        await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+        await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
 
         // Update the row created by plan-options with the rendered image
         const updated = await db.update(conceptRenders)
-          .set({ prompt, renderedImageUrl: imageUrl, localPath })
+          .set({ prompt, renderedImageUrl: imageUrl, localPath: relativePath })
           .where(and(
             eq(conceptRenders.listingId, listing.listingId),
             eq(conceptRenders.difficulty, option.difficulty),
@@ -107,7 +108,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
             estimatedResalePrice: option.estimatedResalePrice,
             prompt,
             renderedImageUrl: imageUrl,
-            localPath,
+            localPath: relativePath,
           });
         }
 
@@ -115,7 +116,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
           listingId: listing.listingId,
           difficulty: option.difficulty,
           conceptImageUrl: imageUrl,
-          localPath,
+          localPath: relativePath,
           prompt,
         });
 

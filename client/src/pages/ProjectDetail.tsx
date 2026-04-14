@@ -261,7 +261,10 @@ export default function ProjectDetail() {
             <Card>
               <CardHeader>Refinishing Concepts</CardHeader>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {project.concepts.map((opt) => {
+                {[...project.concepts].sort((a, b) => {
+                  const order = { simple: 0, moderate: 1, full: 2 };
+                  return (order[a.difficulty as keyof typeof order] ?? 1) - (order[b.difficulty as keyof typeof order] ?? 1);
+                }).map((opt) => {
                 // Map concept difficulty to plan difficulty for matching
                 const planDiffMap: Record<string, string> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
                 const matchingPlanIdx = project.plans?.findIndex((p) => p.difficultyLevel === planDiffMap[opt.difficulty]);

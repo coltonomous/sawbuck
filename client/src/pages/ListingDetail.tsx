@@ -21,6 +21,7 @@ export default function ListingDetail() {
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showRagSources, setShowRagSources] = useState(false);
   const [previewPlan, setPreviewPlan] = useState<RefinishingPlanType | null>(null);
+  const [planCache, setPlanCache] = useState<Record<string, RefinishingPlanType>>({});
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
   const [generatingConcepts, setGeneratingConcepts] = useState(false);
@@ -54,7 +55,10 @@ export default function ListingDetail() {
       estimatedHours: moderate.estimatedHours ?? undefined,
       estimatedMaterialCost: moderate.estimatedMaterialCost ?? undefined,
       estimatedResalePrice: moderate.estimatedResalePrice ?? undefined,
-    }).then(({ plan }) => setPreviewPlan(plan))
+    }).then(({ plan }) => {
+      setPreviewPlan(plan);
+      setPlanCache((prev) => ({ ...prev, [moderate.difficulty]: plan }));
+    })
       .catch(() => {})
       .finally(() => setLoadingPlan(false));
   }, [listing?.conceptImages?.length]);
@@ -275,12 +279,20 @@ export default function ListingDetail() {
         <Card className="mb-4">
           <CardHeader>Refinishing Options</CardHeader>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {listing.conceptImages.map((opt) => (
+            {[...listing.conceptImages].sort((a, b) => {
+              const order = { simple: 0, moderate: 1, full: 2 };
+              return (order[a.difficulty as keyof typeof order] ?? 1) - (order[b.difficulty as keyof typeof order] ?? 1);
+            }).map((opt) => (
               <div
                 key={opt.difficulty}
                 onClick={async () => {
                   setSelectedConcept(opt.difficulty);
-                  setPreviewPlan(null); // clear stale plan immediately
+                  // Use cached plan if available
+                  if (planCache[opt.difficulty]) {
+                    setPreviewPlan(planCache[opt.difficulty]);
+                    return;
+                  }
+                  setPreviewPlan(null);
                   setLoadingPlan(true);
                   try {
                     const { plan } = await api.previewPlan(listing.id, {
@@ -292,6 +304,7 @@ export default function ListingDetail() {
                       estimatedResalePrice: opt.estimatedResalePrice ?? undefined,
                     });
                     setPreviewPlan(plan);
+                    setPlanCache((prev) => ({ ...prev, [opt.difficulty]: plan }));
                   } catch (err) {
                     toast('error', err instanceof Error ? err.message : 'Failed to generate plan');
                   }
@@ -434,6 +447,7 @@ export default function ListingDetail() {
                       estimatedResalePrice: moderate.estimatedResalePrice ?? undefined,
                     });
                     setPreviewPlan(plan);
+                    setPlanCache((prev) => ({ ...prev, [moderate.difficulty]: plan }));
                   }
                 } catch (err) {
                   toast('error', err instanceof Error ? err.message : 'Failed to generate refinishing plan');
