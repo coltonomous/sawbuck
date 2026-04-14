@@ -285,6 +285,66 @@ projectsRouter.post('/:id/refinish', async (c) => {
       updatedAt: new Date(),
     }).where(eq(projects.id, id));
 
+    // Fire-and-forget: generate concept render for this difficulty if FAL_KEY is set
+    if (difficultyCtx && process.env.FAL_KEY && listing) {
+      const renderDifficulty = difficultyCtx.difficulty as 'simple' | 'moderate' | 'full';
+      (async () => {
+        try {
+          const existing = await db.select().from(conceptRenders)
+            .where(and(eq(conceptRenders.listingId, project.listingId), eq(conceptRenders.difficulty, renderDifficulty)))
+            .then((r) => r[0]);
+          if (existing?.localPath) return; // already rendered
+
+          const { fal } = await import('@fal-ai/client');
+          const { agentConfig } = await import('../agents/config.js');
+          const sharp = (await import('sharp')).default;
+          const fs = await import('fs/promises');
+          const path = await import('path');
+
+          const CONCEPTS_DIR = 'data/images/concepts';
+          await fs.mkdir(CONCEPTS_DIR, { recursive: true });
+
+          const type = listing.furnitureType || 'furniture';
+          const style = listing.furnitureStyle;
+          const wood = listing.woodSpecies;
+          const summary = difficultyCtx.summary || renderDifficulty;
+          const prompt = renderDifficulty === 'full'
+            ? `Professional furniture photography of a completely redesigned ${type}, transformed into a modern boutique showpiece. ${wood ? `Originally ${wood} wood, now` : 'Now'} with a bold contrasting finish, new premium hardware. Studio lighting, editorial photography style.`
+            : `Professional furniture photography of a ${type}${style ? ` in ${style} style` : ''}${wood ? `, ${wood} wood` : ''}, ${summary}. Warm natural lighting, product photography style.`;
+
+          const result = await fal.subscribe(agentConfig.falModel, {
+            input: { prompt, image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize }, num_images: 1 },
+          }) as { data: { images: Array<{ url: string }> } };
+
+          const imageUrl = result.data?.images?.[0]?.url;
+          if (!imageUrl) return;
+
+          const filename = `${project.listingId}_${renderDifficulty}.webp`;
+          const localPath = path.join(CONCEPTS_DIR, filename);
+          const response = await fetch(imageUrl);
+          const buffer = Buffer.from(await response.arrayBuffer());
+          await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+
+          if (existing) {
+            await db.update(conceptRenders).set({ prompt, renderedImageUrl: imageUrl, localPath }).where(eq(conceptRenders.id, existing.id));
+          } else {
+            await db.insert(conceptRenders).values({
+              listingId: project.listingId,
+              difficulty: renderDifficulty,
+              label: difficultyCtx.label || renderDifficulty,
+              summary: difficultyCtx.summary || '',
+              prompt,
+              renderedImageUrl: imageUrl,
+              localPath,
+            });
+          }
+          logger.info({ listingId: project.listingId, difficulty: renderDifficulty }, 'Concept render generated alongside plan');
+        } catch (err) {
+          logger.debug({ error: String(err) }, 'Concept render generation failed (non-fatal)');
+        }
+      })();
+    }
+
     return c.json({
       plan: result.plan,
       ragSourcesUsed: result.ragSourcesUsed,

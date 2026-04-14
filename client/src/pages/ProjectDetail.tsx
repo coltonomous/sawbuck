@@ -37,7 +37,7 @@ export default function ProjectDetail() {
   useEffect(load, [id]);
 
   const handleGeneratePlan = async () => {
-    if (!project) return;
+    if (!project || generatingPlan) return;
     setGeneratingPlan(true);
     try {
       await api.generateRefinishingPlan(project.id);
@@ -261,6 +261,7 @@ export default function ProjectDetail() {
                   <div
                     key={opt.difficulty}
                     onClick={() => {
+                      if (generatingPlan) return;
                       setSelectedConceptDifficulty(opt.difficulty);
                       if (matchingPlanIdx != null && matchingPlanIdx >= 0) {
                         setSelectedPlanIdx(matchingPlanIdx);
@@ -319,7 +320,12 @@ export default function ProjectDetail() {
           )}
 
           {/* Plan picker and display */}
-          {project.plans && project.plans.length > 0 ? (
+          {generatingPlan && (
+            <div className="flex items-center gap-2 text-sm text-gray-500 py-6">
+              <Spinner /> Generating refinishing plan...
+            </div>
+          )}
+          {!generatingPlan && project.plans && project.plans.length > 0 ? (
             <div>
               {project.plans.length > 1 && (
                 <div className="flex items-center gap-2 mb-3">
