@@ -14,6 +14,10 @@ import MyListings from './MyListings';
 type SortKey = 'title' | 'platform' | 'askingPrice' | 'furnitureType' | 'dealScore' | 'status' | 'scrapedAt';
 type SortDir = 'asc' | 'desc';
 const PER_PAGE = 50;
+const RECENT_HOURS = 6;
+function isRecent(scrapedAt: string): boolean {
+  return Date.now() - new Date(scrapedAt).getTime() < RECENT_HOURS * 60 * 60 * 1000;
+}
 
 export default function Listings() {
   const navigate = useNavigate();
@@ -290,7 +294,12 @@ export default function Listings() {
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className="text-sm text-gray-900 line-clamp-1">{listing.title}</span>
+                      <span className="text-sm text-gray-900 line-clamp-1">
+                        {listing.title}
+                        {isRecent(listing.scrapedAt) && (
+                          <span className="ml-1.5 inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-100 text-blue-700">New</span>
+                        )}
+                      </span>
                     </td>
                     <td className="px-4 py-2.5"><PlatformBadge platform={listing.platform} /></td>
                     <td className="px-4 py-2.5 text-sm font-medium text-gray-900 tabular-nums">

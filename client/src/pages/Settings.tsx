@@ -163,7 +163,7 @@ export default function Settings() {
 
       {/* Tab bar (admin only) */}
       {isAdmin && (
-        <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto -mx-1 px-1">
+        <div className="flex gap-1 mb-6 border-b border-gray-200 overflow-x-auto overflow-y-hidden -mx-1 px-1">
           {ADMIN_TABS.map((t) => (
             <button
               key={t.key}
@@ -327,7 +327,7 @@ export default function Settings() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs text-gray-400">{u.listingCount} listings</span>
+                    <span className="text-xs text-gray-400">{u.projectCount} projects{u.soldCount > 0 ? `, ${u.soldCount} sold` : ''}</span>
                     {u.id === session?.user?.id ? (
                       <span className="text-xs text-amber-600 font-medium px-2 py-1">Admin</span>
                     ) : (

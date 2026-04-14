@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings, platformSettings, regions } from '../db/schema.js';
+import { users, listings, projects, platformSettings, regions } from '../db/schema.js';
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
@@ -27,12 +27,18 @@ const adminRouter = new Hono();
 adminRouter.get('/users', async (c) => {
   const allUsers = await db.select().from(users);
 
-  const listingCounts = await db.select({
-    userId: listings.userId,
-    count: count(),
-  }).from(listings).groupBy(listings.userId);
+  const projectCounts = await db.select({
+    userId: projects.userId,
+    total: count(),
+  }).from(projects).groupBy(projects.userId);
 
-  const listingMap = new Map(listingCounts.map(l => [l.userId, l.count]));
+  const soldCounts = await db.select({
+    userId: projects.userId,
+    total: count(),
+  }).from(projects).where(eq(projects.status, 'sold')).groupBy(projects.userId);
+
+  const projectMap = new Map(projectCounts.map(p => [p.userId, p.total]));
+  const soldMap = new Map(soldCounts.map(s => [s.userId, s.total]));
 
   return c.json(allUsers.map(u => ({
     id: u.id,
@@ -40,7 +46,8 @@ adminRouter.get('/users', async (c) => {
     email: u.email,
     image: u.image,
     role: u.role,
-    listingCount: listingMap.get(u.id) ?? 0,
+    projectCount: projectMap.get(u.id) ?? 0,
+    soldCount: soldMap.get(u.id) ?? 0,
     createdAt: u.createdAt,
   })));
 });

@@ -6,6 +6,8 @@ import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
+import RefinishingPlan from '../components/RefinishingPlan';
+import type { RefinishingPlan as RefinishingPlanType } from '../api';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
 import { resolveImageUrl } from '../utils';
 
@@ -18,6 +20,8 @@ export default function ListingDetail() {
   const [analyzing, setAnalyzing] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showRagSources, setShowRagSources] = useState(false);
+  const [previewPlan, setPreviewPlan] = useState<RefinishingPlanType | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
   const projectFormRef = useRef<HTMLDivElement>(null);
   const [showEdit, setShowEdit] = useState(false);
@@ -145,16 +149,25 @@ export default function ListingDetail() {
 
       {/* Images */}
       {listing.images?.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto mb-6 pb-2 -mx-1 px-1">
-          {listing.images.map((img: ListingImage) => (
-            <img
-              key={img.id}
-              src={resolveImageUrl(img.localPathResized || img.localPathOriginal || img.sourceUrl || '')}
-              alt={listing.title}
-              loading="lazy"
-              className="h-52 rounded-lg object-cover shrink-0 bg-gray-100"
-            />
-          ))}
+        <div className="mb-6">
+          <div className="flex gap-2 overflow-x-auto pb-2 -mx-1 px-1 snap-x snap-mandatory">
+            {listing.images.map((img: ListingImage) => (
+              <img
+                key={img.id}
+                src={resolveImageUrl(img.localPathResized || img.localPathOriginal || img.sourceUrl || '')}
+                alt={listing.title}
+                loading="lazy"
+                className="h-52 rounded-lg object-cover shrink-0 bg-gray-100 snap-start"
+              />
+            ))}
+          </div>
+          {listing.images.length > 1 && (
+            <div className="flex justify-center gap-1.5 mt-2">
+              {listing.images.map((img: ListingImage) => (
+                <span key={img.id} className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -338,6 +351,33 @@ export default function ListingDetail() {
             ))}
           </div>
         </Card>
+      )}
+
+      {/* Plan Preview (without creating a project) */}
+      {listing.furnitureType && (
+        <div className="mb-4">
+          {previewPlan ? (
+            <RefinishingPlan plan={previewPlan} />
+          ) : (
+            <button
+              onClick={async () => {
+                setLoadingPlan(true);
+                try {
+                  const { plan } = await api.previewPlan(listing.id);
+                  setPreviewPlan(plan);
+                } catch (err) {
+                  toast('error', err instanceof Error ? err.message : 'Failed to generate plan preview');
+                }
+                setLoadingPlan(false);
+              }}
+              disabled={loadingPlan}
+              className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
+            >
+              {loadingPlan && <Spinner />}
+              {loadingPlan ? 'Generating plan...' : 'Preview Refinishing Plan'}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Actions */}

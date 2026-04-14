@@ -33,7 +33,8 @@ export interface AdminUser {
   email: string;
   image: string | null;
   role: UserRole;
-  listingCount: number;
+  projectCount: number;
+  soldCount: number;
   createdAt: string;
 }
 
@@ -326,6 +327,8 @@ export const api = {
     request<{ listing: ListingDetail; alreadyExists: boolean }>('/listings/import', { method: 'POST', body: JSON.stringify({ url }) }),
   generateConceptRender: (listingId: number, difficulty: 'simple' | 'moderate' | 'full' = 'moderate') =>
     request<{ render: ConceptOption }>(`/listings/${listingId}/render`, { method: 'POST', body: JSON.stringify({ difficulty }) }),
+  previewPlan: (listingId: number, concept?: { difficulty: string; label?: string; summary?: string; estimatedHours?: number; estimatedMaterialCost?: number; estimatedResalePrice?: number }) =>
+    request<{ plan: RefinishingPlan }>(`/listings/${listingId}/preview-plan`, { method: 'POST', body: JSON.stringify(concept ?? {}) }),
 
   // Projects
   getProjects: (params?: Record<string, string>) => {

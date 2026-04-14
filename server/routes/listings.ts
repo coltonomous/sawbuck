@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { listings, listingImages, conceptRenders, users } from '../db/schema.js';
+import { listings, listingImages, conceptRenders, refinishingPlans, users } from '../db/schema.js';
 import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
@@ -610,6 +610,50 @@ listingsRouter.post('/:id/render', async (c) => {
   } catch (err) {
     logger.error({ listingId: id, difficulty, error: String(err) }, 'On-demand concept render failed');
     return c.json({ error: 'Failed to generate concept render' }, 500);
+  }
+});
+
+// POST /:id/preview-plan — generate a refinishing plan preview without creating a project
+listingsRouter.post('/:id/preview-plan', async (c) => {
+  const user = c.get('user');
+  const id = parseId(c);
+  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
+
+  const listing = await getVisibleListing(id, user.id);
+  if (!listing) return c.json({ error: 'Not found' }, 404);
+  if (!listing.furnitureType) {
+    return c.json({ error: 'Listing must be analyzed first' }, 422);
+  }
+
+  // Check for existing plan on this listing (no project)
+  const existing = await db.select().from(refinishingPlans)
+    .where(eq(refinishingPlans.listingId, id))
+    .then(r => r[0]);
+
+  if (existing) {
+    const steps = typeof existing.steps === 'string' ? JSON.parse(existing.steps) : existing.steps;
+    return c.json({ plan: { ...existing, steps } });
+  }
+
+  try {
+    const { generateRefinishingPlan } = await import('../analysis/refinishing.js');
+    const body = await c.req.json().catch(() => ({}));
+    const difficultyCtx = body.difficulty ? {
+      difficulty: body.difficulty,
+      label: body.label ?? body.difficulty,
+      summary: body.summary ?? '',
+      estimatedHours: body.estimatedHours,
+      estimatedMaterialCost: body.estimatedMaterialCost,
+      estimatedResalePrice: body.estimatedResalePrice,
+    } : undefined;
+
+    const result = await generateRefinishingPlan(id, undefined, difficultyCtx);
+    if (!result) return c.json({ error: 'Failed to generate plan' }, 422);
+
+    return c.json({ plan: result.plan });
+  } catch (err) {
+    logger.error({ listingId: id, error: String(err) }, 'Plan preview failed');
+    return c.json({ error: 'Failed to generate plan preview' }, 500);
   }
 });
 
