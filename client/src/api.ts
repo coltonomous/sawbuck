@@ -356,8 +356,8 @@ export const api = {
     request<{ success: boolean }>('/user/preferences', { method: 'PATCH', body: JSON.stringify(data) }),
 
   // Refinishing
-  generateRefinishingPlan: (projectId: number) =>
-    request<{ plan: RefinishingPlan; materials: Material[] }>(`/projects/${projectId}/refinish`, { method: 'POST' }),
+  generateRefinishingPlan: (projectId: number, conceptCtx?: { difficulty: string; label?: string; summary?: string; estimatedHours?: number | null; estimatedMaterialCost?: number | null; estimatedResalePrice?: number | null }) =>
+    request<{ plan: RefinishingPlan; materials: Material[] }>(`/projects/${projectId}/refinish`, { method: 'POST', body: JSON.stringify(conceptCtx ?? {}) }),
   getRefinishingPlan: (projectId: number) =>
     request<RefinishingPlan>(`/projects/${projectId}/refinish`),
 

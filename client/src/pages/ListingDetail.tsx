@@ -23,6 +23,7 @@ export default function ListingDetail() {
   const [previewPlan, setPreviewPlan] = useState<RefinishingPlanType | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
+  const [generatingConcepts, setGeneratingConcepts] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
   const projectFormRef = useRef<HTMLDivElement>(null);
   const [showEdit, setShowEdit] = useState(false);
@@ -375,6 +376,8 @@ export default function ListingDetail() {
         <div className="mb-4">
           <button
             onClick={async () => {
+              if (generatingConcepts) return;
+              setGeneratingConcepts(true);
               try {
                 const { concepts } = await api.generateConcepts(listing.id);
                 if (concepts.length > 0) {
@@ -384,10 +387,13 @@ export default function ListingDetail() {
               } catch (err) {
                 toast('error', err instanceof Error ? err.message : 'Failed to generate concepts');
               }
+              setGeneratingConcepts(false);
             }}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors"
+            disabled={generatingConcepts}
+            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
           >
-            Generate Refinishing Concepts
+            {generatingConcepts && <Spinner />}
+            {generatingConcepts ? 'Generating...' : 'Generate Refinishing Concepts'}
           </button>
         </div>
       )}

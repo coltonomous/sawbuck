@@ -23,6 +23,7 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState<Tab>('overview');
   const [showExport, setShowExport] = useState(false);
   const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
+  const [selectedConceptDifficulty, setSelectedConceptDifficulty] = useState<string | null>(null);
   const { toast } = useToast();
 
   const load = () => {
@@ -250,8 +251,40 @@ export default function ProjectDetail() {
             <Card>
               <CardHeader>Refinishing Concepts</CardHeader>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {project.concepts.map((opt) => (
-                  <div key={opt.difficulty} className="border border-gray-200 rounded-lg overflow-hidden">
+                {project.concepts.map((opt) => {
+                // Map concept difficulty to plan difficulty for matching
+                const planDiffMap: Record<string, string> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
+                const matchingPlanIdx = project.plans?.findIndex((p) => p.difficultyLevel === planDiffMap[opt.difficulty]);
+                const isSelected = selectedConceptDifficulty === opt.difficulty;
+
+                return (
+                  <div
+                    key={opt.difficulty}
+                    onClick={() => {
+                      setSelectedConceptDifficulty(opt.difficulty);
+                      if (matchingPlanIdx != null && matchingPlanIdx >= 0) {
+                        setSelectedPlanIdx(matchingPlanIdx);
+                      } else {
+                        // Generate plan for this concept
+                        setGeneratingPlan(true);
+                        api.generateRefinishingPlan(project.id, {
+                          difficulty: opt.difficulty,
+                          label: opt.label,
+                          summary: opt.summary,
+                          estimatedHours: opt.estimatedHours,
+                          estimatedMaterialCost: opt.estimatedMaterialCost,
+                          estimatedResalePrice: opt.estimatedResalePrice,
+                        } as any).then(() => {
+                          load();
+                          toast('success', 'Plan generated');
+                        }).catch((err: Error) => {
+                          toast('error', err.message || 'Failed');
+                        }).finally(() => setGeneratingPlan(false));
+                      }
+                    }}
+                    className={`rounded-lg overflow-hidden cursor-pointer transition-all ${
+                      isSelected ? 'border-2 border-blue-500 ring-2 ring-blue-200' : 'border border-gray-200 hover:border-gray-300'
+                    }`}>
                     {opt.localPath ? (
                       <div className="relative">
                         <img src={resolveImageUrl(opt.localPath)} alt={opt.label} className="w-full h-32 object-cover bg-gray-100" />
@@ -279,7 +312,8 @@ export default function ProjectDetail() {
                       </div>
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </Card>
           )}
