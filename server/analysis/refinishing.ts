@@ -162,6 +162,18 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     return null;
   }
 
+  // When generated from a concept card, override Claude's estimates and difficulty
+  // so the plan stays consistent with what the user saw on the concept card
+  if (difficultyCtx) {
+    const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+      simple: 'beginner', moderate: 'intermediate', full: 'advanced',
+    };
+    plan.difficulty_level = conceptToPlanDifficulty[difficultyCtx.difficulty] ?? plan.difficulty_level;
+    if (difficultyCtx.estimatedHours != null) plan.estimated_total_hours = difficultyCtx.estimatedHours;
+    if (difficultyCtx.estimatedMaterialCost != null) plan.estimated_material_cost = difficultyCtx.estimatedMaterialCost;
+    if (difficultyCtx.estimatedResalePrice != null) plan.estimated_resale_price = difficultyCtx.estimatedResalePrice;
+  }
+
   // Store in DB
   const [stored] = await db.insert(refinishingPlans).values({
     listingId,

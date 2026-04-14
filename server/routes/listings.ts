@@ -385,8 +385,19 @@ listingsRouter.get('/:id', async (c) => {
   let listing = await getVisibleListing(id, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
-  // Auto-fetch details if missing description, images, or description looks like a page dump
+  // Load images and concept renders
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
+  const concepts = await db.select({
+    difficulty: conceptRenders.difficulty,
+    label: conceptRenders.label,
+    summary: conceptRenders.summary,
+    estimatedHours: conceptRenders.estimatedHours,
+    estimatedMaterialCost: conceptRenders.estimatedMaterialCost,
+    estimatedResalePrice: conceptRenders.estimatedResalePrice,
+    localPath: conceptRenders.localPath,
+  }).from(conceptRenders).where(eq(conceptRenders.listingId, id));
+
+  // Auto-fetch details if missing description, images, or description looks like a page dump
   const badDescription = listing.description && (
     listing.description.includes('Skip to Make Offer') ||
     listing.description.includes('Skip to Save') ||
@@ -408,7 +419,7 @@ listingsRouter.get('/:id', async (c) => {
     listing = (await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]))!;
   }
 
-  return c.json({ ...listing, images });
+  return c.json({ ...listing, images, conceptImages: concepts.length > 0 ? concepts : null });
 });
 
 // PATCH /bulk — bulk update listings

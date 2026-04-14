@@ -155,10 +155,11 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             if (imageUrl) {
               renderedImageUrl = imageUrl;
               const filename = `${listing.listingId}_${option.difficulty}.webp`;
-              localPath = path.join(CONCEPTS_DIR, filename);
+              const filePath = path.join(CONCEPTS_DIR, filename);
+              localPath = path.join('concepts', filename);
               const response = await fetch(imageUrl);
               const buffer = Buffer.from(await response.arrayBuffer());
-              await sharp(buffer).webp({ quality: 85 }).toFile(localPath);
+              await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
 
               renders.push({
                 listingId: listing.listingId,

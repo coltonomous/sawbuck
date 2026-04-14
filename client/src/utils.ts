@@ -1,6 +1,8 @@
 export function resolveImageUrl(path: string): string {
   if (path.startsWith('http')) return path;
-  return `/images/${path}`;
+  // Strip data/images/ prefix from legacy DB paths
+  const cleaned = path.replace(/^data\/images\//, '');
+  return `/images/${cleaned}`;
 }
 
 /** Format a date string or ISO timestamp as a readable date like "Apr 14, 2026" */
