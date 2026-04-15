@@ -104,26 +104,15 @@ Reconcile (stale listing detection) runs as a separate scheduled job every 6 hou
               |             |
               |             v
               |    +-------------+
-              |    | planOptions |
+              |    | planOptions |  (generates plans + materials + renders)
               |    +------+------+
               |           |
               |      +----+-----+
-              |      | no FAL   |
-              |      | or cap   |----> < target? ──> dispatchScrapes
-              |      +----+-----+----> target met? ──> summarize
+              |      | < target |----> budget remains? ──> dispatchScrapes
+              |      +----+-----+----> all exhausted? ──> summarize
               |           |
-              |       can render
+              |      target met
               |           v
-              |    +--------+
-              |    | render |
-              |    +---+----+
-              |        |
-              |   +----+------+
-              |   | < target  |----> budget remains? ──> dispatchScrapes
-              |   +----+------+----> all exhausted? ──> summarize
-              |        |
-              |   target met
-              |        v
               |   +-----------+     +-----+
               +-->| summarize |---->| END |
                   +-----------+     +-----+
@@ -146,8 +135,7 @@ Per-platform retry budgets (`scrapeAttempts: Record<string, number>`) ensure a b
 | **enrich** | - | Detail page fetch (per platform) | Descriptions, images, lat/lng | No |
 | **evaluate** | Qwen3 VL 235B | Photos + listing context | Analysis, pricing, recommendation | Yes (listings, agent_runs) |
 | **discoverKnowledge** | - | Qualified listing metadata | Knowledge source URLs | Yes (knowledge_sources) |
-| **planOptions** | Qwen3 32B | Furniture metadata | 3 refinishing tiers | Yes (concept_renders) |
-| **render** | fal.ai Flux | Furniture + option description | Concept images | Yes (concept_renders.localPath) |
+| **planOptions** | Qwen3 32B + Bedrock | Furniture metadata | 3 concepts + 3 plans + materials + renders | Yes (concept_renders, refinishing_plans, materials) |
 | **summarize** | - | Run counters | Final run record | Yes (agent_runs) |
 
 ### Loop Behavior
@@ -155,8 +143,7 @@ Per-platform retry budgets (`scrapeAttempts: Record<string, number>`) ensure a b
 The pipeline loops back to `dispatchScrapes` when fewer than `MIN_QUALIFIED_TARGET` (1) listings have qualified. Loop-back points:
 - **After triage**: 0 candidates passed but at least one platform has retry budget
 - **After evaluate**: 0 listings qualified this iteration but eval cap not hit and budget remains
-- **After planOptions**: no FAL_KEY or render cap hit, but still under qualified target
-- **After render**: target not met and caps not exhausted
+- **After planOptions**: target not met and budget remains (planOptions now handles plans, materials, and renders internally)
 
 `hasScrapeBudget()` checks if any enabled platform has fewer than `MAX_SCRAPE_ATTEMPTS` (3) attempts. A platform that returns 0 results still increments its counter.
 
@@ -211,16 +198,17 @@ Removal: 404 or "This posting has been deleted/expired"
 ### OfferUp
 
 ```
-Search API (JSON)
+Search Page (SSR HTML)
   |
-  +-- https://offerup.com/api/search/v4/search
-  |     -> lat/lng + radius, keyword "wood furniture"
-  |     -> JSON response with title, price, images, location
+  +-- __NEXT_DATA__ JSON (server-rendered)
+  |     -> searchFeedResponse.looseTiles (ModularFeedTileListing)
+  |     -> ~2-3 listings per query (rest load client-side)
   |
-  +-- Cookie Jar (browser-like headers)
+  +-- Cookie Jar (browser-like headers, location cookie warming)
 
-Location: lat/lng + radius from region config
-Pagination: offset=page*25 query param
+Location: lat/lng + radius via URL params + location cookie
+Discovery: 20 diverse search queries per call (wood dresser, vintage furniture, etc.)
+           Each query returns 2-3 SSR results; deduped across queries
 Enrichment: __NEXT_DATA__ JSON or meta tag fallback
 Removal: 404, 410, "no longer available", "item has been sold"
 ```
@@ -261,9 +249,9 @@ Platform Search ──scrapeOne──> ScrapedCandidate (title, price, images, l
                        |
                     discoverKnowledge --> queue RAG sources for knowledge gaps
                        |
-                    planOptions --> INSERT 3 concept_renders rows (no images yet)
-                       |
-                    render --> UPDATE concept_renders with localPath (image file)
+                    planOptions --> INSERT concept_renders + refinishing_plans + materials
+                                   + render concept images (fal.ai img2img from listing photo)
+                                   All values synced: concept card estimates come FROM the plan
 ```
 
 ## RAG Knowledge Base
@@ -325,8 +313,9 @@ users ---------------+
   +-- listings ------+---> listingImages
   |   |              |---> conceptRenders (plan options + render images)
   |   |              |---> comparables (eBay pricing data)
+  |   |              |---> refinishingPlans ---> materials (pre-generated by pipeline)
   |   |
-  |   +-- projects ---> refinishingPlans ---> materials
+  |   +-- projects ---> claims refinishingPlans + materials (SET projectId)
   |                  ---> projectPhotos
   |
   +-- sessions, accounts (better-auth)
@@ -395,9 +384,10 @@ Available in Settings page (admin role required):
 
 ## UX Features
 
-- **Auto-analyze on import**: imported listings automatically download images, run vision analysis, and calculate pricing in the background
+- **Auto-analyze on import**: imported listings automatically download images, run vision analysis, pricing, and full concept/plan/materials/render generation in the background. Rate-limited to 5 imports per 10 minutes per user.
 - **Smart concept defaults**: pre-selects the concept tier matching the user's experience level (beginner->simple, intermediate->moderate, advanced->full)
 - **Infinite scroll**: listings page uses IntersectionObserver for lazy-loading batches
 - **Dashboard dismiss**: X button on hover to dismiss listings without opening them
 - **"New" badges**: listings from the last 6 hours are badged in both dashboard and listings table
-- **Plan preview**: view refinishing plans directly from listing detail without creating a project
+- **Pre-loaded plans**: listing detail shows pre-generated refinishing plans, materials, and concept renders — no on-demand generation needed. Selecting a concept instantly shows its plan and materials.
+- **Project claim**: creating a project from a concept claims the existing plan and materials instead of regenerating them

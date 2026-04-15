@@ -81,12 +81,14 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Import button toggles URL input form
 - [ ] Paste a Craigslist URL and submit
   - [ ] Listing creates immediately
-  - [ ] Auto-analysis starts in background (check after ~30s)
-  - [ ] Analysis results appear on refresh
+  - [ ] Auto-analysis starts in background
+  - [ ] Concepts, plans, materials, and renders auto-generate after analysis
+  - [ ] All data appears on refresh (may take 1-2 minutes for full generation)
 - [ ] Paste an OfferUp URL and submit
-  - [ ] Same auto-analyze behavior
+  - [ ] Same auto-analyze + auto-generate behavior
 - [ ] Duplicate import shows "already exists" message
 - [ ] Invalid URL shows error
+- [ ] Rate limit: 6th import within 10 minutes returns 429 error with retry message
 
 ### Listing Detail
 
@@ -115,17 +117,19 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Clicking a concept highlights it (blue ring)
 - [ ] Clicking loads the matching refinishing plan below
 - [ ] Switching concepts clears old plan, shows loading spinner, loads new plan
-- [ ] Switching back to previously viewed concept loads instantly (cached)
-- [ ] Concept render placeholder shows "Generate concept" button if no image
-  - [ ] Clicking generates the render (guarded against double-click)
+- [ ] Switching between concepts loads instantly (plans are pre-loaded, no API calls)
 
-**Plan Preview:**
+**Pre-loaded Plan + Materials:**
 - [ ] Plan displays below selected concept with steps, products, tips, estimates
-- [ ] "Generate Refinishing Plan" button shows if no concepts exist
-  - [ ] Generates concepts first, auto-selects moderate, shows plan
+- [ ] Materials list shows below the plan (read-only, no purchase checkboxes)
+- [ ] Materials have estimated prices and search links (Amazon, HD, Lowe's)
+- [ ] All numbers consistent: concept card hours/cost/resale match the plan header
+- [ ] "Generate Refinishing Options" button shows ONLY when no concepts exist AND listing is analyzed
+  - [ ] Generates concepts + plans + materials + renders in one call
   - [ ] Shows spinner, disabled during generation
   - [ ] Cannot trigger twice
-- [ ] "Select a refinishing option above" hint when concepts exist but none selected
+  - [ ] Button hidden once concepts exist
+- [ ] Pipeline-discovered listings (buy/strong buy) never show a generate button — data is pre-loaded
 
 **Actions:**
 - [ ] "View Original" opens source URL in new tab
@@ -133,7 +137,7 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] "Start Project" opens inline project creation form
   - [ ] Name and purchase price fields
   - [ ] "Create & Go to Project" navigates to project detail
-- [ ] "Use this plan" on concept card creates project + generates plan + navigates
+- [ ] "Use this plan" on concept card claims existing plan + materials and navigates to project
 - [ ] "Dismiss" navigates back (per-user dismissal)
 
 **Admin Section:**
@@ -169,14 +173,14 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Purchase date shows readable format ("Apr 14, 2026")
 - [ ] ROI Calculator shows cost breakdown and projected/actual profit
 - [ ] Timeline shows stages with readable dates
-- [ ] "Generate Refinishing Plan" button if no plans (also generates concepts)
+- [ ] "Generate Refinishing Plan" button only if no plans exist (fallback for user-posted listings)
+- [ ] Plans and materials from listing should carry over automatically
 
 **Plan Tab:**
 - [ ] Concept cards at top (if concepts exist)
   - [ ] "AI Concept" badges on rendered images
   - [ ] Clicking a card with matching plan switches to that plan
-  - [ ] Clicking a card without matching plan generates one (loading spinner)
-  - [ ] Cannot click during generation
+  - [ ] Clicking a card without matching plan claims or generates one
 - [ ] Plan picker dropdown when multiple plans exist
 - [ ] Plan display: style recommendation, description, steps with products/tips, estimates
 - [ ] RAG sources toggle on plan
@@ -291,7 +295,7 @@ Covers all user-facing flows for both admin and regular user accounts.
 ### Listing Detail
 - [ ] All features work same as admin except:
   - [ ] NO admin section (no "Admin" label, no "Delete Listing")
-- [ ] Can import, analyze, view concepts, preview plans, create projects, dismiss
+- [ ] Can import (rate-limited: 5 per 10 min), view pre-loaded concepts/plans/materials, create projects, dismiss
 
 ### Settings
 - [ ] Only "Preferences" tab visible (no Users, Platforms, Agent Config, Agent Runs)
@@ -348,9 +352,13 @@ Covers all user-facing flows for both admin and regular user accounts.
 ## Edge Cases
 
 - [ ] Import same URL twice shows "already exists"
+- [ ] Import 6+ URLs in 10 minutes — 6th returns 429 with retry message
 - [ ] Delete a listing that has a project (cascade behavior)
 - [ ] Analyze a listing with no images (graceful error)
-- [ ] Generate plan for listing without analysis (422 error shown)
+- [ ] Generate options for listing without analysis (422 error shown)
+- [ ] Pipeline-discovered listings show no generate buttons when concepts/plans exist
+- [ ] User-posted listings without concepts show "Generate Refinishing Options" button
 - [ ] Rapid-click any model-triggering button (should be guarded, no duplicate calls)
 - [ ] Sign out during an active scraper run (run continues server-side)
+- [ ] Creating project from concept claims existing plan+materials (no regeneration delay)
 - [ ] Deploy during an active run (graceful shutdown, stale cleanup on restart)
