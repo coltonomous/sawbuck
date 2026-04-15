@@ -164,24 +164,28 @@ listingsRouter.get('/', async (c) => {
     localPath: string | null;
   }>>();
   if (agentListingIds.length > 0) {
-    const renders = await db.select({
-      listingId: conceptRenders.listingId,
-      finishType: conceptRenders.finishType,
-      label: conceptRenders.label,
-      summary: conceptRenders.summary,
-      localPath: conceptRenders.localPath,
-    })
-      .from(conceptRenders)
-      .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
-      ;
-    for (const r of renders) {
-      if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
-      conceptMap.get(r.listingId)!.push({
-        finishType: r.finishType,
-        label: r.label,
-        summary: r.summary,
-        localPath: r.localPath,
-      });
+    try {
+      const renders = await db.select({
+        listingId: conceptRenders.listingId,
+        finishType: conceptRenders.finishType,
+        label: conceptRenders.label,
+        summary: conceptRenders.summary,
+        localPath: conceptRenders.localPath,
+      })
+        .from(conceptRenders)
+        .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
+        ;
+      for (const r of renders) {
+        if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
+        conceptMap.get(r.listingId)!.push({
+          finishType: r.finishType,
+          label: r.label,
+          summary: r.summary,
+          localPath: r.localPath,
+        });
+      }
+    } catch (err) {
+      logger.warn({ error: String(err) }, 'Failed to load concept renders — the concept_renders table may need migration (run db:push or apply migration 0002)');
     }
   }
 
@@ -438,12 +442,17 @@ listingsRouter.get('/:id', async (c) => {
 
   // Load images and concept renders
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
-  const concepts = await db.select({
-    finishType: conceptRenders.finishType,
-    label: conceptRenders.label,
-    summary: conceptRenders.summary,
-    localPath: conceptRenders.localPath,
-  }).from(conceptRenders).where(eq(conceptRenders.listingId, id));
+  let concepts: { finishType: string; label: string; summary: string; localPath: string | null }[] = [];
+  try {
+    concepts = await db.select({
+      finishType: conceptRenders.finishType,
+      label: conceptRenders.label,
+      summary: conceptRenders.summary,
+      localPath: conceptRenders.localPath,
+    }).from(conceptRenders).where(eq(conceptRenders.listingId, id));
+  } catch (err) {
+    logger.warn({ listingId: id, error: String(err) }, 'Failed to load concept renders for listing detail — run db:push or apply migration 0002');
+  }
 
   // Auto-fetch details if missing description, images, or description looks like a page dump
   const badDescription = listing.description && (
@@ -472,7 +481,12 @@ listingsRouter.get('/:id', async (c) => {
     .from(refinishingPlans)
     .where(and(eq(refinishingPlans.listingId, id), isNull(refinishingPlans.projectId)));
   const parsedPlans = listingPlans.map((p) => {
-    const steps = typeof p.steps === 'string' ? JSON.parse(p.steps) : p.steps;
+    let steps;
+    try {
+      steps = typeof p.steps === 'string' ? JSON.parse(p.steps) : p.steps;
+    } catch {
+      steps = [];
+    }
     return { ...p, steps };
   });
 
