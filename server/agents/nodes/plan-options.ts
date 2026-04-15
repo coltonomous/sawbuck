@@ -159,7 +159,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
               // original surface too heavily. Kontext edits the image in
               // context, so it can change surface finish while naturally
               // preserving furniture shape.
-              falModel = 'fal-ai/flux-kontext/dev';
+              falModel = agentConfig.conceptEditModel;
               renderPrompt = buildEditPrompt(promptOpts);
               falInput.prompt = renderPrompt;
               falInput.image_url = referenceImageUrl;

@@ -1,6 +1,6 @@
 import { db } from '../db/index.js';
 import { materials, refinishingPlans } from '../db/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { parsePlanSteps, type RefinishingProduct } from './refinishing.js';
 import { generateAllSearchUrls } from '../lib/search-urls.js';
 import logger from '../lib/logger.js';
@@ -82,4 +82,13 @@ export async function getMaterialsForPlan(planId: number) {
 
 export async function getMaterialsForProject(projectId: number) {
   return db.select().from(materials).where(eq(materials.projectId, projectId));
+}
+
+/** Load materials through the plan chain: listing → plans → materials. */
+export async function getMaterialsForListing(listingId: number) {
+  const plans = await db.select({ id: refinishingPlans.id })
+    .from(refinishingPlans)
+    .where(eq(refinishingPlans.listingId, listingId));
+  if (plans.length === 0) return [];
+  return db.select().from(materials).where(inArray(materials.refinishingPlanId, plans.map(p => p.id)));
 }

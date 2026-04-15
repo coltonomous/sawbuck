@@ -789,7 +789,7 @@ listingsRouter.post('/:id/render', async (c) => {
     if (referenceImageUrl) {
       // Use Kontext — an editing model that changes the surface finish
       // while preserving furniture shape. Standard img2img can't do this.
-      falModel = 'fal-ai/flux-kontext/dev';
+      falModel = agentConfig.conceptEditModel;
       prompt = buildEditPrompt(promptOpts);
       falInput.prompt = prompt;
       falInput.image_url = referenceImageUrl;

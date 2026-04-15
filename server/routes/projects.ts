@@ -6,7 +6,7 @@ import { projects, listings, refinishingPlans, materials, projectPhotos, listing
 import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
-import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
+import { generateMaterialsFromPlanSync, getMaterialsForProject, getMaterialsForListing } from '../analysis/sourcing.js';
 import { generateText } from '../lib/bedrock.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
@@ -42,23 +42,21 @@ projectsRouter.get('/:id', async (c) => {
 
   const listing = await db.select().from(listings).where(eq(listings.id, project.listingId)).then(r => r[0]);
 
-  // Include plans associated with this project OR unassociated plans from the same listing
+  // Plans and materials come from the listing — the ingest is the source of truth.
+  // A project just references its listing; no need to "claim" plans or materials.
   const plans = await db.select()
     .from(refinishingPlans)
-    .where(sql`${refinishingPlans.projectId} = ${id} OR (${refinishingPlans.listingId} = ${project.listingId} AND ${refinishingPlans.projectId} IS NULL)`)
+    .where(eq(refinishingPlans.listingId, project.listingId))
     .orderBy(desc(refinishingPlans.createdAt));
 
   const allPlans = plans.map((p) => ({ ...p, steps: parsePlanSteps(p.steps) }));
   const plan = allPlans[0] ?? null;
 
-  // Load materials for this project, or listing-level materials from plans visible to this project
+  // Materials belong to plans; load all materials for this listing's plans
   const planIds = plans.map((p) => p.id);
-  let mats = await getMaterialsForProject(id);
-  if (mats.length === 0 && planIds.length > 0) {
-    mats = await db.select().from(materials).where(
-      and(inArray(materials.refinishingPlanId, planIds), isNull(materials.projectId))
-    );
-  }
+  const mats = planIds.length > 0
+    ? await db.select().from(materials).where(inArray(materials.refinishingPlanId, planIds))
+    : [];
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   const images = listing
     ? await db.select().from(listingImages).where(eq(listingImages.listingId, listing.id))
@@ -307,12 +305,15 @@ projectsRouter.post('/:id/refinish', async (c) => {
       updatedAt: new Date(),
     }).where(eq(projects.id, id));
 
-    // Reload plan for response
-    const finalPlan = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id)).orderBy(desc(refinishingPlans.createdAt)).then(r => r[0]);
+    // Reload plan + materials for response (through listing, not projectId)
+    const finalPlan = await db.select().from(refinishingPlans).where(eq(refinishingPlans.listingId, project.listingId)).orderBy(desc(refinishingPlans.createdAt)).then(r => r[0]);
+    const finalMats = finalPlan
+      ? await db.select().from(materials).where(eq(materials.refinishingPlanId, finalPlan.id))
+      : [];
 
     return c.json({
       plan: finalPlan ? { ...finalPlan, steps: parsePlanSteps(finalPlan.steps) } : null,
-      materials: await getMaterialsForProject(id),
+      materials: finalMats,
     });
   } catch (err: unknown) {
     logger.error({ err, projectId: id }, 'Error generating refinishing plan');
@@ -408,7 +409,7 @@ projectsRouter.get('/:id/refinish', async (c) => {
   return c.json({ ...plan, steps: parsePlanSteps(plan.steps) });
 });
 
-// GET /:id/materials — get materials for project
+// GET /:id/materials — get materials for project (via listing plans)
 projectsRouter.get('/:id/materials', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
@@ -417,7 +418,7 @@ projectsRouter.get('/:id/materials', async (c) => {
   const project = await getOwnedProject(id, user.id);
   if (!project) return c.json({ error: 'Not found' }, 404);
 
-  const mats = await getMaterialsForProject(id);
+  const mats = await getMaterialsForListing(project.listingId);
   return c.json(mats);
 });
 
@@ -488,7 +489,7 @@ async function recalculateFinancials(projectId: number) {
   const project = await db.select().from(projects).where(eq(projects.id, projectId)).then(r => r[0]);
   if (!project) return;
 
-  const mats = await getMaterialsForProject(projectId);
+  const mats = await getMaterialsForListing(project.listingId);
   const purchased = mats.filter((m) => m.purchased);
   const totalMaterialCost = purchased.length > 0
     ? purchased.reduce((sum, m) => sum + (m.actualPrice ?? m.estimatedPrice ?? 0), 0)
