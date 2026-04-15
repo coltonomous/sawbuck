@@ -280,13 +280,17 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
             if (photoUrl) imageUrls.push(photoUrl);
           }
 
-          // Extract lat/lng from listing location data
+          // Extract lat/lng from listing location data.
+          // OfferUp's __NEXT_DATA__ may nest coordinates in a location object
+          // or place them directly on the listing — check both patterns.
           let latitude: number | undefined;
           let longitude: number | undefined;
           const loc = listing.location ?? listing.locationDetails ?? listing.geoLocation;
-          if (loc) {
-            const lat = parseFloat(loc.latitude ?? loc.lat);
-            const lng = parseFloat(loc.longitude ?? loc.lng ?? loc.lon);
+          const latRaw = loc?.latitude ?? loc?.lat ?? listing.latitude ?? listing.lat;
+          const lngRaw = loc?.longitude ?? loc?.lng ?? loc?.lon ?? listing.longitude ?? listing.lng;
+          if (latRaw != null && lngRaw != null) {
+            const lat = parseFloat(latRaw);
+            const lng = parseFloat(lngRaw);
             if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
               latitude = lat;
               longitude = lng;

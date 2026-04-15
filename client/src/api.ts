@@ -245,7 +245,7 @@ export interface StatsResponse {
   profitOverTime: { month: string; total_profit: number; count: number }[];
   dealsByPlatform: { platform: string; count: number }[];
   flipTimes: { name: string; days: number }[];
-  scrapedOverTime: { week: string; count: number }[];
+  scrapedOverTime: { day: string; count: number }[];
   priceDistribution: { bucket: string; count: number }[];
   dealScoreDistribution: { bucket: string; count: number }[];
   statusBreakdown: { status: string; count: number }[];

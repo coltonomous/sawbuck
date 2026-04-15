@@ -56,7 +56,7 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
               className="w-full text-sm text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
             />
           </div>
-          <div className="flex gap-3 sm:contents">
+          <div>
             <select
               value={uploadType}
               onChange={(e) => setUploadType(e.target.value)}
@@ -66,12 +66,14 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
               <option value="during">During</option>
               <option value="after">After</option>
             </select>
+          </div>
+          <div className="sm:flex-1">
             <input
               type="text"
               placeholder="Caption (optional)"
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
-              className="flex-1 sm:flex-initial sm:flex-1 border rounded px-3 py-2 text-sm"
+              className="w-full border rounded px-3 py-2 text-sm"
             />
           </div>
           <button

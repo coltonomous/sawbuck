@@ -80,9 +80,9 @@ statsRouter.get('/', async (c) => {
     `, [userId]),
 
     pool.query(`
-      SELECT DATE_TRUNC('week', scraped_at::timestamp)::date::text as week, COUNT(*) as count
+      SELECT scraped_at::date::text as day, COUNT(*) as count
       FROM listings WHERE ${listingFilter}
-      GROUP BY week ORDER BY week
+      GROUP BY day ORDER BY day
     `, [userId]),
 
     pool.query(`
