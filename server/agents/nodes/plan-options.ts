@@ -32,17 +32,41 @@ function buildRenderPrompt(
   const type = evaluation.furnitureType;
 
   if (plan) {
-    // Build a concise description of the specific changes from the plan steps
     const changes = plan.steps
       .map((s) => s.title.toLowerCase())
       .join(', ');
-    return `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${plan.after_description}. Specific steps applied: ${changes}. Style: ${plan.style_recommendation}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+
+    if (option.difficulty === 'full') {
+      return `A dramatically transformed ${type} based on the reference photo. Changes applied: ${plan.after_description}. Steps: ${changes}. Style: ${plan.style_recommendation}. The piece may have structural modifications, bold paint, or a completely new look. Photorealistic product photography, natural lighting.`;
+    }
+
+    const constraint = option.difficulty === 'simple'
+      ? 'Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described.'
+      : 'Keep the same piece and general proportions. Updated hardware and finish should be visible.';
+
+    return `The same ${type} shown in the reference photo, with these refinishing changes applied: ${plan.after_description}. Specific steps applied: ${changes}. Style: ${plan.style_recommendation}. ${constraint} Photorealistic product photography, natural lighting.`;
   }
 
-  return `The same ${type} shown in the reference photo, with these changes applied: ${option.summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+  if (option.difficulty === 'full') {
+    return `A dramatically transformed ${type} based on the reference photo. Changes: ${option.summary}. The piece may have structural modifications, bold paint, or a completely new look. Photorealistic product photography, natural lighting.`;
+  }
+
+  const constraint = option.difficulty === 'simple'
+    ? 'Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described.'
+    : 'Keep the same piece and general proportions. Updated hardware and finish should be visible.';
+
+  return `The same ${type} shown in the reference photo, with these changes applied: ${option.summary}. ${constraint} Photorealistic product photography, natural lighting.`;
 }
 
-const PLAN_OPTIONS_SYSTEM = `You are a furniture refinishing cost estimator. Given a piece of furniture with its condition and type, generate three refinishing options at different difficulty levels. Be realistic about time, material costs, and resale values based on the furniture type and condition.`;
+const PLAN_OPTIONS_SYSTEM = `You are a furniture refinishing cost estimator. Given a piece of furniture with its condition and type, generate three refinishing options at different difficulty levels. Be realistic about time, material costs, and resale values based on the furniture type and condition.
+
+The three difficulty levels should be VISUALLY DISTINCT from each other:
+
+- "simple": Preserve the original character. Clean, oil, minor touch-ups. Minimal new materials. The piece should look cared-for but fundamentally unchanged.
+
+- "moderate": A noticeable upgrade. New stain or finish that shifts the look, plus new hardware (knobs, pulls, hinges) where applicable. The piece should look refreshed and modernized, not just cleaned up.
+
+- "full": A dramatic, transformative change. This means bold paint colors, two-tone treatments, structural modifications (adding legs, removing doors, converting function), or creative techniques like color washing, decoupage, or stencil work. The result should be barely recognizable as the same piece. Do NOT just do a nicer version of what moderate does — go in a completely different creative direction.`;
 
 const OptionsSchema = z.object({
   options: z.array(z.object({
@@ -195,8 +219,8 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             if (referenceImageUrl) {
               falModel = 'fal-ai/flux/dev/image-to-image';
               falInput.image_url = referenceImageUrl;
-              // Low strength to preserve the original piece — only apply finish changes
-              falInput.strength = option.difficulty === 'full' ? 0.55 : option.difficulty === 'moderate' ? 0.4 : 0.3;
+              // Strength controls how much the render deviates from the reference image
+              falInput.strength = option.difficulty === 'full' ? 0.75 : option.difficulty === 'moderate' ? 0.45 : 0.3;
             } else {
               falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
             }

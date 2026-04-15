@@ -54,10 +54,25 @@ export interface DifficultyContext {
   estimatedResalePrice?: number;
 }
 
+function buildDifficultyGuidance(ctx: DifficultyContext): string {
+  const base = `\nThe user has chosen the "${ctx.difficulty}" approach: "${ctx.label}" — ${ctx.summary}\nTarget this difficulty level specifically. Use the following estimates as guidelines:\n- Estimated hours: ${ctx.estimatedHours ?? 'unknown'}\n- Estimated material cost: $${ctx.estimatedMaterialCost ?? 'unknown'}\n- Estimated resale price: $${ctx.estimatedResalePrice ?? 'unknown'}`;
+
+  if (ctx.difficulty === 'simple') {
+    return base + `\n\nFor this simple/beginner plan: preserve the original character of the piece. Clean, oil, minor touch-ups only. Minimal new materials. The piece should look cared-for but fundamentally unchanged.`;
+  }
+
+  if (ctx.difficulty === 'moderate') {
+    return base + `\n\nFor this moderate/intermediate plan: go beyond just cleaning and re-staining. Include new hardware (knobs, pulls, hinges) where the piece has them. Choose a stain or finish that noticeably shifts the appearance. The result should look refreshed and modernized, clearly different from the simple option.`;
+  }
+
+  // full
+  return base + `\n\nFor this full/advanced plan: this must be a DRAMATIC transformation — not just a nicer refinish. Think bold paint colors, two-tone treatments, structural modifications (adding new legs or a shelf, removing doors to create open shelving, converting function), creative techniques like color washing or stencil work, or a complete aesthetic reinvention. The result should be barely recognizable as the same piece. Do NOT just do a more thorough version of sanding and staining — go in a completely different creative direction.`;
+}
+
 function buildPrompt(listing: typeof listings.$inferSelect, difficultyCtx?: DifficultyContext): string {
   const parts = [
     `Generate a detailed refinishing plan for this furniture piece to maximize resale value.`,
-    difficultyCtx ? `\nThe user has chosen the "${difficultyCtx.difficulty}" approach: "${difficultyCtx.label}" — ${difficultyCtx.summary}\nTarget this difficulty level specifically. Use the following estimates as guidelines:\n- Estimated hours: ${difficultyCtx.estimatedHours ?? 'unknown'}\n- Estimated material cost: $${difficultyCtx.estimatedMaterialCost ?? 'unknown'}\n- Estimated resale price: $${difficultyCtx.estimatedResalePrice ?? 'unknown'}` : null,
+    difficultyCtx ? buildDifficultyGuidance(difficultyCtx) : null,
     ``,
     `Piece details:`,
     `- Type: ${listing.furnitureType || 'Unknown'}`,
@@ -94,11 +109,12 @@ function buildPrompt(listing: typeof listings.$inferSelect, difficultyCtx?: Diff
     ``,
     `Requirements:`,
     `- Recommend actual products available at Amazon, Home Depot, or Lowe's`,
-    `- Include a sanding step with specific grit progression`,
+    `- Include a sanding step with specific grit progression where sanding is needed`,
     `- If stripping old finish, recommend a specific stripper product`,
     `- Include primer if painting, or wood conditioner if staining softwood`,
-    `- Specify finish type: oil-based polyurethane, water-based poly, wax, etc.`,
-    `- Include hardware recommendations if replacing (knobs, pulls, hinges)`,
+    `- Specify finish type: oil-based polyurethane, water-based poly, wax, chalk paint, milk paint, etc.`,
+    `- For moderate/intermediate plans: include new hardware (knobs, pulls, hinges) where the piece has them`,
+    `- For full/advanced plans: include any structural materials (wood, brackets, screws, new legs) and paint/creative supplies needed for the transformation`,
     `- Be realistic about time — include drying time between coats`,
     `- Estimated resale price should be realistic for the style and market`,
   ];
