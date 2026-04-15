@@ -228,6 +228,8 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<EnrichResu
           ...candidate,
           description: detail.description || candidate.description,
           imageUrls: detail.imageUrls.length > 0 ? detail.imageUrls : candidate.imageUrls,
+          latitude: detail.latitude ?? candidate.latitude,
+          longitude: detail.longitude ?? candidate.longitude,
         });
       } else {
         enriched.push(candidate);
@@ -246,6 +248,8 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<EnrichResu
 type DetailResult = {
   description: string;
   imageUrls: string[];
+  latitude?: number;
+  longitude?: number;
 };
 
 async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | null> {
@@ -275,9 +279,29 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
             const photoUrl = photo.detail?.url ?? photo.url ?? (photo.uuid ? `https://images.offerup.com/${photo.uuid}/600x.jpg` : null);
             if (photoUrl) imageUrls.push(photoUrl);
           }
+
+          // Extract lat/lng from listing location data.
+          // OfferUp's __NEXT_DATA__ may nest coordinates in a location object
+          // or place them directly on the listing — check both patterns.
+          let latitude: number | undefined;
+          let longitude: number | undefined;
+          const loc = listing.location ?? listing.locationDetails ?? listing.geoLocation;
+          const latRaw = loc?.latitude ?? loc?.lat ?? listing.latitude ?? listing.lat;
+          const lngRaw = loc?.longitude ?? loc?.lng ?? loc?.lon ?? listing.longitude ?? listing.lng;
+          if (latRaw != null && lngRaw != null) {
+            const lat = parseFloat(latRaw);
+            const lng = parseFloat(lngRaw);
+            if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+              latitude = lat;
+              longitude = lng;
+            }
+          }
+
           return {
             description: listing.description ?? '',
             imageUrls,
+            latitude,
+            longitude,
           };
         }
       } catch {

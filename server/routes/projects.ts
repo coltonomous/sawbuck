@@ -150,6 +150,11 @@ projectsRouter.post('/from-concept', async (c) => {
       await db.update(materials)
         .set({ projectId: project.id })
         .where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
+      // If the claimed plan has no materials, generate them now
+      const claimedMats = await getMaterialsForProject(project.id);
+      if (claimedMats.length === 0) {
+        await generateMaterialsFromPlanSync(existingPlan.id, project.id);
+      }
     } else {
       // Fallback: generate plan + materials
       const result = await generateRefinishingPlan(listing.id, project.id);
@@ -273,6 +278,11 @@ projectsRouter.post('/:id/refinish', async (c) => {
     if (existingPlan) {
       await db.update(refinishingPlans).set({ projectId: id }).where(eq(refinishingPlans.id, existingPlan.id));
       await db.update(materials).set({ projectId: id }).where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
+      // If the claimed plan has no materials (e.g. agent materials generation failed), generate them now
+      const claimedMats = await getMaterialsForProject(id);
+      if (claimedMats.length === 0) {
+        await generateMaterialsFromPlanSync(existingPlan.id, id);
+      }
     } else {
       // Fallback: generate plan + materials
       const result = await generateRefinishingPlan(project.listingId, id);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { api, type StatsResponse } from '../api';
 import { useSession } from '../lib/auth';
@@ -13,15 +13,29 @@ export default function Analytics() {
   const { data: session } = useSession();
   const [stats, setStats] = useState<StatsResponse | null>(null);
   const [loading, setLoading] = useState(true);
-
-  if (session?.user?.role !== 'admin') return <Navigate to="/" replace />;
+  const isAdmin = session?.user?.role === 'admin';
 
   useEffect(() => {
+    if (!isAdmin) return;
     api.getStats()
       .then(setStats)
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, []);
+  }, [isAdmin]);
+
+  // Poll for updated stats every 30s so charts stay current
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!isAdmin) return;
+    pollRef.current = setInterval(() => {
+      api.getStats().then(setStats).catch(console.error);
+    }, 30_000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isAdmin]);
+
+  if (!isAdmin) return <Navigate to="/" replace />;
 
   if (loading) return (
     <div>
@@ -108,7 +122,7 @@ export default function Analytics() {
           <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={scrapedOverTime}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis dataKey="week" tick={{ fontSize: 11 }} />
+              <XAxis dataKey="day" tick={{ fontSize: 11 }} />
               <YAxis tick={{ fontSize: 12 }} />
               <Tooltip />
               <Area type="monotone" dataKey="count" stroke="#3b82f6" fill="#3b82f6" fillOpacity={0.15} name="Listings" />

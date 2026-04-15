@@ -47,8 +47,8 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
       {/* Upload form */}
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5">
         <h3 className="font-medium text-gray-900 mb-3">Upload Photo</h3>
-        <div className="flex items-end gap-3">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+          <div className="sm:flex-1">
             <input
               ref={fileRef}
               type="file"
@@ -67,7 +67,7 @@ export default function PhotoGallery({ projectId, photos, onUpdate }: Props) {
               <option value="after">After</option>
             </select>
           </div>
-          <div className="flex-1">
+          <div className="sm:flex-1">
             <input
               type="text"
               placeholder="Caption (optional)"
