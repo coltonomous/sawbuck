@@ -109,23 +109,21 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Analysis error shows if failed
 - [ ] RAG sources toggle shows/hides source references
 
-**Refinishing Concepts:**
-- [ ] Concept option cards display for qualified listings (3 cards: simple/moderate/full)
-- [ ] Each card shows: difficulty badge, label, summary, time/materials/resale/profit estimates
+**Finish Concepts:**
+- [ ] Finish concept cards display for qualified listings (3 cards showing different surface treatments)
+- [ ] Each card shows: finish type badge, label, summary, concept render image
+- [ ] Cards do NOT show time/materials/resale estimates (those live on the plan)
 - [ ] "AI Concept" badge overlays on rendered concept images
-- [ ] Default selection matches user's experience level preference
+- [ ] First concept auto-selected on load
 - [ ] Clicking a concept highlights it (blue ring)
-- [ ] Clicking loads the matching refinishing plan below
-- [ ] Switching concepts clears old plan, shows loading spinner, loads new plan
-- [ ] Switching between concepts loads instantly (plans are pre-loaded, no API calls)
+- [ ] Single refinishing plan displays below concepts (not per-concept)
 
 **Pre-loaded Plan + Materials:**
-- [ ] Plan displays below selected concept with steps, products, tips, estimates
+- [ ] Plan displays with steps, products, tips, time/cost/resale estimates
 - [ ] Materials list shows below the plan (read-only, no purchase checkboxes)
 - [ ] Materials have estimated prices and search links (Amazon, HD, Lowe's)
-- [ ] All numbers consistent: concept card hours/cost/resale match the plan header
-- [ ] "Generate Refinishing Options" button shows ONLY when no concepts exist AND listing is analyzed
-  - [ ] Generates concepts + plans + materials + renders in one call
+- [ ] "Generate Refinishing Plan" button shows ONLY when no concepts exist AND listing is analyzed
+  - [ ] Generates plan + materials + finish concepts + renders in one call
   - [ ] Shows spinner, disabled during generation
   - [ ] Cannot trigger twice
   - [ ] Button hidden once concepts exist
@@ -137,7 +135,7 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] "Start Project" opens inline project creation form
   - [ ] Name and purchase price fields
   - [ ] "Create & Go to Project" navigates to project detail
-- [ ] "Use this plan" on concept card claims existing plan + materials and navigates to project
+- [ ] "Start Project" button claims existing plan + materials and navigates to project
 - [ ] "Dismiss" navigates back (per-user dismissal)
 
 **Admin Section:**
@@ -177,12 +175,11 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Plans and materials from listing should carry over automatically
 
 **Plan Tab:**
-- [ ] Concept cards at top (if concepts exist)
+- [ ] Finish concept cards at top (if concepts exist)
   - [ ] "AI Concept" badges on rendered images
-  - [ ] Clicking a card with matching plan switches to that plan
-  - [ ] Clicking a card without matching plan claims or generates one
-- [ ] Plan picker dropdown when multiple plans exist
-- [ ] Plan display: style recommendation, description, steps with products/tips, estimates
+  - [ ] Cards show finish type badge, label, and summary (no estimates)
+- [ ] Single plan displays below concepts
+- [ ] Plan display: style recommendation, description, steps with products/tips, time/cost/resale estimates
 - [ ] RAG sources toggle on plan
 
 **Materials Tab:**
@@ -228,7 +225,7 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Max budget
 - [ ] Shop space dropdown
 - [ ] Experience level dropdown (beginner/intermediate/advanced)
-  - [ ] Changing this affects default concept selection on listing detail
+  - [ ] Used for personalization (does not affect concept selection — first concept auto-selected)
 - [ ] Style preferences (multi-select pills)
 - [ ] Save button persists all preferences
 
@@ -328,8 +325,8 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] OfferUp uses varied search queries (not just "wood furniture")
 - [ ] Triage counts show per-platform (both CL and OfferUp triaged)
 - [ ] Evaluate counts show per-platform (both CL and OfferUp evaluated)
-- [ ] Qualified listings get all 3 concept options (simple/moderate/full)
-- [ ] Qualified listings get all 3 concept renders (if FAL_KEY set)
+- [ ] Qualified listings get a refinishing plan + materials
+- [ ] Qualified listings get 3 finish concept renders (if FAL_KEY set)
 - [ ] Pipeline completes without hanging
 - [ ] Run summary shows accurate counts
 - [ ] New listings appear in dashboard/listings with "New" badges

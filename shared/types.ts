@@ -1,7 +1,7 @@
 // Shared interfaces used by both server/ and client/.
 // Keep these minimal — only what crosses the API boundary.
 
-import type { Platform, ListingStatus, ProjectStatus, PhotoType, FlipRecommendation, RagChunkType, UserRole, ConceptDifficulty } from './constants.js';
+import type { Platform, ListingStatus, ProjectStatus, PhotoType, FlipRecommendation, RagChunkType, UserRole, FinishType } from './constants.js';
 
 export interface Region {
   id: number;

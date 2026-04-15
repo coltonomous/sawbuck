@@ -30,8 +30,8 @@ export type FlipRecommendation = (typeof FLIP_RECOMMENDATIONS)[number];
 export const REFINISHING_POTENTIALS = ['high', 'medium', 'low'] as const;
 export type RefinishingPotential = (typeof REFINISHING_POTENTIALS)[number];
 
-export const CONCEPT_DIFFICULTIES = ['simple', 'moderate', 'full'] as const;
-export type ConceptDifficulty = (typeof CONCEPT_DIFFICULTIES)[number];
+export const FINISH_TYPES = ['stain', 'paint', 'oil', 'varnish', 'wax', 'chalk_paint', 'milk_paint', 'lacquer'] as const;
+export type FinishType = (typeof FINISH_TYPES)[number];
 
 export const USER_ROLES = ['user', 'admin'] as const;
 export type UserRole = (typeof USER_ROLES)[number];

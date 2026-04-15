@@ -50,7 +50,7 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
 
 const mockTriaged = { externalId: '1', platform: 'craigslist', url: '', title: 'test', askingPrice: null, location: '', imageUrls: [], triageResult: { isWoodFurniture: true, hasFlipPotential: true, furnitureType: 'table', reasoning: '', confidenceScore: 0.9 } };
 const mockEvaluated = { ...mockTriaged, listingId: 1, evaluation: { furnitureType: 'table', furnitureStyle: 'modern', conditionScore: 7, woodSpecies: 'oak', estimatedValue: 200, dealScore: 2, flipRecommendation: 'buy' as const, refinishingPotential: 'high' as const, profitVerdict: 'good' } };
-const mockWithOptions = { ...mockEvaluated, options: [{ difficulty: 'simple' as const, label: 'Clean', summary: 'test', estimatedHours: 2, estimatedMaterialCost: 30, estimatedResalePrice: 200 }] };
+const mockWithOptions = { ...mockEvaluated, concepts: [{ finishType: 'stain', label: 'Natural Stain', summary: 'test' }] };
 
 describe('afterTriage', () => {
   it('routes to enrich when candidates passed', () => {

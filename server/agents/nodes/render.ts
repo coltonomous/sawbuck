@@ -5,7 +5,7 @@ import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import { getListingImageUrlForFal } from '../../lib/images.js';
-import type { AgentState, ConceptRenderResult, ListingWithOptions, RefinishingOption } from '../state.js';
+import type { AgentState, ConceptRenderResult, ListingWithOptions, FinishConcept } from '../state.js';
 import logger from '../../lib/logger.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -25,43 +25,21 @@ interface PlanData {
 
 function buildRenderPrompt(
   evaluation: ListingWithOptions['evaluation'],
-  option: RefinishingOption,
+  concept: FinishConcept,
   plan?: PlanData | null,
 ): string {
   const type = evaluation.furnitureType;
+  const afterDesc = plan?.after_description ?? concept.summary;
+  const style = plan?.style_recommendation ?? concept.label;
 
-  if (plan?.after_description) {
-    const changes = plan.steps
-      ?.map((s) => s.title.toLowerCase())
-      .join(', ') ?? option.summary;
-
-    if (option.difficulty === 'full') {
-      return `A dramatically transformed ${type} based on the reference photo. Changes applied: ${plan.after_description}. Steps: ${changes}. Style: ${plan.style_recommendation ?? ''}. The piece may have structural modifications, bold paint, or a completely new look. Photorealistic product photography, natural lighting.`;
-    }
-
-    const constraint = option.difficulty === 'simple'
-      ? 'Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described.'
-      : 'Keep the same piece and general proportions. Updated hardware and finish should be visible.';
-
-    return `The same ${type} shown in the reference photo, with these refinishing changes applied: ${plan.after_description}. Specific steps applied: ${changes}. Style: ${plan.style_recommendation ?? ''}. ${constraint} Photorealistic product photography, natural lighting.`;
-  }
-
-  if (option.difficulty === 'full') {
-    return `A dramatically transformed ${type} based on the reference photo. Changes: ${option.summary}. The piece may have structural modifications, bold paint, or a completely new look. Photorealistic product photography, natural lighting.`;
-  }
-
-  const constraint = option.difficulty === 'simple'
-    ? 'Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described.'
-    : 'Keep the same piece and general proportions. Updated hardware and finish should be visible.';
-
-  return `The same ${type} shown in the reference photo, with these changes applied: ${option.summary}. ${constraint} Photorealistic product photography, natural lighting.`;
+  return `The same ${type} shown in the reference photo, refinished with: ${concept.label} — ${concept.summary}. After: ${afterDesc}. Style: ${style}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
 }
 
-// Default options if plan generation failed
-const DEFAULT_OPTIONS: RefinishingOption[] = [
-  { difficulty: 'simple', label: 'Quick Clean & Oil', summary: 'cleaned and oiled with natural finish, minimal intervention.', estimatedHours: 2, estimatedMaterialCost: 30, estimatedResalePrice: 0 },
-  { difficulty: 'moderate', label: 'Sand, Refinish & New Hardware', summary: 'sanded and refinished with a fresh stain, fitted with new modern hardware for an updated look.', estimatedHours: 8, estimatedMaterialCost: 80, estimatedResalePrice: 0 },
-  { difficulty: 'full', label: 'Creative Transformation', summary: 'dramatically reimagined with bold paint, structural modifications, and a completely new aesthetic — barely recognizable as the original piece.', estimatedHours: 20, estimatedMaterialCost: 150, estimatedResalePrice: 0 },
+// Default finish concepts if generation failed
+const DEFAULT_CONCEPTS: FinishConcept[] = [
+  { finishType: 'stain', label: 'Natural Stain', summary: 'Light natural stain to showcase the wood grain with a satin polyurethane topcoat.' },
+  { finishType: 'paint', label: 'Classic White Paint', summary: 'Clean white paint finish for a bright, modern farmhouse look.' },
+  { finishType: 'oil', label: 'Danish Oil', summary: 'Warm danish oil finish that deepens the natural wood color with a soft sheen.' },
 ];
 
 export async function generateConcepts(state: AgentState): Promise<Partial<AgentState>> {
@@ -70,7 +48,6 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
     return { conceptRenders: [], conceptsRendered: state.conceptsRendered };
   }
 
-  // All listings with options are already qualified — render all of them.
   const listings = state.listingsWithOptions;
 
   if (listings.length === 0) {
@@ -82,7 +59,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
   const errors: AgentState['errors'] = [];
 
   for (const listing of listings) {
-    const options = listing.options.length > 0 ? listing.options : DEFAULT_OPTIONS;
+    const concepts = listing.concepts.length > 0 ? listing.concepts : DEFAULT_CONCEPTS;
 
     // Upload reference image once per listing for img2img
     let referenceImageUrl: string | null = null;
@@ -92,14 +69,12 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
       logger.debug({ listingId: listing.listingId, error: String(err) }, 'Could not get reference image for concept render');
     }
 
-    for (const option of options) {
-      // Fetch the plan for this listing+difficulty to use in the render prompt
-      const difficultyMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
+    for (const concept of concepts) {
+      // Fetch the plan for this listing to use in the render prompt
       let planData: PlanData | null = null;
       try {
-        const planDiff = difficultyMap[option.difficulty] ?? 'intermediate';
         const plans = await db.select().from(refinishingPlans)
-          .where(and(eq(refinishingPlans.listingId, listing.listingId), eq(refinishingPlans.difficultyLevel, planDiff)));
+          .where(eq(refinishingPlans.listingId, listing.listingId));
         if (plans[0]) {
           const steps = typeof plans[0].steps === 'string' ? JSON.parse(plans[0].steps) : plans[0].steps;
           planData = {
@@ -110,7 +85,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
         }
       } catch {}
 
-      const prompt = buildRenderPrompt(listing.evaluation, option, planData);
+      const prompt = buildRenderPrompt(listing.evaluation, concept, planData);
 
       try {
         const falInput: Record<string, unknown> = {
@@ -121,8 +96,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
         if (referenceImageUrl) {
           falModel = 'fal-ai/flux/dev/image-to-image';
           falInput.image_url = referenceImageUrl;
-          // Strength controls how much the render deviates from the reference image
-          falInput.strength = option.difficulty === 'full' ? 0.75 : option.difficulty === 'moderate' ? 0.45 : 0.3;
+          falInput.strength = 0.45;
         } else {
           falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
         }
@@ -133,11 +107,11 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
 
         const imageUrl = result.data?.images?.[0]?.url;
         if (!imageUrl) {
-          errors.push({ node: 'render', message: `No image for listing ${listing.listingId} (${option.difficulty})`, timestamp: new Date().toISOString() });
+          errors.push({ node: 'render', message: `No image for listing ${listing.listingId} (${concept.finishType})`, timestamp: new Date().toISOString() });
           continue;
         }
 
-        const filename = `${listing.listingId}_${option.difficulty}.webp`;
+        const filename = `${listing.listingId}_${concept.finishType}.webp`;
         const filePath = path.join(CONCEPTS_DIR, filename);
         const relativePath = path.join('concepts', filename);
         const response = await fetch(imageUrl);
@@ -149,7 +123,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
           .set({ prompt, renderedImageUrl: imageUrl, localPath: relativePath })
           .where(and(
             eq(conceptRenders.listingId, listing.listingId),
-            eq(conceptRenders.difficulty, option.difficulty),
+            eq(conceptRenders.finishType, concept.finishType),
           ));
 
         // If no existing row (shouldn't happen, but handle gracefully), insert
@@ -157,12 +131,9 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
           await db.insert(conceptRenders).values({
             listingId: listing.listingId,
             agentRunId: state.runId,
-            difficulty: option.difficulty,
-            label: option.label,
-            summary: option.summary,
-            estimatedHours: option.estimatedHours,
-            estimatedMaterialCost: option.estimatedMaterialCost,
-            estimatedResalePrice: option.estimatedResalePrice,
+            finishType: concept.finishType,
+            label: concept.label,
+            summary: concept.summary,
             prompt,
             renderedImageUrl: imageUrl,
             localPath: relativePath,
@@ -171,16 +142,16 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
 
         renders.push({
           listingId: listing.listingId,
-          difficulty: option.difficulty,
+          finishType: concept.finishType,
           conceptImageUrl: imageUrl,
           localPath: relativePath,
           prompt,
         });
 
-        logger.info({ listingId: listing.listingId, difficulty: option.difficulty }, 'Concept render generated');
+        logger.info({ listingId: listing.listingId, finishType: concept.finishType }, 'Concept render generated');
       } catch (err) {
-        logger.error({ listingId: listing.listingId, difficulty: option.difficulty, error: String(err) }, 'Render failed');
-        errors.push({ node: 'render', message: `Listing ${listing.listingId} (${option.difficulty}): ${String(err)}`, timestamp: new Date().toISOString() });
+        logger.error({ listingId: listing.listingId, finishType: concept.finishType, error: String(err) }, 'Render failed');
+        errors.push({ node: 'render', message: `Listing ${listing.listingId} (${concept.finishType}): ${String(err)}`, timestamp: new Date().toISOString() });
       }
     }
   }

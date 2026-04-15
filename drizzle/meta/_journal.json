@@ -15,6 +15,13 @@
       "when": 1776041532678,
       "tag": "0001_normal_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1776355200000,
+      "tag": "0002_simplify_finish_concepts",
+      "breakpoints": true
     }
   ]
 }
