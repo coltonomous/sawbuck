@@ -1,12 +1,15 @@
 /**
  * Vector store backed by pgvector (Postgres extension).
  *
- * Single table: knowledge_chunks stores content, metadata, AND the
- * embedding vector. No separate knowledge_vec join table.
+ * Uses the Drizzle-managed `knowledge_chunks` table from schema.ts.
+ * Raw SQL is used only for vector similarity search (Drizzle lacks
+ * native pgvector operator support).
  */
 
 import { createHash } from 'crypto';
-import { pool } from '../db/index.js';
+import { db, pool } from '../db/index.js';
+import { knowledgeChunks } from '../db/schema.js';
+import { eq, and, sql, asc, count as drizzleCount } from 'drizzle-orm';
 import { DIMENSIONS } from './embeddings.js';
 import logger from '../lib/logger.js';
 import pgvector from 'pgvector';
@@ -31,62 +34,14 @@ export interface SearchResult extends KnowledgeChunk {
   distance: number;
 }
 
-let initialized = false;
+let extensionReady = false;
 
-/** Ensure pgvector extension and table exist. Safe to call multiple times. */
+/** Ensure pgvector extension exists. Table is managed by Drizzle. */
 export async function initStore(): Promise<void> {
-  if (initialized) return;
-
+  if (extensionReady) return;
   await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS knowledge_chunks (
-      id SERIAL PRIMARY KEY,
-      type TEXT NOT NULL CHECK(type IN ('project', 'product', 'guide')),
-      source TEXT NOT NULL,
-      title TEXT NOT NULL,
-      content TEXT NOT NULL,
-      metadata JSONB NOT NULL DEFAULT '{}',
-      content_hash TEXT,
-      embedding vector(${DIMENSIONS}),
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      last_accessed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(type, source, title)
-    )
-  `);
-
-  // Migration for existing installs: add embedding column if missing
-  await pool.query(`
-    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS embedding vector(${DIMENSIONS})
-  `);
-  await pool.query(`
-    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_hash TEXT
-  `);
-  await pool.query(`
-    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-  `);
-
-  // Migrate data from legacy knowledge_vec table if it exists
-  const legacyExists = await pool.query(`
-    SELECT 1 FROM information_schema.tables WHERE table_name = 'knowledge_vec'
-  `);
-  if (legacyExists.rows.length > 0) {
-    const migrated = await pool.query(`
-      UPDATE knowledge_chunks c
-      SET embedding = v.embedding
-      FROM knowledge_vec v
-      WHERE v.chunk_id = c.id AND c.embedding IS NULL
-    `);
-    if (migrated.rowCount && migrated.rowCount > 0) {
-      logger.info({ migrated: migrated.rowCount }, 'Migrated embeddings from knowledge_vec to knowledge_chunks');
-    }
-    // Drop the legacy table after migration
-    await pool.query('DROP TABLE IF EXISTS knowledge_vec');
-    logger.info('Dropped legacy knowledge_vec table');
-  }
-
-  initialized = true;
-  logger.info('RAG store initialized (single-table pgvector)');
+  extensionReady = true;
+  logger.info('RAG store initialized (pgvector extension ready)');
 }
 
 /**
@@ -102,6 +57,8 @@ export async function upsertChunk(
   const hash = contentHash(chunk.content);
   const embeddingSql = pgvector.toSql(Array.from(embedding));
 
+  // Use raw SQL for the upsert because Drizzle doesn't support
+  // vector columns in onConflictDoUpdate + WHERE clause
   const result = await pool.query(
     `INSERT INTO knowledge_chunks (type, source, title, content, metadata, content_hash, embedding)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -174,6 +131,8 @@ export async function upsertChunks(
 /**
  * Search for the k nearest chunks to a query embedding.
  * Optionally filter by chunk type.
+ *
+ * Uses raw SQL because Drizzle has no native pgvector operator support.
  */
 export async function search(
   queryEmbedding: Float32Array,
@@ -212,23 +171,23 @@ export async function search(
   const result = await pool.query(query, params);
 
   // Touch last_accessed_at for LRU eviction (fire-and-forget)
-  const hitIds = result.rows.map((r) => r.id).filter(Boolean);
+  const hitIds = result.rows.map((r: { id: number }) => r.id).filter(Boolean);
   if (hitIds.length > 0) {
-    pool.query(
-      `UPDATE knowledge_chunks SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ANY($1)`,
-      [hitIds],
-    ).catch(() => {}); // non-fatal
+    db.update(knowledgeChunks)
+      .set({ lastAccessedAt: new Date() })
+      .where(sql`${knowledgeChunks.id} = ANY(${hitIds})`)
+      .catch(() => {}); // non-fatal
   }
 
-  return result.rows.map((row) => ({
-    id: row.id,
+  return result.rows.map((row: Record<string, unknown>) => ({
+    id: row.id as number,
     type: row.type as ChunkType,
-    source: row.source,
-    title: row.title,
-    content: row.content,
-    metadata: row.metadata,
-    createdAt: row.created_at,
-    distance: row.distance,
+    source: row.source as string,
+    title: row.title as string,
+    content: row.content as string,
+    metadata: row.metadata as Record<string, unknown>,
+    createdAt: String(row.created_at),
+    distance: row.distance as number,
   }));
 }
 
@@ -236,22 +195,21 @@ export async function search(
 export async function chunkCount(type?: ChunkType): Promise<number> {
   await initStore();
 
-  const query = type
-    ? 'SELECT COUNT(*) as count FROM knowledge_chunks WHERE type = $1'
-    : 'SELECT COUNT(*) as count FROM knowledge_chunks';
-  const params = type ? [type] : [];
-  const result = await pool.query(query, params);
-  return parseInt(result.rows[0].count, 10);
+  const conditions = type ? eq(knowledgeChunks.type, type) : undefined;
+  const [result] = await db.select({ total: drizzleCount() })
+    .from(knowledgeChunks)
+    .where(conditions);
+
+  return result?.total ?? 0;
 }
 
 /** Delete all chunks of a given type. */
 export async function clearChunks(type: ChunkType): Promise<number> {
   await initStore();
 
-  const result = await pool.query(
-    'DELETE FROM knowledge_chunks WHERE type = $1',
-    [type],
-  );
+  const result = await db.delete(knowledgeChunks)
+    .where(eq(knowledgeChunks.type, type));
+
   return result.rowCount ?? 0;
 }
 
@@ -267,6 +225,7 @@ export async function evictExcess(type: ChunkType, maxCount: number): Promise<nu
   if (total <= maxCount) return 0;
 
   const excess = total - maxCount;
+  // Use raw SQL for the subquery delete (Drizzle doesn't support DELETE ... WHERE id IN (SELECT ...))
   const result = await pool.query(
     `DELETE FROM knowledge_chunks
      WHERE id IN (

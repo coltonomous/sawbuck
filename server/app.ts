@@ -4,6 +4,7 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { pinoLogger } from 'hono-pino';
 import { sql } from 'drizzle-orm';
+import { env } from './lib/env.js';
 import logger from './lib/logger.js';
 import { db } from './db/index.js';
 import { auth } from './auth.js';
@@ -15,8 +16,6 @@ import { comparablesRouter } from './routes/comparables.js';
 import { statsRouter } from './routes/stats.js';
 import { adminRouter } from './routes/admin.js';
 import { preferencesRouter } from './routes/preferences.js';
-
-const isProd = process.env.NODE_ENV === 'production';
 
 const app = new Hono();
 
@@ -33,7 +32,7 @@ app.use('*', secureHeaders({
 // In production the SPA is served same-origin via Caddy, so CORS is
 // only needed if a custom origin is explicitly configured.
 app.use('*', cors({
-  origin: process.env.CORS_ORIGIN || (isProd ? 'self' : 'http://localhost:5173'),
+  origin: env.corsOrigin ?? (env.isProd ? 'self' : 'http://localhost:5173'),
   credentials: true,
 }));
 
@@ -110,14 +109,19 @@ app.use('/api/*', requireAuth);
 // ── Admin-only routes ───────────────────────────────────────────────
 app.use('/api/admin/*', requireAdmin);
 
-// ── API routes ──────────────────────────────────────────────────────
-app.route('/api/listings', listingsRouter);
-app.route('/api/projects', projectsRouter);
-app.route('/api/scrapers', scrapersRouter);
-app.route('/api/comparables', comparablesRouter);
-app.route('/api/stats', statsRouter);
-app.route('/api/admin', adminRouter);
-app.route('/api/user/preferences', preferencesRouter);
+// ── API routes (typed for Hono RPC) ─────────────────────────────────
+const apiRoutes = new Hono()
+  .route('/listings', listingsRouter)
+  .route('/projects', projectsRouter)
+  .route('/scrapers', scrapersRouter)
+  .route('/comparables', comparablesRouter)
+  .route('/stats', statsRouter)
+  .route('/admin', adminRouter)
+  .route('/user/preferences', preferencesRouter);
+
+app.route('/api', apiRoutes);
+
+export type ApiRoutes = typeof apiRoutes;
 
 // ── Serve listing images with cache headers ─────────────────────────
 app.use('/images/*', async (c, next) => {
@@ -129,7 +133,7 @@ app.use('/images/*', async (c, next) => {
 app.use('/images/*', serveStatic({ root: './data/' }));
 
 // ── SPA serving in production ───────────────────────────────────────
-if (isProd) {
+if (env.isProd) {
   // Hashed assets (JS, CSS) — cache forever
   app.use('/assets/*', async (c, next) => {
     await next();

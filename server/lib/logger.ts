@@ -1,10 +1,9 @@
 import pino from 'pino';
-
-const isProd = process.env.NODE_ENV === 'production';
+import { env } from './env.js';
 
 const logger = pino({
-  level: process.env.LOG_LEVEL || (isProd ? 'info' : 'debug'),
-  ...(!isProd && { transport: { target: 'pino-pretty', options: { colorize: true } } }),
+  level: env.logLevel,
+  ...(!env.isProd && { transport: { target: 'pino-pretty', options: { colorize: true } } }),
 });
 
 export default logger;

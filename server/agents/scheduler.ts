@@ -21,7 +21,7 @@ async function runOnce(): Promise<void> {
       // Mark the timed-out run as failed in the DB
       if (currentRunId) {
         db.update(agentRuns)
-          .set({ status: 'failed', completedAt: new Date(), errorsCount: 1, errorDetails: JSON.stringify([{ node: 'scheduler', message: 'Run exceeded 1 hour timeout', timestamp: new Date().toISOString() }]) })
+          .set({ status: 'failed', completedAt: new Date(), errorsCount: 1, errorDetails: [{ node: 'scheduler', message: 'Run exceeded 1 hour timeout', timestamp: new Date().toISOString() }] })
           .where(eq(agentRuns.runId, currentRunId))
           .catch((err) => logger.warn({ error: String(err) }, 'Failed to mark timed-out run'));
       }
@@ -88,7 +88,7 @@ async function cleanupStaleRuns(): Promise<void> {
         status: 'failed',
         completedAt: new Date(),
         errorsCount: 1,
-        errorDetails: JSON.stringify([{ node: 'scheduler', message: 'Marked as failed on startup (previous process died)', timestamp: new Date().toISOString() }]),
+        errorDetails: [{ node: 'scheduler', message: 'Marked as failed on startup (previous process died)', timestamp: new Date().toISOString() }],
       })
       .where(eq(agentRuns.status, 'running'));
 

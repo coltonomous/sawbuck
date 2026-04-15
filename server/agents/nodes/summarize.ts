@@ -31,7 +31,7 @@ export async function summarizeRun(state: AgentState): Promise<Partial<AgentStat
         qualified: summary.qualified,
         rendered: summary.rendered,
         errorsCount: summary.errors,
-        errorDetails: state.errors.length > 0 ? JSON.stringify(state.errors) : null,
+        errorDetails: state.errors.length > 0 ? state.errors : null,
       })
       .where(eq(agentRuns.runId, state.runId));
 
@@ -49,7 +49,7 @@ export async function summarizeRun(state: AgentState): Promise<Partial<AgentStat
         qualified: summary.qualified,
         rendered: summary.rendered,
         errorsCount: summary.errors,
-        errorDetails: state.errors.length > 0 ? JSON.stringify(state.errors) : null,
+        errorDetails: state.errors.length > 0 ? state.errors : null,
       }).onConflictDoNothing();
     }
   } catch (err) {

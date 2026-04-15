@@ -2,12 +2,7 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { db } from './db/index.js';
 import * as schema from './db/schema.js';
-
-const isProd = process.env.NODE_ENV === 'production';
-
-if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 32) {
-  throw new Error('BETTER_AUTH_SECRET must be set and at least 32 characters');
-}
+import { env } from './lib/env.js';
 
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
@@ -19,16 +14,16 @@ export const auth = betterAuth({
       verification: schema.verifications,
     },
   }),
-  baseURL: process.env.BETTER_AUTH_URL || (isProd ? undefined : 'http://localhost:3001'),
-  secret: process.env.BETTER_AUTH_SECRET,
+  baseURL: env.betterAuthUrl ?? (env.isProd ? undefined : 'http://localhost:3001'),
+  secret: env.betterAuthSecret,
   emailAndPassword: {
     enabled: true,
   },
   socialProviders: {
-    ...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET ? {
+    ...(env.hasGoogleOAuth ? {
       google: {
-        clientId: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        clientId: env.googleClientId!,
+        clientSecret: env.googleClientSecret!,
         overrideUserInfoOnSignIn: true,
       },
     } : {}),

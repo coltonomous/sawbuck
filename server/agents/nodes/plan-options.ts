@@ -14,6 +14,7 @@ import { generateMaterialsFromPlanSync } from '../../analysis/sourcing.js';
 import { getListingImageUrlForFal } from '../../lib/images.js';
 import type { AgentState, FinishConcept, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
+import { env } from '../../lib/env.js';
 
 const CONCEPTS_DIR = 'data/images/concepts';
 
@@ -154,7 +155,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
       }
 
       // 3. Generate concept renders + persist concept_renders rows
-      const hasFal = !!process.env.FAL_KEY;
+      const hasFal = env.hasFal;
       if (hasFal) await fs.mkdir(CONCEPTS_DIR, { recursive: true }).catch(() => {});
 
       let referenceImageUrl: string | null = null;

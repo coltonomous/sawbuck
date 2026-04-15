@@ -10,11 +10,10 @@ function parseNumbers(row: Record<string, any>): Record<string, any> {
   return out;
 }
 
-export const statsRouter = new Hono();
-
-// Analytics includes both user-owned and agent-discovered listings
-// that the user can see (their own + agent listings with userId IS NULL)
-statsRouter.get('/', async (c) => {
+export const statsRouter = new Hono()
+  // Analytics includes both user-owned and agent-discovered listings
+  // that the user can see (their own + agent listings with userId IS NULL)
+  .get('/', async (c) => {
   const user = c.get('user');
   const userId = user.id;
 

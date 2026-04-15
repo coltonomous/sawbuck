@@ -162,7 +162,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     projectId: projectId ?? null,
     styleRecommendation: plan.style_recommendation,
     description: plan.description,
-    steps: JSON.stringify(plan.steps),
+    steps: plan.steps,
     estimatedHours: stepDerivedHours,
     estimatedMaterialCost: plan.estimated_material_cost,
     estimatedResalePrice: plan.estimated_resale_price,
@@ -171,8 +171,8 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     afterDescription: plan.after_description,
     rawResponse: response,
     ragSourcesUsed: ragChunksUsed,
-    ragSourceTitles: ragSourceTitles.length > 0 ? JSON.stringify(ragSourceTitles) : null,
-    ragSources: ragSources.length > 0 ? JSON.stringify(ragSources) : null,
+    ragSourceTitles: ragSourceTitles.length > 0 ? ragSourceTitles : null,
+    ragSources: ragSources.length > 0 ? ragSources : null,
   }).returning();
 
   logger.info({
@@ -186,9 +186,9 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
   return { plan, ragSourcesUsed: ragChunksUsed, ragSourceTitles, ragSources };
 }
 
-export function parsePlanSteps(stepsJson: string): RefinishingStep[] {
+export function parsePlanSteps(steps: unknown): RefinishingStep[] {
   try {
-    return z.array(StepSchema).parse(JSON.parse(stepsJson));
+    return z.array(StepSchema).parse(steps);
   } catch {
     return [];
   }

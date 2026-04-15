@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
+import { env } from '../lib/env.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
 import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
@@ -10,19 +11,43 @@ import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analys
 import { generateText } from '../lib/bedrock.js';
 import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
 import { getPrimaryImagePath } from '../lib/images.js';
-import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
+import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema, createProjectFromConceptSchema, projectQuerySchema } from '../lib/validation.js';
 import { tryIngestProject } from '../rag/ingest/projects.js';
 import { parseId, getOwnedProject, getEditableListing } from './helpers.js';
 import logger from '../lib/logger.js';
 
-export const projectsRouter = new Hono();
+async function recalculateFinancials(projectId: number) {
+  const project = await db.select().from(projects).where(eq(projects.id, projectId)).then(r => r[0]);
+  if (!project) return;
 
-// GET / — list all projects
-projectsRouter.get('/', async (c) => {
+  const mats = await getMaterialsForProject(projectId);
+  const purchased = mats.filter((m) => m.purchased);
+  const totalMaterialCost = purchased.length > 0
+    ? purchased.reduce((sum, m) => sum + (m.actualPrice ?? m.estimatedPrice ?? 0), 0)
+    : mats.reduce((sum, m) => sum + (m.estimatedPrice ?? 0), 0);
+
+  const laborCost = (project.hoursInvested ?? 0) * (project.hourlyRate ?? 25);
+  const totalCost = project.purchasePrice + totalMaterialCost + laborCost + (project.sellingFees ?? 0) + (project.shippingCost ?? 0);
+  const profit = (project.soldPrice ?? 0) - totalCost;
+  const roi = totalCost > 0 ? Math.round((profit / totalCost) * 10000) / 100 : 0;
+
+  await db.update(projects).set({
+    totalMaterialCost: Math.round(totalMaterialCost * 100) / 100,
+    totalCost: Math.round(totalCost * 100) / 100,
+    profit: project.soldPrice ? Math.round(profit * 100) / 100 : null,
+    roiPercentage: project.soldPrice ? roi : null,
+  }).where(eq(projects.id, projectId));
+}
+
+export const projectsRouter = new Hono()
+  // GET / — list all projects
+  .get('/', async (c) => {
   const user = c.get('user');
-  const { status } = c.req.query();
+  const queryParsed = projectQuerySchema.safeParse(c.req.query());
+  if (!queryParsed.success) return c.json({ error: queryParsed.error.issues[0].message }, 400);
+  const { status } = queryParsed.data;
   const conditions = [eq(projects.userId, user.id)];
-  if (status) conditions.push(eq(projects.status, status as 'acquired' | 'refinishing' | 'listed' | 'sold' | 'abandoned'));
+  if (status) conditions.push(eq(projects.status, status));
 
   const results = await db.select()
     .from(projects)
@@ -30,10 +55,9 @@ projectsRouter.get('/', async (c) => {
     .orderBy(desc(projects.createdAt));
 
   return c.json(results);
-});
-
+})
 // GET /:id — single project with listing, plan, and materials
-projectsRouter.get('/:id', async (c) => {
+.get('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -68,10 +92,9 @@ projectsRouter.get('/:id', async (c) => {
   }
 
   return c.json({ ...project, listing: listing ? { ...listing, images } : null, plan, plans: allPlans, concepts, materials: mats, photos });
-});
-
+})
 // POST / — create project from listing
-projectsRouter.post('/', async (c) => {
+.post('/', async (c) => {
   const user = c.get('user');
   const raw = await c.req.json();
   const parsed = createProjectSchema.safeParse(raw);
@@ -100,17 +123,14 @@ projectsRouter.post('/', async (c) => {
   });
 
   return c.json(project, 201);
-});
-
+})
 // POST /from-concept — create project + claim/generate plan in one step
-projectsRouter.post('/from-concept', async (c) => {
+.post('/from-concept', async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
-  const { listingId } = body;
-
-  if (!listingId) {
-    return c.json({ error: 'listingId is required' }, 400);
-  }
+  const parsed = createProjectFromConceptSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
+  const { listingId } = parsed.data;
 
   const listing = await getEditableListing(listingId, user.id);
   if (!listing) return c.json({ error: 'Listing not found' }, 404);
@@ -174,10 +194,9 @@ projectsRouter.post('/from-concept', async (c) => {
     logger.error({ err, listingId }, 'Error in from-concept flow');
     return c.json({ error: 'Failed to generate refinishing plan' }, 500);
   }
-});
-
+})
 // PATCH /:id — update project
-projectsRouter.patch('/:id', async (c) => {
+.patch('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -213,10 +232,9 @@ projectsRouter.patch('/:id', async (c) => {
   }
 
   return c.json(updated);
-});
-
+})
 // DELETE /:id — delete project and reset listing status
-projectsRouter.delete('/:id', async (c) => {
+.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -248,10 +266,9 @@ projectsRouter.delete('/:id', async (c) => {
   }
 
   return c.json({ ok: true });
-});
-
+})
 // POST /:id/refinish — generate refinishing plan
-projectsRouter.post('/:id/refinish', async (c) => {
+.post('/:id/refinish', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -299,13 +316,12 @@ projectsRouter.post('/:id/refinish', async (c) => {
     });
   } catch (err: unknown) {
     logger.error({ err, projectId: id }, 'Error generating refinishing plan');
-    const message = process.env.NODE_ENV === 'production' ? 'Failed to generate refinishing plan' : (err instanceof Error ? err.message : 'Unknown error');
+    const message = env.isProd ? 'Failed to generate refinishing plan' : (err instanceof Error ? err.message : 'Unknown error');
     return c.json({ error: message }, 500);
   }
-});
-
+})
 // POST /:id/listing-text — generate marketplace listing copy (cached)
-projectsRouter.post('/:id/listing-text', async (c) => {
+.post('/:id/listing-text', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -333,11 +349,8 @@ projectsRouter.post('/:id/listing-text', async (c) => {
   if (listing?.conditionNotes) context.push(`Original condition notes: ${listing.conditionNotes}`);
   if (listing?.description) context.push(`Original listing description: ${listing.description}`);
   if (plan?.description) context.push(`Refinishing plan summary: ${plan.description}`);
-  if (plan?.steps) {
-    const steps = typeof plan.steps === 'string' ? JSON.parse(plan.steps) : plan.steps;
-    if (Array.isArray(steps)) {
-      context.push(`Refinishing work done: ${steps.map((s: { name?: string; title?: string }) => s.name || s.title || '').filter(Boolean).join(', ')}`);
-    }
+  if (plan?.steps && Array.isArray(plan.steps)) {
+    context.push(`Refinishing work done: ${plan.steps.map((s: { name?: string; title?: string }) => s.name || s.title || '').filter(Boolean).join(', ')}`);
   }
   if (mats.length > 0) {
     const matNames = mats.map((m) => m.productName).filter(Boolean);
@@ -367,13 +380,12 @@ Rules:
     return c.json({ text });
   } catch (err: unknown) {
     logger.error({ err, projectId: id }, 'Error generating listing text');
-    const message = process.env.NODE_ENV === 'production' ? 'Failed to generate listing text' : (err instanceof Error ? err.message : 'Unknown error');
+    const message = env.isProd ? 'Failed to generate listing text' : (err instanceof Error ? err.message : 'Unknown error');
     return c.json({ error: message }, 500);
   }
-});
-
+})
 // GET /:id/refinish — get existing refinishing plan
-projectsRouter.get('/:id/refinish', async (c) => {
+.get('/:id/refinish', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -389,10 +401,9 @@ projectsRouter.get('/:id/refinish', async (c) => {
 
   const plan = plans[plans.length - 1];
   return c.json({ ...plan, steps: parsePlanSteps(plan.steps) });
-});
-
+})
 // GET /:id/materials — get materials for project
-projectsRouter.get('/:id/materials', async (c) => {
+.get('/:id/materials', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -402,10 +413,9 @@ projectsRouter.get('/:id/materials', async (c) => {
 
   const mats = await getMaterialsForProject(id);
   return c.json(mats);
-});
-
+})
 // PATCH /:id/materials/:materialId — update material (actual price, purchased)
-projectsRouter.patch('/:id/materials/:materialId', async (c) => {
+.patch('/:id/materials/:materialId', async (c) => {
   const user = c.get('user');
   const projectId = parseId(c);
   const materialId = parseId(c, 'materialId');
@@ -425,10 +435,9 @@ projectsRouter.patch('/:id/materials/:materialId', async (c) => {
 
   const updated = await db.select().from(materials).where(eq(materials.id, materialId)).then(r => r[0]);
   return c.json(updated);
-});
-
+})
 // PATCH /:id/costs — update cost-related fields
-projectsRouter.patch('/:id/costs', async (c) => {
+.patch('/:id/costs', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -465,36 +474,13 @@ projectsRouter.patch('/:id/costs', async (c) => {
   }
 
   return c.json(updated);
-});
-
-async function recalculateFinancials(projectId: number) {
-  const project = await db.select().from(projects).where(eq(projects.id, projectId)).then(r => r[0]);
-  if (!project) return;
-
-  const mats = await getMaterialsForProject(projectId);
-  const purchased = mats.filter((m) => m.purchased);
-  const totalMaterialCost = purchased.length > 0
-    ? purchased.reduce((sum, m) => sum + (m.actualPrice ?? m.estimatedPrice ?? 0), 0)
-    : mats.reduce((sum, m) => sum + (m.estimatedPrice ?? 0), 0);
-
-  const laborCost = (project.hoursInvested ?? 0) * (project.hourlyRate ?? 25);
-  const totalCost = project.purchasePrice + totalMaterialCost + laborCost + (project.sellingFees ?? 0) + (project.shippingCost ?? 0);
-  const profit = (project.soldPrice ?? 0) - totalCost;
-  const roi = totalCost > 0 ? Math.round((profit / totalCost) * 10000) / 100 : 0;
-
-  await db.update(projects).set({
-    totalMaterialCost: Math.round(totalMaterialCost * 100) / 100,
-    totalCost: Math.round(totalCost * 100) / 100,
-    profit: project.soldPrice ? Math.round(profit * 100) / 100 : null,
-    roiPercentage: project.soldPrice ? roi : null,
-  }).where(eq(projects.id, projectId));
-}
+})
 
 // ============================================================
 // Photos
 // ============================================================
 
-projectsRouter.get('/:id/photos', async (c) => {
+.get('/:id/photos', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -504,9 +490,8 @@ projectsRouter.get('/:id/photos', async (c) => {
 
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   return c.json(photos);
-});
-
-projectsRouter.post('/:id/photos', async (c) => {
+})
+.post('/:id/photos', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -551,9 +536,8 @@ projectsRouter.post('/:id/photos', async (c) => {
   }).returning();
 
   return c.json(photo, 201);
-});
-
-projectsRouter.delete('/:id/photos/:photoId', async (c) => {
+})
+.delete('/:id/photos/:photoId', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -572,10 +556,9 @@ projectsRouter.delete('/:id/photos/:photoId', async (c) => {
   }
 
   return c.json({ ok: true });
-});
-
+})
 // GET /pipeline — projects with listing primary image for kanban cards
-projectsRouter.get('/pipeline/all', async (c) => {
+.get('/pipeline/all', async (c) => {
   const user = c.get('user');
   const allProjects = await db.select()
     .from(projects)

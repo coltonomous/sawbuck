@@ -1,15 +1,9 @@
 import { useState } from 'react';
 import { type RefinishingPlan as RefinishingPlanType, type RagSource } from '../api';
 
-function parseRagSources(raw: string | null | undefined): RagSource[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((s: unknown) => s && typeof s === 'object' && 'title' in (s as object));
-  } catch {
-    return [];
-  }
+function parseRagSources(raw: RagSource[] | null | undefined): RagSource[] {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw.filter((s) => s && typeof s === 'object' && 'title' in s);
 }
 
 export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType }) {

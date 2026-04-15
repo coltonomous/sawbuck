@@ -9,16 +9,16 @@ import { z } from 'zod';
 import { config } from './config.js';
 import { withRetry as _withRetry } from './retry.js';
 import logger from './logger.js';
+import { env } from './env.js';
 
 let client: BedrockRuntimeClient | null = null;
 
 function getClient(): BedrockRuntimeClient {
   if (!client) {
-    const region = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
-    if (!region) {
+    if (!env.awsRegion) {
       throw new Error('AWS_REGION is required for Bedrock. Set AWS_REGION in your environment.');
     }
-    client = new BedrockRuntimeClient({ region });
+    client = new BedrockRuntimeClient({ region: env.awsRegion });
   }
   return client;
 }

@@ -113,7 +113,7 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
       continue;
     }
 
-    const metadata = JSON.parse(source.metadata || '{}');
+    const metadata = (source.metadata ?? {}) as Record<string, unknown>;
     const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = textChunks.map((content, i) => ({
       type: source.type as 'product' | 'guide',
       source: source.url,

@@ -7,6 +7,7 @@ import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '..
 import { triggerRun } from '../agents/scheduler.js';
 import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
 import { chunkCount } from '../rag/store.js';
+import { updateUserRoleSchema, deleteListingsSchema, updatePlatformSchema, updateRegionSchema, createRegionSchema } from '../lib/validation.js';
 
 // Derived from the DB key names used in agents/config.ts resolve*() calls.
 // Adding a new config option there automatically makes it settable here.
@@ -25,9 +26,8 @@ const settingsUpdateSchema = z.record(z.string(), z.string()).refine(
   { message: 'Unknown setting key' },
 );
 
-const adminRouter = new Hono();
-
-adminRouter.get('/users', async (c) => {
+const adminRouter = new Hono()
+  .get('/users', async (c) => {
   const allUsers = await db.select().from(users);
 
   const projectCounts = await db.select({
@@ -60,15 +60,13 @@ adminRouter.get('/users', async (c) => {
     clickCount: clickMap.get(u.id) ?? 0,
     createdAt: u.createdAt,
   })));
-});
-
-adminRouter.patch('/users/:id/role', async (c) => {
+})
+.patch('/users/:id/role', async (c) => {
   const id = c.req.param('id');
-  const { role } = await c.req.json<{ role: 'user' | 'admin' }>();
-
-  if (!['user', 'admin'].includes(role)) {
-    return c.json({ error: 'Invalid role' }, 400);
-  }
+  const body = await c.req.json();
+  const parsed = updateUserRoleSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
+  const { role } = parsed.data;
 
   const currentUser = c.get('user');
   if (id === currentUser.id && role !== 'admin') {
@@ -77,9 +75,8 @@ adminRouter.patch('/users/:id/role', async (c) => {
 
   await db.update(users).set({ role, updatedAt: new Date() }).where(eq(users.id, id));
   return c.json({ ok: true });
-});
-
-adminRouter.delete('/users/:id', async (c) => {
+})
+.delete('/users/:id', async (c) => {
   const id = c.req.param('id');
 
   const currentUser = c.get('user');
@@ -98,17 +95,15 @@ adminRouter.delete('/users/:id', async (c) => {
   await db.delete(users).where(eq(users.id, id));
 
   return c.json({ ok: true });
-});
-
+})
 // GET /settings — get all agent config (current resolved values + DB overrides)
-adminRouter.get('/settings', async (c) => {
+.get('/settings', async (c) => {
   const dbSettings = await getAllSettings();
   const resolved = getAgentConfig();
   return c.json({ resolved, overrides: dbSettings });
-});
-
+})
 // PATCH /settings — update agent config values
-adminRouter.patch('/settings', async (c) => {
+.patch('/settings', async (c) => {
   const body = await c.req.json();
   const parsed = settingsUpdateSchema.safeParse(body);
   if (!parsed.success) {
@@ -124,23 +119,21 @@ adminRouter.patch('/settings', async (c) => {
   }
 
   return c.json({ ok: true, resolved: getAgentConfig() });
-});
-
+})
 // POST /agent/run — manually trigger an agent pipeline run
-adminRouter.post('/agent/run', async (c) => {
+.post('/agent/run', async (c) => {
   const started = triggerRun();
   if (!started) {
     return c.json({ error: 'A run is already in progress' }, 409);
   }
   return c.json({ ok: true, message: 'Agent pipeline run started' });
-});
-
+})
 // DELETE /listings — bulk delete agent-discovered listings by IDs
-adminRouter.delete('/listings', async (c) => {
-  const { ids } = await c.req.json<{ ids: number[] }>();
-  if (!Array.isArray(ids) || ids.length === 0) {
-    return c.json({ error: 'ids array is required' }, 400);
-  }
+.delete('/listings', async (c) => {
+  const body = await c.req.json();
+  const parsed = deleteListingsSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
+  const { ids } = parsed.data;
 
   // Only allow deleting agent-discovered listings (userId IS NULL)
   const agentListings = await db.select({ id: listings.id })
@@ -156,88 +149,65 @@ adminRouter.delete('/listings', async (c) => {
   await db.delete(listings).where(inArray(listings.id, validIds));
 
   return c.json({ ok: true, deleted: validIds.length });
-});
-
+})
 // ── Platforms ───────────────────────────────────────────────────────
 
-adminRouter.get('/platforms', async (c) => {
+.get('/platforms', async (c) => {
   const all = await db.select().from(platformSettings);
   return c.json(all);
-});
-
-adminRouter.patch('/platforms/:platform', async (c) => {
+})
+.patch('/platforms/:platform', async (c) => {
   const platform = c.req.param('platform') as 'craigslist' | 'offerup' | 'ebay' | 'sawbuck';
-  const { enabled } = await c.req.json<{ enabled: boolean }>();
-  if (typeof enabled !== 'boolean') {
-    return c.json({ error: 'enabled must be a boolean' }, 400);
-  }
-  await db.update(platformSettings).set({ enabled }).where(eq(platformSettings.platform, platform));
+  const body = await c.req.json();
+  const parsed = updatePlatformSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
+  await db.update(platformSettings).set({ enabled: parsed.data.enabled }).where(eq(platformSettings.platform, platform));
   return c.json({ ok: true });
-});
-
+})
 // ── Regions ─────────────────────────────────────────────────────────
 
-const regionCreateSchema = z.object({
-  name: z.string().min(1).max(50),
-  latitude: z.number().min(-90).max(90),
-  longitude: z.number().min(-180).max(180),
-  radiusMiles: z.number().int().min(1).max(200).default(30),
-  clSubdomain: z.string().max(50).nullable().optional(),
-});
-
-adminRouter.get('/regions', async (c) => {
+.get('/regions', async (c) => {
   const all = await db.select().from(regions);
   return c.json(all);
-});
-
-adminRouter.post('/regions', async (c) => {
+})
+.post('/regions', async (c) => {
   const raw = await c.req.json();
-  const parsed = regionCreateSchema.safeParse(raw);
-  if (!parsed.success) {
-    return c.json({ error: parsed.error.issues[0].message }, 400);
-  }
+  const parsed = createRegionSchema.safeParse(raw);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
   const [created] = await db.insert(regions).values({
     name: parsed.data.name,
     latitude: parsed.data.latitude,
     longitude: parsed.data.longitude,
-    radiusMiles: parsed.data.radiusMiles,
+    radiusMiles: parsed.data.radiusMiles ?? 30,
     clSubdomain: parsed.data.clSubdomain ?? null,
   }).returning();
   return c.json(created, 201);
-});
-
-adminRouter.patch('/regions/:id', async (c) => {
+})
+.patch('/regions/:id', async (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   const body = await c.req.json();
-  const updates: Record<string, unknown> = {};
-  if (typeof body.enabled === 'boolean') updates.enabled = body.enabled;
-  if (typeof body.name === 'string') updates.name = body.name;
-  if (typeof body.latitude === 'number') updates.latitude = body.latitude;
-  if (typeof body.longitude === 'number') updates.longitude = body.longitude;
-  if (typeof body.radiusMiles === 'number') updates.radiusMiles = body.radiusMiles;
-  if (body.clSubdomain !== undefined) updates.clSubdomain = body.clSubdomain;
+  const parsed = updateRegionSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
 
-  if (Object.keys(updates).length === 0) {
+  if (Object.keys(parsed.data).length === 0) {
     return c.json({ error: 'No valid fields to update' }, 400);
   }
 
-  await db.update(regions).set(updates).where(eq(regions.id, id));
+  await db.update(regions).set(parsed.data).where(eq(regions.id, id));
   return c.json({ ok: true });
-});
-
-adminRouter.delete('/regions/:id', async (c) => {
+})
+.delete('/regions/:id', async (c) => {
   const id = parseInt(c.req.param('id'));
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   await db.delete(regions).where(eq(regions.id, id));
   return c.json({ ok: true });
-});
+})
 
 // ── Metrics / observability ────────────────────────────────────────
-const RECONCILE_OVERDUE_MS = 12 * 60 * 60 * 1000; // 12 hours
-const IMAGE_CLEANUP_OVERDUE_MS = 48 * 60 * 60 * 1000; // 48 hours
-
-adminRouter.get('/metrics', async (c) => {
+.get('/metrics', async (c) => {
+  const RECONCILE_OVERDUE_MS = 12 * 60 * 60 * 1000; // 12 hours
+  const IMAGE_CLEANUP_OVERDUE_MS = 48 * 60 * 60 * 1000; // 48 hours
   const [projectChunks, productChunks, guideChunks] = await Promise.all([
     chunkCount('project'),
     chunkCount('product'),

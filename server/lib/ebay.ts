@@ -1,8 +1,9 @@
 import { withRetry as _withRetry } from './retry.js';
 import logger from './logger.js';
+import { env } from './env.js';
 
-const EBAY_CLIENT_ID = process.env.EBAY_CLIENT_ID;
-const EBAY_CLIENT_SECRET = process.env.EBAY_CLIENT_SECRET;
+const EBAY_CLIENT_ID = env.ebayClientId;
+const EBAY_CLIENT_SECRET = env.ebayClientSecret;
 
 const TOKEN_URL = 'https://api.ebay.com/identity/v1/oauth2/token';
 const BROWSE_URL = 'https://api.ebay.com/buy/browse/v1/item_summary/search';

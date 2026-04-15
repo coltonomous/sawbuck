@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import logger from './logger.js';
+import { env } from './env.js';
 
 /**
  * Promote the user matching ADMIN_EMAIL to admin role.
@@ -9,7 +10,7 @@ import logger from './logger.js';
  * this is a no-op; they'll be promoted on the next restart after signup.
  */
 export async function promoteAdmin(): Promise<void> {
-  const email = process.env.ADMIN_EMAIL;
+  const email = env.adminEmail;
   if (!email) return;
 
   try {

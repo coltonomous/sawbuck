@@ -82,7 +82,7 @@ export interface Listing {
   estimatedValue: number | null;
   estimatedRefinishedValue: number | null;
   dealScore: number | null;
-  matchedSearchTerms: string | null;
+  matchedSearchTerms: string[] | null;
   fingerprint: string | null;
   analysisError: string | null;
   userId: string | null;
@@ -142,8 +142,8 @@ export interface RefinishingPlan {
   afterDescription: string | null;
   rawResponse: string | null;
   ragSourcesUsed: number | null;
-  ragSourceTitles: string | null;
-  ragSources: string | null;
+  ragSourceTitles: string[] | null;
+  ragSources: RagSource[] | null;
   createdAt: string;
 }
 
@@ -304,7 +304,7 @@ export interface AgentRun {
   qualified: number | null;
   rendered: number | null;
   errorsCount: number | null;
-  errorDetails: Array<{ node: string; message: string; timestamp: string }> | null;
+  errorDetails: { node: string; message: string; timestamp: string }[] | null;
 }
 
 // API client

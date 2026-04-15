@@ -2,12 +2,13 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { listings, listingImages, conceptRenders, refinishingPlans, materials, userDismissals, listingClicks, users } from '../db/schema.js';
 import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
+import { env } from '../lib/env.js';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
 import { processListingImages } from '../images/processor.js';
 import { calculatePricing } from '../analysis/pricing.js';
 import { getPrimaryImagePath, getPrimaryImagePaths } from '../lib/images.js';
-import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema, editSawbuckListingSchema } from '../lib/validation.js';
+import { updateListingSchema, bulkUpdateListingsSchema, importListingSchema, createSawbuckListingSchema, editSawbuckListingSchema, listingQuerySchema, renderConceptSchema } from '../lib/validation.js';
 import { parsePagination, buildOrderBy } from '../lib/pagination.js';
 import { fingerprint } from '../lib/fingerprint.js';
 import { backgroundJobs } from '../db/schema.js';
@@ -21,12 +22,18 @@ import { inArray } from 'drizzle-orm';
 import type { Platform } from '../../shared/constants.js';
 import { parseId, escapeLike, getVisibleListing, getEditableListing, getOwnedListing } from './helpers.js';
 
-export const listingsRouter = new Hono();
+// Per-user import rate limit: 5 imports per 10-minute sliding window
+const importHits = new Map<string, { count: number; resetAt: number }>();
+const IMPORT_LIMIT = 5;
+const IMPORT_WINDOW_MS = 10 * 60 * 1000;
 
-// GET / — list listings with filters
-listingsRouter.get('/', async (c) => {
+export const listingsRouter = new Hono()
+  // GET / — list listings with filters
+  .get('/', async (c) => {
   const user = c.get('user');
-  const { type, style, minScore, maxPrice, platform, status, search, mine } = c.req.query();
+  const queryParsed = listingQuerySchema.safeParse(c.req.query());
+  if (!queryParsed.success) return c.json({ error: queryParsed.error.issues[0].message }, 400);
+  const { type, style, minScore, maxPrice, platform, status, search, mine } = queryParsed.data;
   const pagination = parsePagination(c);
 
   const conditions = mine
@@ -64,11 +71,12 @@ listingsRouter.get('/', async (c) => {
     }
 
     if (userPrefs.preferredLatitude && userPrefs.preferredLongitude && userPrefs.preferredRadiusMiles) {
+      const radiusMeters = userPrefs.preferredRadiusMiles * 1609.34;
       conditions.push(
         or(
           sql`${listings.userId} IS NOT NULL`,
-          isNull(listings.latitude),
-          sql`(3959 * acos(cos(radians(${userPrefs.preferredLatitude})) * cos(radians(${listings.latitude})) * cos(radians(${listings.longitude}) - radians(${userPrefs.preferredLongitude})) + sin(radians(${userPrefs.preferredLatitude})) * sin(radians(${listings.latitude})))) <= ${userPrefs.preferredRadiusMiles}`,
+          isNull(listings.geo),
+          sql`ST_DWithin(${listings.geo}, ST_SetSRID(ST_MakePoint(${userPrefs.preferredLongitude}, ${userPrefs.preferredLatitude}), 4326)::geography, ${radiusMeters})`,
         )!,
       );
     }
@@ -93,22 +101,16 @@ listingsRouter.get('/', async (c) => {
       );
     }
 
-    if (userPrefs.stylePreferences) {
-      try {
-        const styles = JSON.parse(userPrefs.stylePreferences) as string[];
-        if (styles.length > 0) {
-          const styleConditions = styles.map((s) => sql`${listings.furnitureStyle} LIKE ${'%' + escapeLike(s) + '%'} ESCAPE '\\'`);
-          conditions.push(
-            or(
-              sql`${listings.userId} IS NOT NULL`,
-              isNull(listings.furnitureStyle),
-              or(...styleConditions)!,
-            )!,
-          );
-        }
-      } catch {
-        // invalid JSON, skip style filtering
-      }
+    if (userPrefs.stylePreferences && userPrefs.stylePreferences.length > 0) {
+      const styles = userPrefs.stylePreferences;
+      const styleConditions = styles.map((s) => sql`${listings.furnitureStyle} LIKE ${'%' + escapeLike(s) + '%'} ESCAPE '\\'`);
+      conditions.push(
+        or(
+          sql`${listings.userId} IS NOT NULL`,
+          isNull(listings.furnitureStyle),
+          or(...styleConditions)!,
+        )!,
+      );
     }
   }
   if (type) conditions.push(eq(listings.furnitureType, type));
@@ -199,15 +201,10 @@ listingsRouter.get('/', async (c) => {
   }));
 
   return c.json({ listings: enriched, total });
-});
-
-// Per-user import rate limit: 5 imports per 10-minute sliding window
-const importHits = new Map<string, { count: number; resetAt: number }>();
-const IMPORT_LIMIT = 5;
-const IMPORT_WINDOW_MS = 10 * 60 * 1000;
+})
 
 // POST /import — import a listing by pasting its URL
-listingsRouter.post('/import', async (c) => {
+.post('/import', async (c) => {
   const user = c.get('user');
 
   // Enforce per-user import rate limit
@@ -296,7 +293,7 @@ listingsRouter.post('/import', async (c) => {
     platform: match.platform,
     url,
     title: '(imported — loading details…)',
-    matchedSearchTerms: JSON.stringify(['manual-import']),
+    matchedSearchTerms: ['manual-import'],
     fingerprint: fingerprint({ platform: match.platform, title: externalId }),
     userId: user.id,
   }).returning();
@@ -359,10 +356,9 @@ listingsRouter.post('/import', async (c) => {
   })();
 
   return c.json({ listing: { ...listing, images }, alreadyExists: false }, 201);
-});
-
+})
 // POST /create — create a user-posted sawbuck listing (multipart with photos)
-listingsRouter.post('/create', async (c) => {
+.post('/create', async (c) => {
   const user = c.get('user');
   const formData = await c.req.formData();
 
@@ -480,10 +476,9 @@ listingsRouter.post('/create', async (c) => {
   })();
 
   return c.json({ listing: { ...inserted, images } }, 201);
-});
-
+})
 // PATCH /create/:id — edit a user-posted sawbuck listing
-listingsRouter.patch('/create/:id', async (c) => {
+.patch('/create/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -501,10 +496,9 @@ listingsRouter.patch('/create/:id', async (c) => {
   await db.update(listings).set(parsed.data).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
   const updated = await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]);
   return c.json(updated);
-});
-
+})
 // GET /:id — single listing with images (auto-enriches if missing details)
-listingsRouter.get('/:id', async (c) => {
+.get('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -552,15 +546,7 @@ listingsRouter.get('/:id', async (c) => {
   const listingPlans = await db.select()
     .from(refinishingPlans)
     .where(and(eq(refinishingPlans.listingId, id), isNull(refinishingPlans.projectId)));
-  const parsedPlans = listingPlans.map((p) => {
-    let steps;
-    try {
-      steps = typeof p.steps === 'string' ? JSON.parse(p.steps) : p.steps;
-    } catch {
-      steps = [];
-    }
-    return { ...p, steps };
-  });
+  const parsedPlans = listingPlans;
 
   // Load materials for those plans
   const planIds = listingPlans.map((p) => p.id);
@@ -575,10 +561,9 @@ listingsRouter.get('/:id', async (c) => {
     plans: parsedPlans.length > 0 ? parsedPlans : null,
     materials: listingMaterials.length > 0 ? listingMaterials : null,
   });
-});
-
+})
 // PATCH /bulk — bulk update listings
-listingsRouter.patch('/bulk', async (c) => {
+.patch('/bulk', async (c) => {
   const user = c.get('user');
   const raw = await c.req.json();
   const parsed = bulkUpdateListingsSchema.safeParse(raw);
@@ -598,10 +583,9 @@ listingsRouter.patch('/bulk', async (c) => {
   });
 
   return c.json({ updated: result.rowCount ?? 0 });
-});
-
+})
 // PATCH /:id — update listing
-listingsRouter.patch('/:id', async (c) => {
+.patch('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -618,20 +602,18 @@ listingsRouter.patch('/:id', async (c) => {
   const updated = await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]);
 
   return c.json(updated);
-});
-
+})
 // POST /:id/click — track when user clicks to view the original listing
-listingsRouter.post('/:id/click', async (c) => {
+.post('/:id/click', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
   await db.insert(listingClicks).values({ userId: user.id, listingId: id });
   return c.json({ ok: true });
-});
-
+})
 // POST /:id/dismiss — dismiss a listing for the current user (per-user, not global)
-listingsRouter.post('/:id/dismiss', async (c) => {
+.post('/:id/dismiss', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -642,10 +624,9 @@ listingsRouter.post('/:id/dismiss', async (c) => {
   }).onConflictDoNothing();
 
   return c.json({ ok: true });
-});
-
+})
 // DELETE /:id/dismiss — undismiss a listing for the current user
-listingsRouter.delete('/:id/dismiss', async (c) => {
+.delete('/:id/dismiss', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -655,10 +636,9 @@ listingsRouter.delete('/:id/dismiss', async (c) => {
   );
 
   return c.json({ ok: true });
-});
-
+})
 // DELETE /:id — delete a listing (owner only)
-listingsRouter.delete('/:id', async (c) => {
+.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -677,10 +657,9 @@ listingsRouter.delete('/:id', async (c) => {
   await db.delete(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
 
   return c.json({ ok: true });
-});
-
+})
 // POST /:id/analyze — kick off analysis in background, return 202
-listingsRouter.post('/:id/analyze', async (c) => {
+.post('/:id/analyze', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -713,19 +692,17 @@ listingsRouter.post('/:id/analyze', async (c) => {
   })();
 
   return c.json({ status: 'analyzing', jobId }, 202);
-});
-
+})
 // GET /jobs/:jobId — poll analysis job status
-listingsRouter.get('/jobs/:jobId', async (c) => {
+.get('/jobs/:jobId', async (c) => {
   const user = c.get('user');
   const jobId = c.req.param('jobId');
   const job = await db.select().from(backgroundJobs).where(and(eq(backgroundJobs.id, jobId), eq(backgroundJobs.userId, user.id))).then(r => r[0]);
   if (!job) return c.json({ error: 'Not found' }, 404);
   return c.json(job);
-});
-
+})
 // POST /:id/render — generate concept render on demand for a listing
-listingsRouter.post('/:id/render', async (c) => {
+.post('/:id/render', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -737,14 +714,16 @@ listingsRouter.post('/:id/render', async (c) => {
     return c.json({ error: 'Listing must be analyzed before generating concepts' }, 422);
   }
 
-  if (!process.env.FAL_KEY) {
+  if (!env.hasFal) {
     return c.json({ error: 'Concept rendering is not configured (FAL_KEY not set)' }, 503);
   }
 
   const body = await c.req.json().catch(() => ({}));
-  const finishType = (body.finishType as string) || 'stain';
-  const label = (body.label as string) || finishType;
-  const summary = (body.summary as string) || '';
+  const parsed = renderConceptSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: parsed.error.issues[0].message }, 400);
+  const { finishType, label: rawLabel, summary: rawSummary } = parsed.data;
+  const label = rawLabel ?? finishType;
+  const summary = rawSummary ?? '';
 
   // Check if a render already exists for this listing + finishType
   const existing = await db.select().from(conceptRenders)
@@ -839,10 +818,9 @@ listingsRouter.post('/:id/render', async (c) => {
     logger.error({ listingId: id, finishType, error: String(err) }, 'On-demand concept render failed');
     return c.json({ error: 'Failed to generate concept render' }, 500);
   }
-});
-
+})
 // POST /:id/generate-concepts — generate refinishing concept options for a listing
-listingsRouter.post('/:id/generate-concepts', async (c) => {
+.post('/:id/generate-concepts', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
@@ -902,11 +880,9 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
     logger.error({ listingId: id, error: String(err) }, 'On-demand concept generation failed');
     return c.json({ error: 'Failed to generate concepts' }, 500);
   }
-});
-
-
+})
 // GET /:id/price — get or calculate pricing
-listingsRouter.get('/:id/price', async (c) => {
+.get('/:id/price', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);

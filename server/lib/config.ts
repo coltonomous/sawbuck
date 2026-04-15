@@ -1,3 +1,8 @@
+import { env } from './env.js';
+
+// Lazy import to break circular dependency (config → agents/config → lib/logger → env)
+let _getAgentConfig: (() => { evaluationModel: string }) | undefined;
+
 export const config = {
   images: {
     maxSizeBytes: 10 * 1024 * 1024, // 10 MB
@@ -11,14 +16,16 @@ export const config = {
     baseDelayMs: 1000,
     maxAnalysisImages: 3,
     maxTokens: 4000,
-    // Default model — reads from agent config (DB-backed, env fallback)
     get model(): string {
-      try {
-        const { getAgentConfig } = require('../agents/config.js');
-        return getAgentConfig().evaluationModel;
-      } catch {
-        return process.env.AGENT_EVAL_MODEL || 'qwen.qwen3-vl-235b-a22b';
+      if (!_getAgentConfig) {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-require-imports
+          _getAgentConfig = (require('../agents/config.js') as { getAgentConfig: typeof _getAgentConfig }).getAgentConfig;
+        } catch {
+          return env.agentEvalModel;
+        }
       }
+      return _getAgentConfig!().evaluationModel;
     },
   },
 };

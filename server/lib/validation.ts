@@ -153,3 +153,81 @@ export const searchComparablesSchema = z.object({
 }).refine(data => data.listingId || data.query, {
   message: 'Either listingId or query is required',
 });
+
+// ============================================================
+// Listing query params
+// ============================================================
+
+export const listingQuerySchema = z.object({
+  type: z.string().max(100).optional(),
+  style: z.string().max(100).optional(),
+  minScore: z.coerce.number().nonnegative().optional(),
+  maxPrice: z.coerce.number().nonnegative().optional(),
+  platform: z.enum(['craigslist', 'offerup', 'ebay', 'sawbuck']).optional(),
+  status: listingStatus.optional(),
+  search: z.string().max(200).optional(),
+  mine: z.string().optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+  sortBy: z.string().max(50).optional(),
+  sortDir: z.enum(['asc', 'desc']).optional(),
+});
+
+// ============================================================
+// Render concept
+// ============================================================
+
+export const renderConceptSchema = z.object({
+  finishType: z.string().min(1).max(50).default('stain'),
+  label: z.string().max(100).optional(),
+  summary: z.string().max(500).optional(),
+});
+
+// ============================================================
+// Projects — from concept
+// ============================================================
+
+export const createProjectFromConceptSchema = z.object({
+  listingId: z.number().int().positive(),
+});
+
+// ============================================================
+// Project query params
+// ============================================================
+
+export const projectQuerySchema = z.object({
+  status: z.enum(['acquired', 'refinishing', 'listed', 'sold', 'abandoned']).optional(),
+});
+
+// ============================================================
+// Admin
+// ============================================================
+
+export const updateUserRoleSchema = z.object({
+  role: z.enum(['user', 'admin']),
+});
+
+export const deleteListingsSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1),
+});
+
+export const updatePlatformSchema = z.object({
+  enabled: z.boolean(),
+});
+
+export const updateRegionSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  latitude: z.number().min(-90).max(90).optional(),
+  longitude: z.number().min(-180).max(180).optional(),
+  radiusMiles: z.number().int().min(1).max(500).optional(),
+  clSubdomain: z.string().max(100).nullable().optional(),
+  enabled: z.boolean().optional(),
+});
+
+export const createRegionSchema = z.object({
+  name: z.string().min(1).max(200),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  radiusMiles: z.number().int().min(1).max(500).optional(),
+  clSubdomain: z.string().max(100).nullable().optional(),
+});

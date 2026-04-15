@@ -105,10 +105,10 @@ export async function discoverKnowledge(state: AgentState): Promise<Partial<Agen
           type: 'guide',
           url,
           title: `${gap.furnitureType} ${gap.woodSpecies ?? ''} refinishing guide`.trim(),
-          metadata: JSON.stringify({
+          metadata: {
             autoDiscoveredFrom: 'knowledge-gap-detection',
             gap: { furnitureType: gap.furnitureType, woodSpecies: gap.woodSpecies },
-          }),
+          },
           autoDiscovered: true,
         }).onConflictDoNothing();
 

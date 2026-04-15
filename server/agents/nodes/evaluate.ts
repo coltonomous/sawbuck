@@ -1,6 +1,7 @@
 import { db } from '../../db/index.js';
 import { listings, listingImages } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
+import { env } from '../../lib/env.js';
 import { analyzeListing } from '../../analysis/vision.js';
 import { downloadListingImages } from '../../images/downloader.js';
 import { processListingImages } from '../../images/processor.js';
@@ -113,7 +114,7 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
 
       // Skip pricing if eBay creds not configured
       let pricing: PricingResult | null = null;
-      if (process.env.EBAY_CLIENT_ID && process.env.EBAY_CLIENT_SECRET) {
+      if (env.hasEbay) {
         pricing = await calculatePricing(listingId);
       }
 

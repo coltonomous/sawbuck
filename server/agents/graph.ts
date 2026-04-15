@@ -89,8 +89,10 @@ const graph = new StateGraph(AgentAnnotation)
   })
   .addEdge('summarize', END);
 
+import { env } from '../lib/env.js';
+
 const checkpointer = PostgresSaver.fromConnString(
-  process.env.DATABASE_URL!,
+  env.databaseUrl,
 );
 
 // Initialize checkpoint tables (idempotent — safe to call on every startup)

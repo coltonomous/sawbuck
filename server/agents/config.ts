@@ -2,6 +2,7 @@ import { db } from '../db/index.js';
 import { appSettings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import logger from '../lib/logger.js';
+import { env } from '../lib/env.js';
 
 // In-memory cache of DB settings, refreshed periodically
 let settingsCache: Map<string, string> = new Map();
@@ -22,19 +23,21 @@ function cached(key: string): string | undefined {
   return settingsCache.get(key);
 }
 
-// Resolution order: DB setting → env var → hardcoded default
-function resolve(dbKey: string, envKey: string, fallback: string): string {
-  return cached(dbKey) || process.env[envKey] || fallback;
+// Resolution order: DB setting → validated env value → hardcoded default
+function resolve(dbKey: string, envVal: string | undefined, fallback: string): string {
+  return cached(dbKey) ?? envVal ?? fallback;
 }
 
-function resolveInt(dbKey: string, envKey: string, fallback: number): number {
-  const val = cached(dbKey) || process.env[envKey];
-  return val ? parseInt(val, 10) : fallback;
+function resolveInt(dbKey: string, envVal: number | undefined, fallback: number): number {
+  const dbVal = cached(dbKey);
+  if (dbVal) return parseInt(dbVal, 10);
+  return envVal ?? fallback;
 }
 
-function resolveFloat(dbKey: string, envKey: string, fallback: number): number {
-  const val = cached(dbKey) || process.env[envKey];
-  return val ? parseFloat(val) : fallback;
+function resolveFloat(dbKey: string, envVal: number | undefined, fallback: number): number {
+  const dbVal = cached(dbKey);
+  if (dbVal) return parseFloat(dbVal);
+  return envVal ?? fallback;
 }
 
 /** Refresh the settings cache. Called by scheduler before each run. */
@@ -46,39 +49,39 @@ export async function refreshAgentConfig(): Promise<void> {
 export function getAgentConfig() {
   return {
     // Per-run caps
-    maxTriages: resolveInt('agent.max_triages', 'AGENT_MAX_TRIAGES', 50),
-    maxEvals: resolveInt('agent.max_evals', 'AGENT_MAX_EVALS', 10),
+    maxTriages: resolveInt('agent.max_triages', env.agentMaxTriages, 50),
+    maxEvals: resolveInt('agent.max_evals', env.agentMaxEvals, 10),
     // Quality gates
-    triageConfidenceThreshold: resolveFloat('agent.triage_threshold', 'AGENT_TRIAGE_THRESHOLD', 0.75),
-    dealScoreThreshold: resolveFloat('agent.deal_score_threshold', 'AGENT_DEAL_SCORE_THRESHOLD', 1.3),
+    triageConfidenceThreshold: resolveFloat('agent.triage_threshold', env.agentTriageThreshold, 0.75),
+    dealScoreThreshold: resolveFloat('agent.deal_score_threshold', env.agentDealScoreThreshold, 1.3),
     flipRecommendationThreshold: ['strong_buy', 'buy'] as const,
 
     // Anti-blocking
-    minDelayBetweenRequestsMs: resolveInt('agent.min_delay_ms', 'AGENT_MIN_DELAY_MS', 1500),
-    maxDelayBetweenRequestsMs: resolveInt('agent.max_delay_ms', 'AGENT_MAX_DELAY_MS', 4000),
+    minDelayBetweenRequestsMs: resolveInt('agent.min_delay_ms', env.agentMinDelayMs, 1500),
+    maxDelayBetweenRequestsMs: resolveInt('agent.max_delay_ms', env.agentMaxDelayMs, 4000),
     backoffBaseMs: 30_000,
     backoffMaxMs: 600_000,
-    dailyRequestCap: resolveInt('agent.daily_request_cap', 'AGENT_DAILY_REQUEST_CAP', 200),
+    dailyRequestCap: resolveInt('agent.daily_request_cap', env.agentDailyRequestCap, 200),
 
     // Scheduling
-    runIntervalMs: resolveInt('agent.run_interval_ms', 'AGENT_RUN_INTERVAL_MS', 4 * 60 * 60 * 1000),
+    runIntervalMs: resolveInt('agent.run_interval_ms', env.agentRunIntervalMs, 4 * 60 * 60 * 1000),
 
     // Target
-    targetCity: resolve('agent.target_city', 'AGENT_TARGET_CITY', 'seattle'),
+    targetCity: resolve('agent.target_city', env.agentTargetCity, 'seattle'),
 
     // Models
-    triageModel: resolve('agent.triage_model', 'AGENT_TRIAGE_MODEL', 'qwen.qwen3-32b-v1:0'),
-    evaluationModel: resolve('agent.eval_model', 'AGENT_EVAL_MODEL', 'qwen.qwen3-vl-235b-a22b'),
+    triageModel: resolve('agent.triage_model', env.agentTriageModel, 'qwen.qwen3-32b-v1:0'),
+    evaluationModel: resolve('agent.eval_model', env.agentEvalModel, 'qwen.qwen3-vl-235b-a22b'),
 
     // fal.ai
-    falModel: resolve('agent.fal_model', 'AGENT_FAL_MODEL', 'fal-ai/flux/dev'),
-    conceptRenderSize: resolveInt('agent.concept_size', 'AGENT_CONCEPT_SIZE', 768),
+    falModel: resolve('agent.fal_model', env.agentFalModel, 'fal-ai/flux/dev'),
+    conceptRenderSize: resolveInt('agent.concept_size', env.agentConceptSize, 768),
 
     // Image retention
-    agentImageRetentionDays: resolveInt('agent.image_retention_days', 'AGENT_IMAGE_RETENTION_DAYS', 14),
+    agentImageRetentionDays: resolveInt('agent.image_retention_days', env.agentImageRetentionDays, 14),
 
     // RAG knowledge base bounds (per-type chunk limit)
-    ragMaxChunksPerType: resolveInt('rag.max_chunks_per_type', 'RAG_MAX_CHUNKS_PER_TYPE', 500),
+    ragMaxChunksPerType: resolveInt('rag.max_chunks_per_type', env.ragMaxChunksPerType, 500),
   };
 }
 

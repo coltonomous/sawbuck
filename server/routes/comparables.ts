@@ -6,10 +6,9 @@ import { searchEbayComps, type CompSearchParams } from '../lib/ebay-comps.js';
 import { searchComparablesSchema } from '../lib/validation.js';
 import { parseId, getVisibleListing } from './helpers.js';
 
-export const comparablesRouter = new Hono();
-
-// POST /search — search for comparables
-comparablesRouter.post('/search', async (c) => {
+export const comparablesRouter = new Hono()
+  // POST /search — search for comparables
+  .post('/search', async (c) => {
   const user = c.get('user');
   const raw = await c.req.json();
   const parsed = searchComparablesSchema.safeParse(raw);
@@ -48,10 +47,9 @@ comparablesRouter.post('/search', async (c) => {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return c.json({ error: message }, 500);
   }
-});
-
-// GET /:listingId — get stored comparables for a listing
-comparablesRouter.get('/:listingId', async (c) => {
+})
+  // GET /:listingId — get stored comparables for a listing
+  .get('/:listingId', async (c) => {
   const user = c.get('user');
   const listingId = parseId(c, 'listingId');
   if (isNaN(listingId)) return c.json({ error: 'Invalid ID' }, 400);

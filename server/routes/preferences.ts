@@ -4,8 +4,6 @@ import { db } from '../db/index.js';
 import { users } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 
-export const preferencesRouter = new Hono();
-
 const updatePreferencesSchema = z.object({
   preferredLatitude: z.number().min(-90).max(90).nullable().optional(),
   preferredLongitude: z.number().min(-180).max(180).nullable().optional(),
@@ -23,8 +21,9 @@ const updatePreferencesSchema = z.object({
   { message: 'Latitude and longitude must be provided together', path: ['preferredLatitude'] },
 );
 
-// GET /api/user/preferences
-preferencesRouter.get('/', async (c) => {
+export const preferencesRouter = new Hono()
+  // GET /api/user/preferences
+  .get('/', async (c) => {
   const user = c.get('user');
   const row = await db.select({
     preferredLatitude: users.preferredLatitude,
@@ -38,20 +37,10 @@ preferencesRouter.get('/', async (c) => {
 
   if (!row) return c.json({ error: 'User not found' }, 404);
 
-  let stylePreferences = null;
-  if (row.stylePreferences) {
-    try {
-      stylePreferences = JSON.parse(row.stylePreferences);
-    } catch {
-      // Corrupted JSON — treat as empty
-    }
-  }
-
-  return c.json({ ...row, stylePreferences });
-});
-
-// PATCH /api/user/preferences
-preferencesRouter.patch('/', async (c) => {
+  return c.json(row);
+})
+  // PATCH /api/user/preferences
+  .patch('/', async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
   const parsed = updatePreferencesSchema.safeParse(body);
@@ -74,7 +63,7 @@ preferencesRouter.patch('/', async (c) => {
   if (data.shopSpace !== undefined) updates.shopSpace = data.shopSpace;
   if (data.experienceLevel !== undefined) updates.experienceLevel = data.experienceLevel;
   if (data.stylePreferences !== undefined) {
-    updates.stylePreferences = data.stylePreferences ? JSON.stringify(data.stylePreferences) : null;
+    updates.stylePreferences = data.stylePreferences ?? null;
   }
 
   if (Object.keys(updates).length === 0) {

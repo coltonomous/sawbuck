@@ -1,5 +1,47 @@
-import { pgTable, text, integer, real, serial, boolean, timestamp, uniqueIndex, index, unique } from 'drizzle-orm/pg-core';
+import { pgTable, text, integer, real, serial, boolean, timestamp, uniqueIndex, index, unique, jsonb, customType } from 'drizzle-orm/pg-core';
 import { sql } from 'drizzle-orm';
+
+// ── Custom pgvector type ───────────────────────────────────────────
+const vector = (name: string, dimensions: number) =>
+  customType<{ data: number[]; driverParam: string }>({
+    dataType: () => `vector(${dimensions})`,
+    toDriver: (value: number[]) => `[${value.join(',')}]`,
+    fromDriver: (value: string) =>
+      value.replace(/^\[|\]$/g, '').split(',').map(Number),
+  })(name);
+
+// ── Custom PostGIS geography type ──────────────────────────────────
+// Stores a POINT(lng lat) geography. Drizzle reads/writes it as raw
+// hex (EWKB). Insert/update goes through ST_SetSRID + ST_MakePoint
+// in a trigger, so this column is populated automatically from lat/lng.
+const geography = (name: string) =>
+  customType<{ data: string; driverParam: string }>({
+    dataType: () => `geography(Point, 4326)`,
+    toDriver: (value: string) => value,
+    fromDriver: (value: string) => value,
+  })(name);
+
+// ── JSON column types ──────────────────────────────────────────────
+export interface RefinishingStepJson {
+  order: number;
+  title: string;
+  description: string;
+  duration_minutes: number;
+  products: { name: string; brand: string; quantity: number; unit: string; estimated_price: number }[];
+  tips: string[];
+}
+
+export interface RagSourceRefJson {
+  title: string;
+  source: string;
+  type: string;
+}
+
+export interface AgentErrorJson {
+  node: string;
+  message: string;
+  timestamp: string;
+}
 
 // ============================================================
 // Auth (better-auth)
@@ -20,7 +62,7 @@ export const users = pgTable('users', {
   maxBudget: real('max_budget'),
   shopSpace: text('shop_space', { enum: ['small_workshop', 'one_car_garage', 'two_car_garage', 'full_shop'] }),
   experienceLevel: text('experience_level', { enum: ['beginner', 'intermediate', 'advanced'] }),
-  stylePreferences: text('style_preferences'),
+  stylePreferences: jsonb('style_preferences').$type<string[]>(),
 
   createdAt: timestamp('created_at').notNull(),
   updatedAt: timestamp('updated_at').notNull(),
@@ -79,6 +121,7 @@ export const listings = pgTable('listings', {
   location: text('location'),
   latitude: real('latitude'),
   longitude: real('longitude'),
+  geo: geography('geo'),
   sellerName: text('seller_name'),
   postedAt: timestamp('posted_at'),
   scrapedAt: timestamp('scraped_at').notNull().defaultNow(),
@@ -97,7 +140,7 @@ export const listings = pgTable('listings', {
   estimatedRefinishedValue: real('estimated_refinished_value'),
   dealScore: real('deal_score'),
 
-  matchedSearchTerms: text('matched_search_terms'),
+  matchedSearchTerms: jsonb('matched_search_terms').$type<string[]>(),
   fingerprint: text('fingerprint'),
   analysisError: text('analysis_error'),
 
@@ -199,7 +242,7 @@ export const refinishingPlans = pgTable('refinishing_plans', {
   projectId: integer('project_id').references(() => projects.id, { onDelete: 'set null' }),
   styleRecommendation: text('style_recommendation'),
   description: text('description'),
-  steps: text('steps').notNull(),
+  steps: jsonb('steps').notNull().$type<RefinishingStepJson[]>(),
   estimatedHours: real('estimated_hours'),
   estimatedMaterialCost: real('estimated_material_cost'),
   estimatedResalePrice: real('estimated_resale_price'),
@@ -208,8 +251,8 @@ export const refinishingPlans = pgTable('refinishing_plans', {
   afterDescription: text('after_description'),
   rawResponse: text('raw_response'),
   ragSourcesUsed: integer('rag_sources_used').default(0),
-  ragSourceTitles: text('rag_source_titles'),
-  ragSources: text('rag_sources'),
+  ragSourceTitles: jsonb('rag_source_titles').$type<string[]>(),
+  ragSources: jsonb('rag_sources').$type<RagSourceRefJson[]>(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   userId: text('user_id').references(() => users.id, { onDelete: 'cascade' }),
 }, (table) => [
@@ -315,8 +358,8 @@ export const agentRuns = pgTable('agent_runs', {
   qualified: integer('qualified').default(0),
   rendered: integer('rendered').default(0),
   errorsCount: integer('errors_count').default(0),
-  errorDetails: text('error_details'),
-  config: text('config'),
+  errorDetails: jsonb('error_details').$type<AgentErrorJson[]>(),
+  config: jsonb('config').$type<Record<string, unknown>>(),
 });
 
 export const conceptRenders = pgTable('concept_renders', {
@@ -369,7 +412,7 @@ export const knowledgeSources = pgTable('knowledge_sources', {
   type: text('type', { enum: ['product', 'guide'] }).notNull(),
   url: text('url').notNull().unique(),
   title: text('title').notNull(),
-  metadata: text('metadata').notNull().default('{}'),
+  metadata: jsonb('metadata').notNull().$type<Record<string, unknown>>().default({}),
   autoDiscovered: boolean('auto_discovered').notNull().default(false),
   lastIngestedAt: timestamp('last_ingested_at'),
   contentHash: text('content_hash'),
@@ -386,4 +429,25 @@ export const projectPhotos = pgTable('project_photos', {
   takenAt: timestamp('taken_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_project_photos_project_id').on(table.projectId),
+]);
+
+// ============================================================
+// RAG Knowledge Chunks (pgvector embeddings)
+// ============================================================
+
+export const RAG_VECTOR_DIMENSIONS = 384;
+
+export const knowledgeChunks = pgTable('knowledge_chunks', {
+  id: serial('id').primaryKey(),
+  type: text('type', { enum: ['project', 'product', 'guide'] }).notNull(),
+  source: text('source').notNull(),
+  title: text('title').notNull(),
+  content: text('content').notNull(),
+  metadata: jsonb('metadata').notNull().$type<Record<string, unknown>>().default({}),
+  contentHash: text('content_hash'),
+  embedding: vector('embedding', RAG_VECTOR_DIMENSIONS),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  lastAccessedAt: timestamp('last_accessed_at').notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_knowledge_chunks_type_source_title').on(table.type, table.source, table.title),
 ]);
