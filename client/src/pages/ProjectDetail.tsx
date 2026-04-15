@@ -260,7 +260,7 @@ export default function ProjectDetail() {
           {project.concepts && project.concepts.length > 0 && (
             <Card>
               <CardHeader>Finish Options</CardHeader>
-              <div className={`grid grid-cols-2 sm:grid-cols-${Math.min(project.concepts.length, 5)} gap-3`}>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {project.concepts.map((opt) => {
                 const isSelected = selectedConceptFinish === opt.finishType;
 

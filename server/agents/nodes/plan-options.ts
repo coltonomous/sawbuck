@@ -50,7 +50,7 @@ const CONCEPTS_JSON_SCHEMA = {
   properties: {
     concepts: {
       type: 'array' as const,
-      description: '4-5 finish concepts showing different surface treatments',
+      description: '3 finish concepts showing different surface treatments',
       items: {
         type: 'object' as const,
         properties: {
@@ -75,7 +75,7 @@ function buildConceptsPrompt(listing: AgentState['qualifiedListings'][0]): strin
     `Asking price: $${listing.askingPrice ?? 'unknown'}`,
   ];
   if (e.profitVerdict) parts.push(`Assessment: ${e.profitVerdict}`);
-  return `Suggest 4-5 different finish concepts for this piece. Each should be a different surface treatment (stain, paint, oil, varnish, etc.) that would look good on this specific piece and appeal to buyers. Include a mix of natural/stain options and painted options where appropriate for the wood and style:\n\n${parts.join('\n')}`;
+  return `Suggest 3 different finish concepts for this piece. Each should be a different surface treatment (stain, paint, oil, varnish, etc.) that would look good on this specific piece and appeal to buyers. Include a mix of natural/stain options and painted options where appropriate for the wood and style:\n\n${parts.join('\n')}`;
 }
 
 export async function generatePlanOptions(state: AgentState): Promise<Partial<AgentState>> {

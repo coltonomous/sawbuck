@@ -261,7 +261,7 @@ export default function ListingDetail() {
       {listing.conceptImages && listing.conceptImages.length > 0 && (
         <Card className="mb-4">
           <CardHeader>Finish Options</CardHeader>
-          <div className={`grid grid-cols-2 sm:grid-cols-${Math.min(listing.conceptImages.length, 5)} gap-3`}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             {listing.conceptImages.map((opt) => (
               <div
                 key={opt.finishType}
