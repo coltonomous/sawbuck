@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { api, type StatsResponse } from '../api';
 import { useSession } from '../lib/auth';
@@ -21,6 +21,17 @@ export default function Analytics() {
       .then(setStats)
       .catch(console.error)
       .finally(() => setLoading(false));
+  }, []);
+
+  // Poll for updated stats every 30s so charts stay current
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    pollRef.current = setInterval(() => {
+      api.getStats().then(setStats).catch(console.error);
+    }, 30_000);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, []);
 
   if (loading) return (
