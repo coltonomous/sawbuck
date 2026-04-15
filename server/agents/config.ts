@@ -72,6 +72,7 @@ export function getAgentConfig() {
 
     // fal.ai
     falModel: resolve('agent.fal_model', 'AGENT_FAL_MODEL', 'fal-ai/flux/dev'),
+    conceptEditModel: resolve('agent.concept_edit_model', 'AGENT_CONCEPT_EDIT_MODEL', 'fal-ai/flux-kontext/dev'),
     conceptRenderSize: resolveInt('agent.concept_size', 'AGENT_CONCEPT_SIZE', 768),
 
     // Image retention

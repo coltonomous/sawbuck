@@ -11,7 +11,6 @@ import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import { generateRefinishingPlan } from '../../analysis/refinishing.js';
 import { generateMaterialsFromPlanSync } from '../../analysis/sourcing.js';
-import { getListingImageUrlForFal } from '../../lib/images.js';
 import type { AgentState, FinishConcept, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -19,7 +18,8 @@ const CONCEPTS_DIR = 'data/images/concepts';
 
 import type { RefinishingPlan } from '../../analysis/refinishing.js';
 
-import { buildRenderPrompt as _buildRenderPrompt, renderStrength as _renderStrength } from '../../lib/render-prompt.js';
+import { buildConceptRenderRequest } from '../../lib/render-prompt.js';
+import { getListingImageUrlForFal } from '../../lib/images.js';
 
 const FINISH_CONCEPTS_SYSTEM = `You are a furniture refinishing advisor. Given a piece of furniture, suggest finish options that would maximize resale value. Each concept should describe a different surface treatment — stain, paint, oil, varnish, etc. — appropriate for the piece's wood species, style, and condition. Focus on finishes that are realistic for a hobbyist and popular in the resale market.`;
 
@@ -142,26 +142,18 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
 
         if (hasFal) {
           try {
-            renderPrompt = _buildRenderPrompt({
+            const { model: falModel, input: falInput } = buildConceptRenderRequest({
+              concept,
               furnitureType: listing.evaluation.furnitureType,
-              finishType: concept.finishType,
-              label: concept.label,
-              summary: concept.summary,
+              referenceImageUrl,
+              conceptEditModel: agentConfig.conceptEditModel,
+              textToImageModel: agentConfig.falModel,
+              imageSize: agentConfig.conceptRenderSize,
               afterDescription: generatedPlan?.after_description,
               styleRecommendation: generatedPlan?.style_recommendation,
             });
-            const falInput: Record<string, unknown> = {
-              prompt: renderPrompt,
-              num_images: 1,
-            };
-            let falModel = agentConfig.falModel;
-            if (referenceImageUrl) {
-              falModel = 'fal-ai/flux/dev/image-to-image';
-              falInput.image_url = referenceImageUrl;
-              falInput.strength = _renderStrength(concept.finishType, concept.summary);
-            } else {
-              falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
-            }
+            renderPrompt = falInput.prompt as string;
+
             const renderResult = await fal.subscribe(falModel, {
               input: falInput,
             }) as { data: { images: Array<{ url: string }> } };

@@ -135,4 +135,104 @@ describe('OfferUp enrich', () => {
     expect(enriched).toHaveLength(0);
     expect(removedIds).toHaveLength(0);
   });
+
+  it('extracts coordinates from listing.location nested object', async () => {
+    const nextData = {
+      props: {
+        pageProps: {
+          listing: {
+            description: 'Dresser',
+            photos: [],
+            location: { latitude: 47.6062, longitude: -122.3321 },
+          },
+        },
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].latitude).toBeCloseTo(47.6062);
+    expect(enriched[0].longitude).toBeCloseTo(-122.3321);
+  });
+
+  it('extracts coordinates from top-level listing.lat/lng', async () => {
+    const nextData = {
+      props: {
+        pageProps: {
+          listing: {
+            description: 'Table',
+            photos: [],
+            lat: 34.0522,
+            lng: -118.2437,
+          },
+        },
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].latitude).toBeCloseTo(34.0522);
+    expect(enriched[0].longitude).toBeCloseTo(-118.2437);
+  });
+
+  it('rejects out-of-bounds coordinates', async () => {
+    const nextData = {
+      props: {
+        pageProps: {
+          listing: {
+            description: 'Chair',
+            photos: [],
+            location: { latitude: 999, longitude: -122 },
+          },
+        },
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].latitude).toBeUndefined();
+    expect(enriched[0].longitude).toBeUndefined();
+  });
+
+  it('returns undefined coordinates when location data is missing', async () => {
+    const nextData = {
+      props: {
+        pageProps: {
+          listing: {
+            description: 'No location info',
+            photos: [],
+          },
+        },
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].latitude).toBeUndefined();
+    expect(enriched[0].longitude).toBeUndefined();
+  });
 });

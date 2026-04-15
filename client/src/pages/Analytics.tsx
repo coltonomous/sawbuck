@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { api, type StatsResponse } from '../api';
 import { useSession } from '../lib/auth';
@@ -24,15 +24,12 @@ export default function Analytics() {
   }, [isAdmin]);
 
   // Poll for updated stats every 30s so charts stay current
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
     if (!isAdmin) return;
-    pollRef.current = setInterval(() => {
+    const id = setInterval(() => {
       api.getStats().then(setStats).catch(console.error);
     }, 30_000);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    return () => clearInterval(id);
   }, [isAdmin]);
 
   if (!isAdmin) return <Navigate to="/" replace />;
@@ -185,9 +182,9 @@ function StatCard({ label, value, color = 'text-gray-900' }: { label: string; va
   );
 }
 
-function ChartCard({ title, children, full }: { title: string; children: React.ReactNode; full?: boolean }) {
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className={`bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-4 ${full ? '' : ''}`}>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-5 mb-4">
       <h3 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-4">{title}</h3>
       {children}
     </div>
