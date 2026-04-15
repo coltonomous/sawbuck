@@ -276,10 +276,14 @@ export default function ProjectDetail() {
                     onClick={() => {
                       if (generatingPlan) return;
                       setSelectedConceptDifficulty(opt.difficulty);
-                      if (matchingPlanIdx != null && matchingPlanIdx >= 0) {
-                        setSelectedPlanIdx(matchingPlanIdx);
+                      const matchingPlan = matchingPlanIdx != null && matchingPlanIdx >= 0
+                        ? project.plans?.[matchingPlanIdx]
+                        : null;
+                      if (matchingPlan && matchingPlan.projectId === project.id) {
+                        // Plan already claimed by this project — just switch display
+                        setSelectedPlanIdx(matchingPlanIdx!);
                       } else {
-                        // Generate plan for this concept
+                        // Claim existing listing-level plan or generate a new one
                         setGeneratingPlan(true);
                         api.generateRefinishingPlan(project.id, {
                           difficulty: opt.difficulty,
@@ -290,7 +294,7 @@ export default function ProjectDetail() {
                           estimatedResalePrice: opt.estimatedResalePrice,
                         }).then(() => {
                           load();
-                          toast('success', 'Plan generated');
+                          toast('success', matchingPlan ? 'Plan selected' : 'Plan generated');
                         }).catch((err: Error) => {
                           toast('error', err.message || 'Failed');
                         }).finally(() => setGeneratingPlan(false));

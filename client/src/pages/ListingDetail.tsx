@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource, type RefinishingPlan as RefinishingPlanType, type Material } from '../api';
+import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource, type RefinishingPlan as RefinishingPlanType } from '../api';
 import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
 import RefinishingPlan from '../components/RefinishingPlan';
-import MaterialsList from '../components/MaterialsList';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
 import { resolveImageUrl } from '../utils';
 
@@ -38,10 +37,6 @@ export default function ListingDetail() {
     ? listing.plans.find((p) => p.difficultyLevel === CONCEPT_TO_PLAN_DIFFICULTY[selectedConcept]) ?? null
     : null;
 
-  // Derive materials for the active plan
-  const activeMaterials: Material[] = activePlan && listing?.materials
-    ? listing.materials.filter((m) => m.refinishingPlanId === activePlan.id)
-    : [];
 
   useEffect(() => {
     if (!id) return;
@@ -380,7 +375,6 @@ export default function ListingDetail() {
             </div>
           )}
           {activePlan && <RefinishingPlan plan={activePlan} />}
-          {activeMaterials.length > 0 && <MaterialsList materials={activeMaterials} readOnly />}
           {!activePlan && !generatingConcepts && (!listing.conceptImages || listing.conceptImages.length === 0) && (
             <button
               onClick={async () => {

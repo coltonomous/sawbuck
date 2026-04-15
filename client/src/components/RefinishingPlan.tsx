@@ -24,8 +24,11 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
     });
   };
 
-  const totalMinutes = plan.steps.reduce((s, step) => s + step.duration_minutes, 0);
-  const totalHours = Math.round(totalMinutes / 60 * 10) / 10;
+  // Use the stored estimatedHours (step-derived, set at generation time) so it
+  // always matches the concept card value. Fall back to recalculating from steps
+  // only for legacy plans that predate the stored field.
+  const totalHours = plan.estimatedHours
+    ?? Math.round(plan.steps.reduce((s, step) => s + step.duration_minutes, 0) / 60 * 10) / 10;
 
   const difficultyColors: Record<string, string> = {
     beginner: 'bg-green-100 text-green-800',
