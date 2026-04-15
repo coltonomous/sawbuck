@@ -206,7 +206,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
           prompt: renderPrompt,
           renderedImageUrl,
           localPath,
-        }).onConflictDoNothing();
+        }).onConflictDoNothing({ target: [conceptRenders.listingId, conceptRenders.finishType] });
       }
 
       logger.info({ listingId: listing.listingId, conceptCount: concepts.length }, 'Plan + finish concepts generated');
