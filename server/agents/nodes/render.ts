@@ -32,7 +32,9 @@ function buildRenderPrompt(
   const afterDesc = plan?.after_description ?? concept.summary;
   const style = plan?.style_recommendation ?? concept.label;
 
-  return `The same ${type} shown in the reference photo, refinished with: ${concept.label} — ${concept.summary}. After: ${afterDesc}. Style: ${style}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+  const steps = plan?.steps?.map((s) => s.title.toLowerCase()).join(', ') ?? '';
+
+  return `The exact same ${type} shown in the reference photo, same angle, shape, and proportions. The only visible change is the surface finish: ${concept.label} — ${concept.summary}. After: ${afterDesc}.${steps ? ` Steps applied: ${steps}.` : ''} Style: ${style}. Show a clear difference in the wood surface — the grain, sheen, color, and texture should clearly reflect the new ${concept.finishType} finish. Do not alter the shape or structure at all. Photorealistic product photography, studio lighting angled to highlight the surface texture and finish quality.`;
 }
 
 // Default finish concepts if generation failed
@@ -96,7 +98,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
         if (referenceImageUrl) {
           falModel = 'fal-ai/flux/dev/image-to-image';
           falInput.image_url = referenceImageUrl;
-          falInput.strength = 0.45;
+          falInput.strength = 0.55;
         } else {
           falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
         }

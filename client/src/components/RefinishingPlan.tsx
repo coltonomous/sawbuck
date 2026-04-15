@@ -30,7 +30,12 @@ export default function RefinishingPlan({ plan }: { plan: RefinishingPlanType })
   const totalHours = plan.estimatedHours
     ?? Math.round(plan.steps.reduce((s, step) => s + step.duration_minutes, 0) / 60 * 10) / 10;
 
-  const difficultyColor = 'bg-gray-100 text-gray-600';
+  const difficultyColors: Record<string, string> = {
+    beginner: 'bg-green-100 text-green-800',
+    intermediate: 'bg-amber-100 text-amber-700',
+    advanced: 'bg-red-100 text-red-800',
+  };
+  const difficultyColor = (plan.difficultyLevel && difficultyColors[plan.difficultyLevel]) || 'bg-gray-100 text-gray-800';
 
   return (
     <div className="space-y-4">

@@ -5,7 +5,6 @@ import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
-import ComparablesList from '../components/ComparablesList';
 import RefinishingPlan from '../components/RefinishingPlan';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
 import { resolveImageUrl } from '../utils';
@@ -250,12 +249,7 @@ export default function ListingDetail() {
         </button>
       ) : null}
 
-      {/* eBay Comparables */}
-      {listing.furnitureType && (
-        <div className="mb-4">
-          <ComparablesList listingId={listing.id} />
-        </div>
-      )}
+      {/* eBay Comparables — hidden until comps data is more reliable */}
 
       {/* Finish Concepts (from agent pipeline) */}
       {listing.conceptImages && listing.conceptImages.length > 0 && (
@@ -265,12 +259,7 @@ export default function ListingDetail() {
             {listing.conceptImages.map((opt) => (
               <div
                 key={opt.finishType}
-                onClick={() => setSelectedConcept(opt.finishType)}
-                className={`border rounded-lg overflow-hidden cursor-pointer transition-all ${
-                  selectedConcept === opt.finishType
-                    ? 'border-blue-500 ring-2 ring-blue-200'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}>
+                className="border border-gray-200 rounded-lg overflow-hidden">
                 {opt.localPath ? (
                   <div className="relative">
                     <img
