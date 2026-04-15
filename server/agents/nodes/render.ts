@@ -137,7 +137,7 @@ export async function generateConcepts(state: AgentState): Promise<Partial<Agent
             prompt,
             renderedImageUrl: imageUrl,
             localPath: relativePath,
-          });
+          }).onConflictDoNothing({ target: [conceptRenders.listingId, conceptRenders.finishType] });
         }
 
         renders.push({

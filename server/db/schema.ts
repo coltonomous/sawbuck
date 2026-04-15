@@ -332,6 +332,7 @@ export const conceptRenders = pgTable('concept_renders', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_concept_renders_listing_id').on(table.listingId),
+  uniqueIndex('idx_concept_renders_listing_finish').on(table.listingId, table.finishType),
 ]);
 
 // ============================================================
