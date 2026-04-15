@@ -8,8 +8,9 @@ import { db } from '../../db/index.js';
 import { knowledgeSources } from '../../db/schema.js';
 import { isNull, eq } from 'drizzle-orm';
 import { embedBatch } from '../embeddings.js';
-import { upsertChunks, initStore } from '../store.js';
+import { upsertChunks, initStore, evictExcess } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
+import { agentConfig } from '../../agents/config.js';
 import logger from '../../lib/logger.js';
 import { createHash } from 'crypto';
 
@@ -130,6 +131,13 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
 
     ingested += inserted;
     logger.debug({ source: source.title, chunks: inserted }, 'Worker: source ingested');
+  }
+
+  // Enforce chunk limits after ingesting new sources
+  if (ingested > 0) {
+    const maxPerType = agentConfig.ragMaxChunksPerType;
+    await evictExcess('product', maxPerType);
+    await evictExcess('guide', maxPerType);
   }
 
   logger.info({ ingested, failed }, 'Worker: source queue processing complete');

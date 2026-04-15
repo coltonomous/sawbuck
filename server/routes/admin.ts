@@ -5,6 +5,8 @@ import { users, listings, projects, listingClicks, platformSettings, regions } f
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
+import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
+import { chunkCount } from '../rag/store.js';
 
 // Derived from the DB key names used in agents/config.ts resolve*() calls.
 // Adding a new config option there automatically makes it settable here.
@@ -15,6 +17,7 @@ const VALID_SETTINGS = new Set([
   'agent.run_interval_ms', 'agent.triage_model',
   'agent.eval_model', 'agent.fal_model', 'agent.concept_size',
   'agent.image_retention_days',
+  'rag.max_chunks_per_type',
 ]);
 
 const settingsUpdateSchema = z.record(z.string(), z.string()).refine(
@@ -228,6 +231,35 @@ adminRouter.delete('/regions/:id', async (c) => {
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
   await db.delete(regions).where(eq(regions.id, id));
   return c.json({ ok: true });
+});
+
+// ── Metrics / observability ────────────────────────────────────────
+const RECONCILE_OVERDUE_MS = 12 * 60 * 60 * 1000; // 12 hours
+const IMAGE_CLEANUP_OVERDUE_MS = 48 * 60 * 60 * 1000; // 48 hours
+
+adminRouter.get('/metrics', async (c) => {
+  const [projectChunks, productChunks, guideChunks] = await Promise.all([
+    chunkCount('project'),
+    chunkCount('product'),
+    chunkCount('guide'),
+  ]);
+
+  const config = getAgentConfig();
+  const jobHealth = getAllJobHealth();
+  const overdueJobs: string[] = [];
+
+  if (isJobOverdue('reconcile', RECONCILE_OVERDUE_MS)) overdueJobs.push('reconcile');
+  if (isJobOverdue('image-cleanup', IMAGE_CLEANUP_OVERDUE_MS)) overdueJobs.push('image-cleanup');
+
+  return c.json({
+    rag: {
+      chunks: { project: projectChunks, product: productChunks, guide: guideChunks },
+      total: projectChunks + productChunks + guideChunks,
+      maxPerType: config.ragMaxChunksPerType,
+    },
+    jobs: jobHealth,
+    overdueJobs,
+  });
 });
 
 export { adminRouter };

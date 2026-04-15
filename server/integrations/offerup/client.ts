@@ -66,9 +66,12 @@ export async function warmCookies(region?: { latitude: number; longitude: number
   // Set location cookie so OfferUp returns results for the target region
   // instead of geolocating the server's IP (which may be in a different state)
   if (region) {
+    // OfferUp's frontend stores location with short keys (lat/lng).
+    // Using latitude/longitude causes OfferUp to ignore the cookie and
+    // fall back to server IP geolocation (often resolving to Kansas).
     const locationJson = JSON.stringify({
-      latitude: region.latitude,
-      longitude: region.longitude,
+      lat: region.latitude,
+      lng: region.longitude,
       radius: region.radiusMiles,
       city: region.name.charAt(0).toUpperCase() + region.name.slice(1),
     });

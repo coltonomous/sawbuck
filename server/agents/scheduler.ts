@@ -5,6 +5,7 @@ import { db } from '../db/index.js';
 import { agentRuns } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import logger from '../lib/logger.js';
+import { recordJobRun } from '../lib/metrics.js';
 
 let running = false;
 let runStartedAt: number | null = null;
@@ -60,10 +61,14 @@ async function runOnce(): Promise<void> {
       { configurable: { thread_id: runId } },
     );
 
+    const durationMs = Date.now() - runStartedAt!;
+    recordJobRun('agent-pipeline', 'success', durationMs, result.summary ? { ...result.summary } : undefined);
     if (result.summary) {
       logger.info({ runId, summary: result.summary }, 'Agent scheduler: run complete');
     }
   } catch (err) {
+    const durationMs = runStartedAt ? Date.now() - runStartedAt : 0;
+    recordJobRun('agent-pipeline', 'failure', durationMs);
     logger.error({ runId, error: String(err) }, 'Agent scheduler: run failed');
   } finally {
     running = false;

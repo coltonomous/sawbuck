@@ -170,14 +170,19 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     plan.difficulty_level = conceptToPlanDifficulty[difficultyCtx.difficulty] ?? plan.difficulty_level;
   }
 
-  // Store in DB — plan values are the source of truth
+  // Derive hours from step durations — the LLM's per-step breakdown is more
+  // accurate than its stated total, and this ensures the concept card and plan
+  // header always show the same number.
+  const stepDerivedHours = Math.round(plan.steps.reduce((sum, s) => sum + s.duration_minutes, 0) / 60 * 10) / 10;
+
+  // Store in DB — step-derived values are the source of truth
   const [stored] = await db.insert(refinishingPlans).values({
     listingId,
     projectId: projectId ?? null,
     styleRecommendation: plan.style_recommendation,
     description: plan.description,
     steps: JSON.stringify(plan.steps),
-    estimatedHours: plan.estimated_total_hours,
+    estimatedHours: stepDerivedHours,
     estimatedMaterialCost: plan.estimated_material_cost,
     estimatedResalePrice: plan.estimated_resale_price,
     difficultyLevel: plan.difficulty_level,
@@ -193,7 +198,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
   if (difficultyCtx) {
     await db.update(conceptRenders)
       .set({
-        estimatedHours: plan.estimated_total_hours,
+        estimatedHours: stepDerivedHours,
         estimatedMaterialCost: plan.estimated_material_cost,
         estimatedResalePrice: plan.estimated_resale_price,
       })
@@ -208,7 +213,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     style: plan.style_recommendation,
     difficulty: plan.difficulty_level,
     materialCost: plan.estimated_material_cost,
-    hours: plan.estimated_total_hours,
+    hours: stepDerivedHours,
   }, 'Refinishing plan created');
 
   return { plan, ragSourcesUsed: ragChunksUsed, ragSourceTitles, ragSources };

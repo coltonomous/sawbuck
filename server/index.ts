@@ -9,6 +9,7 @@ import { db, pool } from './db/index.js';
 import { sessions } from './db/schema.js';
 import { lt } from 'drizzle-orm';
 import logger from './lib/logger.js';
+import { recordJobRun, isJobOverdue } from './lib/metrics.js';
 
 const port = parseInt(process.env.PORT || '3001');
 logger.info(`Server running on http://localhost:${port}`);
@@ -29,7 +30,11 @@ bootstrapKnowledgeBase();
 const IMAGE_CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function runImageCleanup() {
-  cleanupOrphanedImages().catch((err) => {
+  const start = Date.now();
+  cleanupOrphanedImages().then(() => {
+    recordJobRun('image-cleanup', 'success', Date.now() - start);
+  }).catch((err) => {
+    recordJobRun('image-cleanup', 'failure', Date.now() - start);
     logger.error({ err }, 'Scheduled image cleanup failed');
   });
 }
@@ -59,7 +64,10 @@ if (process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION) {
 // Reconcile stale listings — runs independently from the pipeline every 6 hours
 // so it doesn't block the scrape → triage → evaluate flow.
 const RECONCILE_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const RECONCILE_OVERDUE_MS = 12 * 60 * 60 * 1000;
+
 async function runReconcile() {
+  const start = Date.now();
   try {
     const { reconcileListings } = await import('./agents/nodes/reconcile.js');
     const result = await reconcileListings({
@@ -84,8 +92,23 @@ async function runReconcile() {
       errors: [],
       summary: null,
     });
-    logger.info({ reconciled: result.reconciledCount }, 'Standalone reconcile complete');
+
+    const durationMs = Date.now() - start;
+    const hasErrors = result.errors && result.errors.length > 0;
+    recordJobRun('reconcile', 'success', durationMs, {
+      reconciled: result.reconciledCount ?? 0,
+      errors: result.errors?.length ?? 0,
+    });
+    logger.info(
+      { reconciled: result.reconciledCount, durationMs, errors: result.errors?.length ?? 0 },
+      'Standalone reconcile complete',
+    );
+
+    if (hasErrors) {
+      logger.warn({ errors: result.errors }, 'Reconcile completed with errors');
+    }
   } catch (err) {
+    recordJobRun('reconcile', 'failure', Date.now() - start);
     logger.error({ err }, 'Standalone reconcile failed');
   }
 }
@@ -93,12 +116,21 @@ setTimeout(runReconcile, 2 * 60_000); // first run 2 min after startup
 const reconcileTimer = setInterval(runReconcile, RECONCILE_INTERVAL_MS);
 reconcileTimer.unref();
 
+// Periodic overdue check — warn if reconcile hasn't run in 12+ hours
+const overdueCheckTimer = setInterval(() => {
+  if (isJobOverdue('reconcile', RECONCILE_OVERDUE_MS)) {
+    logger.warn('Reconcile job is overdue — last successful run was more than 12 hours ago');
+  }
+}, 60 * 60 * 1000); // check every hour
+overdueCheckTimer.unref();
+
 // Graceful shutdown
 async function shutdown() {
   logger.info('Shutting down...');
   clearInterval(cleanupTimer);
   clearInterval(sessionCleanupTimer);
   clearInterval(reconcileTimer);
+  clearInterval(overdueCheckTimer);
   stopScheduler();
 
   // Wait for in-flight requests to finish, then drain the connection pool

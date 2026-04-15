@@ -9,11 +9,12 @@ import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { warmup } from './embeddings.js';
-import { chunkCount, initStore } from './store.js';
+import { chunkCount, initStore, evictExcess, type ChunkType } from './store.js';
 import { ingestProjects } from './ingest/projects.js';
 import { ingestProducts, type ProductSource } from './ingest/products.js';
 import { ingestGuides, type GuideSource } from './ingest/guides.js';
 import { processSourceQueue } from './ingest/worker.js';
+import { agentConfig } from '../agents/config.js';
 import logger from '../lib/logger.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -45,12 +46,22 @@ export async function bootstrapKnowledgeBase(): Promise<void> {
     // Process any pending auto-discovered sources
     const workerResult = await processSourceQueue();
 
+    // Enforce per-type chunk limits to prevent unbounded growth
+    const maxPerType = agentConfig.ragMaxChunksPerType;
+    const types: ChunkType[] = ['project', 'product', 'guide'];
+    const evicted: Record<string, number> = {};
+    for (const type of types) {
+      const removed = await evictExcess(type, maxPerType);
+      if (removed > 0) evicted[type] = removed;
+    }
+
     logger.info(
       {
         projects: projectResult.ingested,
         products: productResult.ingested,
         guides: guideResult.ingested,
         autoDiscovered: workerResult.ingested,
+        ...(Object.keys(evicted).length > 0 && { evicted }),
       },
       'Knowledge base sync complete',
     );

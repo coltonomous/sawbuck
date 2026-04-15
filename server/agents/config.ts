@@ -76,6 +76,9 @@ export function getAgentConfig() {
 
     // Image retention
     agentImageRetentionDays: resolveInt('agent.image_retention_days', 'AGENT_IMAGE_RETENTION_DAYS', 14),
+
+    // RAG knowledge base bounds (per-type chunk limit)
+    ragMaxChunksPerType: resolveInt('rag.max_chunks_per_type', 'RAG_MAX_CHUNKS_PER_TYPE', 500),
   };
 }
 

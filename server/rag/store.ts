@@ -50,6 +50,7 @@ export async function initStore(): Promise<void> {
       content_hash TEXT,
       embedding vector(${DIMENSIONS}),
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_accessed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(type, source, title)
     )
   `);
@@ -60,6 +61,9 @@ export async function initStore(): Promise<void> {
   `);
   await pool.query(`
     ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS content_hash TEXT
+  `);
+  await pool.query(`
+    ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
   `);
 
   // Migrate data from legacy knowledge_vec table if it exists
@@ -207,6 +211,15 @@ export async function search(
 
   const result = await pool.query(query, params);
 
+  // Touch last_accessed_at for LRU eviction (fire-and-forget)
+  const hitIds = result.rows.map((r) => r.id).filter(Boolean);
+  if (hitIds.length > 0) {
+    pool.query(
+      `UPDATE knowledge_chunks SET last_accessed_at = CURRENT_TIMESTAMP WHERE id = ANY($1)`,
+      [hitIds],
+    ).catch(() => {}); // non-fatal
+  }
+
   return result.rows.map((row) => ({
     id: row.id,
     type: row.type as ChunkType,
@@ -240,4 +253,34 @@ export async function clearChunks(type: ChunkType): Promise<number> {
     [type],
   );
   return result.rowCount ?? 0;
+}
+
+/**
+ * Evict the least-recently-used chunks of a given type when count exceeds maxCount.
+ * Chunks that are frequently hit by searches survive; stale chunks get pruned.
+ * Returns the number of chunks deleted.
+ */
+export async function evictExcess(type: ChunkType, maxCount: number): Promise<number> {
+  await initStore();
+
+  const total = await chunkCount(type);
+  if (total <= maxCount) return 0;
+
+  const excess = total - maxCount;
+  const result = await pool.query(
+    `DELETE FROM knowledge_chunks
+     WHERE id IN (
+       SELECT id FROM knowledge_chunks
+       WHERE type = $1
+       ORDER BY last_accessed_at ASC
+       LIMIT $2
+     )`,
+    [type, excess],
+  );
+
+  const deleted = result.rowCount ?? 0;
+  if (deleted > 0) {
+    logger.info({ type, deleted, total, maxCount }, 'RAG eviction: removed least-recently-used chunks');
+  }
+  return deleted;
 }
