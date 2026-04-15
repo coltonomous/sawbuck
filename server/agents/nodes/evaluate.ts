@@ -38,7 +38,8 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
   }
 
   const evaluated: EvaluatedCandidate[] = [];
-  const qualified: EvaluatedCandidate[] = [];
+  const qualified: EvaluatedCandidate[] = [];  // truly qualified (strong_buy/buy + deal score)
+  const toTreat: EvaluatedCandidate[] = [];    // all non-dismissed — get full plans/renders
   const errors: AgentState['errors'] = [];
 
   for (const candidate of toEvaluate) {
@@ -146,14 +147,17 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
 
       if (passesRecommendation2 && passesDealScore2) {
         qualified.push(evalCandidate);
+        toTreat.push(evalCandidate);
       } else if (effectiveRecommendation === 'pass') {
-        // Clear pass — dismiss from feed
+        // Clear pass — dismiss from feed, no plans/renders
         await db.update(listings)
           .set({ status: 'dismissed' })
           .where(eq(listings.id, listingId));
         logger.info({ listingId, recommendation: effectiveRecommendation, original: analysis.flip_recommendation }, 'Evaluate: dismissed (pass)');
+      } else {
+        // 'maybe' — not qualified but still worth the full treatment at low volume
+        toTreat.push(evalCandidate);
       }
-      // 'maybe' listings stay as 'analyzed' — visible in feed for user to decide
 
       logger.info(
         { listingId, title: candidate.title, recommendation: analysis.flip_recommendation, dealScore: pricing?.dealScore },
@@ -165,7 +169,7 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
     }
   }
 
-  logger.info({ evaluated: evaluated.length, qualified: qualified.length }, 'Evaluate node complete');
+  logger.info({ evaluated: evaluated.length, qualified: qualified.length, toTreat: toTreat.length }, 'Evaluate node complete');
 
   // Update per-platform eval counts
   const updatedEvalCounts = { ...evalCounts };
@@ -181,9 +185,9 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
 
   return {
     evaluatedCandidates: evaluated,
-    qualifiedListings: qualified,
+    qualifiedListings: toTreat, // all non-dismissed listings get full plans/renders
     evalCount: updatedEvalCounts,
-    qualifiedCount: state.qualifiedCount + qualified.length,
+    qualifiedCount: state.qualifiedCount + qualified.length, // only true qualifieds for loop control
     errors,
   };
 }
