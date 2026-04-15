@@ -18,7 +18,8 @@ const CONCEPTS_DIR = 'data/images/concepts';
 
 import type { RefinishingPlan } from '../../analysis/refinishing.js';
 
-import { buildRenderPrompt as _buildRenderPrompt } from '../../lib/render-prompt.js';
+import { buildEditPrompt, buildRenderPrompt as _buildRenderPrompt } from '../../lib/render-prompt.js';
+import { getListingImageUrlForFal } from '../../lib/images.js';
 
 const FINISH_CONCEPTS_SYSTEM = `You are a furniture refinishing advisor. Given a piece of furniture, suggest finish options that would maximize resale value. Each concept should describe a different surface treatment — stain, paint, oil, varnish, etc. — appropriate for the piece's wood species, style, and condition. Focus on finishes that are realistic for a hobbyist and popular in the resale market.`;
 
@@ -125,6 +126,15 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
       const hasFal = !!process.env.FAL_KEY;
       if (hasFal) await fs.mkdir(CONCEPTS_DIR, { recursive: true }).catch(() => {});
 
+      let referenceImageUrl: string | null = null;
+      if (hasFal) {
+        try {
+          referenceImageUrl = await getListingImageUrlForFal(listing.listingId);
+        } catch (err) {
+          logger.debug({ listingId: listing.listingId, error: String(err) }, 'Could not get reference image');
+        }
+      }
+
       for (const concept of concepts) {
         let renderPrompt = '';
         let localPath: string | null = null;
@@ -132,24 +142,35 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
 
         if (hasFal) {
           try {
-            renderPrompt = _buildRenderPrompt({
+            const promptOpts = {
               furnitureType: listing.evaluation.furnitureType,
               finishType: concept.finishType,
               label: concept.label,
               summary: concept.summary,
-              afterDescription: generatedPlan?.after_description,
-              styleRecommendation: generatedPlan?.style_recommendation,
-            });
-            const falInput: Record<string, unknown> = {
-              prompt: renderPrompt,
-              num_images: 1,
-              image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
             };
-            // Always use text-to-image for concept renders. Flux img2img
-            // preserves the source image's surface texture/color too heavily,
-            // making all finish concepts look identical to the original listing.
-            // Text-to-image produces clearly distinct renders per finish type.
-            const falModel = agentConfig.falModel;
+
+            let falModel: string;
+            const falInput: Record<string, unknown> = { num_images: 1 };
+
+            if (referenceImageUrl) {
+              // Use Kontext — an editing model that understands "change the
+              // finish on this piece" as a semantic instruction. Standard
+              // img2img adds noise and regenerates, which preserves the
+              // original surface too heavily. Kontext edits the image in
+              // context, so it can change surface finish while naturally
+              // preserving furniture shape.
+              falModel = 'fal-ai/flux-kontext/dev';
+              renderPrompt = buildEditPrompt(promptOpts);
+              falInput.prompt = renderPrompt;
+              falInput.image_url = referenceImageUrl;
+            } else {
+              // No reference image — fall back to pure text-to-image
+              falModel = agentConfig.falModel;
+              renderPrompt = _buildRenderPrompt({ ...promptOpts, afterDescription: generatedPlan?.after_description, styleRecommendation: generatedPlan?.style_recommendation });
+              falInput.prompt = renderPrompt;
+              falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
+            }
+
             const renderResult = await fal.subscribe(falModel, {
               input: falInput,
             }) as { data: { images: Array<{ url: string }> } };
