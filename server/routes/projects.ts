@@ -3,7 +3,7 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
-import { eq, and, desc, sql, isNull } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
@@ -51,7 +51,14 @@ projectsRouter.get('/:id', async (c) => {
   const allPlans = plans.map((p) => ({ ...p, steps: parsePlanSteps(p.steps) }));
   const plan = allPlans[0] ?? null;
 
-  const mats = await getMaterialsForProject(id);
+  // Load materials for this project, or listing-level materials from plans visible to this project
+  const planIds = plans.map((p) => p.id);
+  let mats = await getMaterialsForProject(id);
+  if (mats.length === 0 && planIds.length > 0) {
+    mats = await db.select().from(materials).where(
+      and(inArray(materials.refinishingPlanId, planIds), isNull(materials.projectId))
+    );
+  }
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   const images = listing
     ? await db.select().from(listingImages).where(eq(listingImages.listingId, listing.id))
