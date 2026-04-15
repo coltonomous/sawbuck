@@ -11,7 +11,6 @@ import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import { generateRefinishingPlan } from '../../analysis/refinishing.js';
 import { generateMaterialsFromPlanSync } from '../../analysis/sourcing.js';
-import { getListingImageUrlForFal } from '../../lib/images.js';
 import type { AgentState, FinishConcept, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
 
@@ -19,7 +18,7 @@ const CONCEPTS_DIR = 'data/images/concepts';
 
 import type { RefinishingPlan } from '../../analysis/refinishing.js';
 
-import { buildRenderPrompt as _buildRenderPrompt, renderStrength as _renderStrength } from '../../lib/render-prompt.js';
+import { buildRenderPrompt as _buildRenderPrompt } from '../../lib/render-prompt.js';
 
 const FINISH_CONCEPTS_SYSTEM = `You are a furniture refinishing advisor. Given a piece of furniture, suggest finish options that would maximize resale value. Each concept should describe a different surface treatment — stain, paint, oil, varnish, etc. — appropriate for the piece's wood species, style, and condition. Focus on finishes that are realistic for a hobbyist and popular in the resale market.`;
 
@@ -126,15 +125,6 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
       const hasFal = !!process.env.FAL_KEY;
       if (hasFal) await fs.mkdir(CONCEPTS_DIR, { recursive: true }).catch(() => {});
 
-      let referenceImageUrl: string | null = null;
-      if (hasFal) {
-        try {
-          referenceImageUrl = await getListingImageUrlForFal(listing.listingId);
-        } catch (err) {
-          logger.debug({ listingId: listing.listingId, error: String(err) }, 'Could not get reference image');
-        }
-      }
-
       for (const concept of concepts) {
         let renderPrompt = '';
         let localPath: string | null = null;
@@ -153,15 +143,13 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             const falInput: Record<string, unknown> = {
               prompt: renderPrompt,
               num_images: 1,
+              image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
             };
-            let falModel = agentConfig.falModel;
-            if (referenceImageUrl) {
-              falModel = 'fal-ai/flux/dev/image-to-image';
-              falInput.image_url = referenceImageUrl;
-              falInput.strength = _renderStrength(concept.finishType, concept.summary);
-            } else {
-              falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
-            }
+            // Always use text-to-image for concept renders. Flux img2img
+            // preserves the source image's surface texture/color too heavily,
+            // making all finish concepts look identical to the original listing.
+            // Text-to-image produces clearly distinct renders per finish type.
+            const falModel = agentConfig.falModel;
             const renderResult = await fal.subscribe(falModel, {
               input: falInput,
             }) as { data: { images: Array<{ url: string }> } };

@@ -773,7 +773,7 @@ listingsRouter.post('/:id/render', async (c) => {
       .where(eq(refinishingPlans.listingId, id))
       .then(r => r[0]).catch(() => null);
 
-    const { buildRenderPrompt, renderStrength } = await import('../lib/render-prompt.js');
+    const { buildRenderPrompt } = await import('../lib/render-prompt.js');
     const prompt = buildRenderPrompt({
       furnitureType: type!,
       finishType,
@@ -783,22 +783,15 @@ listingsRouter.post('/:id/render', async (c) => {
       styleRecommendation: existingPlan?.styleRecommendation ?? undefined,
     });
 
-    // Try to use original listing image as reference for img2img
-    const { getListingImageUrlForFal } = await import('../lib/images.js');
-    let referenceImageUrl: string | null = null;
-    try {
-      referenceImageUrl = await getListingImageUrlForFal(id);
-    } catch {}
-
-    const falInput: Record<string, unknown> = { prompt, num_images: 1 };
-    let falModel = agentConfig.falModel;
-    if (referenceImageUrl) {
-      falModel = 'fal-ai/flux/dev/image-to-image';
-      falInput.image_url = referenceImageUrl;
-      falInput.strength = renderStrength(finishType, summary);
-    } else {
-      falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
-    }
+    // Always use text-to-image for concept renders. Flux img2img preserves
+    // the source image's surface texture/color too heavily, making all finish
+    // concepts look identical to the original listing photo.
+    const falInput: Record<string, unknown> = {
+      prompt,
+      num_images: 1,
+      image_size: { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize },
+    };
+    const falModel = agentConfig.falModel;
 
     const result = await fal.subscribe(falModel, {
       input: falInput,
