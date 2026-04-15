@@ -189,4 +189,35 @@ describe('OfferUp discover', () => {
     const uniqueQueries = new Set(queries);
     expect(uniqueQueries.size).toBeGreaterThan(1);
   });
+
+  it('passes region coordinates as lat/lng URL params', async () => {
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValue(emptyPage);
+
+    await discover(testRegion, 0);
+
+    const searchCalls = mockFetch.mock.calls.slice(1);
+    for (const call of searchCalls) {
+      const url = new URL(call[0]);
+      expect(url.searchParams.get('lat')).toBe(String(testRegion.latitude));
+      expect(url.searchParams.get('lng')).toBe(String(testRegion.longitude));
+      expect(url.searchParams.get('radius')).toBe(String(testRegion.radiusMiles));
+    }
+  });
+
+  it('does not add spurious page param when iterating queries', async () => {
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValue(emptyPage);
+
+    await discover(testRegion, 0);
+
+    // No search URL should have a page param — each query is page 1
+    const searchCalls = mockFetch.mock.calls.slice(1);
+    for (const call of searchCalls) {
+      const url = new URL(call[0]);
+      expect(url.searchParams.has('page')).toBe(false);
+    }
+  });
 });

@@ -36,14 +36,13 @@ const SEARCH_QUERIES = [
   'farmhouse furniture',
 ];
 
-function searchUrl(region: Region, page: number): string {
-  // Pick query based on page offset to vary results across retries
-  const query = SEARCH_QUERIES[page % SEARCH_QUERIES.length];
+function searchUrl(region: Region, query: string, page = 0): string {
   const params = new URLSearchParams({
     q: query,
-    LOCATION_LATITUDE: String(region.latitude),
-    LOCATION_LONGITUDE: String(region.longitude),
-    SEARCH_RADIUS: String(region.radiusMiles),
+    lat: String(region.latitude),
+    lng: String(region.longitude),
+    radius: String(region.radiusMiles),
+    delivery_param: 'all',
   });
   if (page > 0) params.set('page', String(page + 1));
   return `https://offerup.com/search?${params}`;
@@ -119,8 +118,9 @@ export async function discover(region: Region, _page = 0): Promise<ScrapedCandid
   const seenIds = new Set<string>();
 
   for (let i = 0; i < SEARCH_QUERIES.length; i++) {
-    const url = searchUrl(region, i);
-    logger.info({ url, query: SEARCH_QUERIES[i], region: region.name }, 'OfferUp integration: fetching search page');
+    const query = SEARCH_QUERIES[i];
+    const url = searchUrl(region, query);
+    logger.info({ url, query, region: region.name }, 'OfferUp integration: fetching search page');
 
     try {
       const res = await offerUpFetch(url);

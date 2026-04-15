@@ -65,14 +65,15 @@ async function testOfferUp() {
   console.log('\n=== OfferUp Smoke Test ===\n');
 
   try {
-    await warmOfferUpCookies();
+    await warmOfferUpCookies(REGION);
     console.log('  Cookies warmed');
 
     const params = new URLSearchParams({
       q: 'wood furniture',
-      LOCATION_LATITUDE: String(REGION.latitude),
-      LOCATION_LONGITUDE: String(REGION.longitude),
-      SEARCH_RADIUS: String(REGION.radiusMiles),
+      lat: String(REGION.latitude),
+      lng: String(REGION.longitude),
+      radius: String(REGION.radiusMiles),
+      delivery_param: 'all',
     });
 
     const searchUrl = `https://offerup.com/search?${params}`;
