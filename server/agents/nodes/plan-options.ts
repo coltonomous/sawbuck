@@ -18,7 +18,7 @@ const CONCEPTS_DIR = 'data/images/concepts';
 
 import type { RefinishingPlan } from '../../analysis/refinishing.js';
 
-import { buildEditPrompt, buildRenderPrompt as _buildRenderPrompt } from '../../lib/render-prompt.js';
+import { buildConceptRenderRequest } from '../../lib/render-prompt.js';
 import { getListingImageUrlForFal } from '../../lib/images.js';
 
 const FINISH_CONCEPTS_SYSTEM = `You are a furniture refinishing advisor. Given a piece of furniture, suggest finish options that would maximize resale value. Each concept should describe a different surface treatment — stain, paint, oil, varnish, etc. — appropriate for the piece's wood species, style, and condition. Focus on finishes that are realistic for a hobbyist and popular in the resale market.`;
@@ -142,34 +142,17 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
 
         if (hasFal) {
           try {
-            const promptOpts = {
+            const { model: falModel, input: falInput } = buildConceptRenderRequest({
+              concept,
               furnitureType: listing.evaluation.furnitureType,
-              finishType: concept.finishType,
-              label: concept.label,
-              summary: concept.summary,
-            };
-
-            let falModel: string;
-            const falInput: Record<string, unknown> = { num_images: 1 };
-
-            if (referenceImageUrl) {
-              // Use Kontext — an editing model that understands "change the
-              // finish on this piece" as a semantic instruction. Standard
-              // img2img adds noise and regenerates, which preserves the
-              // original surface too heavily. Kontext edits the image in
-              // context, so it can change surface finish while naturally
-              // preserving furniture shape.
-              falModel = agentConfig.conceptEditModel;
-              renderPrompt = buildEditPrompt(promptOpts);
-              falInput.prompt = renderPrompt;
-              falInput.image_url = referenceImageUrl;
-            } else {
-              // No reference image — fall back to pure text-to-image
-              falModel = agentConfig.falModel;
-              renderPrompt = _buildRenderPrompt({ ...promptOpts, afterDescription: generatedPlan?.after_description, styleRecommendation: generatedPlan?.style_recommendation });
-              falInput.prompt = renderPrompt;
-              falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
-            }
+              referenceImageUrl,
+              conceptEditModel: agentConfig.conceptEditModel,
+              textToImageModel: agentConfig.falModel,
+              imageSize: agentConfig.conceptRenderSize,
+              afterDescription: generatedPlan?.after_description,
+              styleRecommendation: generatedPlan?.style_recommendation,
+            });
+            renderPrompt = falInput.prompt as string;
 
             const renderResult = await fal.subscribe(falModel, {
               input: falInput,

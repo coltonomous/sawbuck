@@ -86,9 +86,9 @@ export async function getMaterialsForProject(projectId: number) {
 
 /** Load materials through the plan chain: listing → plans → materials. */
 export async function getMaterialsForListing(listingId: number) {
-  const plans = await db.select({ id: refinishingPlans.id })
-    .from(refinishingPlans)
-    .where(eq(refinishingPlans.listingId, listingId));
-  if (plans.length === 0) return [];
-  return db.select().from(materials).where(inArray(materials.refinishingPlanId, plans.map(p => p.id)));
+  return db.select({ m: materials })
+    .from(materials)
+    .innerJoin(refinishingPlans, eq(materials.refinishingPlanId, refinishingPlans.id))
+    .where(eq(refinishingPlans.listingId, listingId))
+    .then(rows => rows.map(r => r.m));
 }

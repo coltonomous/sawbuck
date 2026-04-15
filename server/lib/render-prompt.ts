@@ -50,3 +50,45 @@ export function buildRenderPrompt(opts: {
 
   return `A ${furnitureType} with a ${label} finish. ${summary}. After: ${afterDesc}. The surface color, sheen, and texture show the ${finishType} finish in sharp detail (grain, tone, reflectivity). Style: ${style}. Photorealistic product photography, studio lighting angled to highlight the surface texture and finish quality.`;
 }
+
+/**
+ * Build the complete fal.ai request (model + input) for a concept render.
+ * Uses Kontext editing when a reference image is available, text-to-image otherwise.
+ */
+export function buildConceptRenderRequest(opts: {
+  concept: { finishType: string; label: string; summary: string };
+  furnitureType: string;
+  referenceImageUrl: string | null;
+  conceptEditModel: string;
+  textToImageModel: string;
+  imageSize: number;
+  afterDescription?: string;
+  styleRecommendation?: string;
+}): { model: string; input: Record<string, unknown> } {
+  const promptOpts = {
+    furnitureType: opts.furnitureType,
+    finishType: opts.concept.finishType,
+    label: opts.concept.label,
+    summary: opts.concept.summary,
+  };
+
+  if (opts.referenceImageUrl) {
+    return {
+      model: opts.conceptEditModel,
+      input: {
+        prompt: buildEditPrompt(promptOpts),
+        image_url: opts.referenceImageUrl,
+        num_images: 1,
+      },
+    };
+  }
+
+  return {
+    model: opts.textToImageModel,
+    input: {
+      prompt: buildRenderPrompt({ ...promptOpts, afterDescription: opts.afterDescription, styleRecommendation: opts.styleRecommendation }),
+      num_images: 1,
+      image_size: { width: opts.imageSize, height: opts.imageSize },
+    },
+  };
+}

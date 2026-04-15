@@ -3,7 +3,8 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
-import { eq, and, desc, sql, isNull, inArray } from 'drizzle-orm';
+import { eq, and, desc, isNull } from 'drizzle-orm';
+
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject, getMaterialsForListing } from '../analysis/sourcing.js';
@@ -14,6 +15,39 @@ import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMate
 import { tryIngestProject } from '../rag/ingest/projects.js';
 import { parseId, getOwnedProject, getEditableListing } from './helpers.js';
 import logger from '../lib/logger.js';
+
+/**
+ * Claim an existing listing-level plan for a project, or generate a new one.
+ * Also ensures materials exist — generates them if the plan has none.
+ * Returns the plan that was claimed/created, or null if generation failed.
+ */
+async function claimOrGeneratePlan(listingId: number, projectId: number) {
+  const existingPlan = await db.select().from(refinishingPlans)
+    .where(and(eq(refinishingPlans.listingId, listingId), isNull(refinishingPlans.projectId)))
+    .then(r => r[0]);
+
+  if (existingPlan) {
+    await db.update(refinishingPlans).set({ projectId }).where(eq(refinishingPlans.id, existingPlan.id));
+    await db.update(materials).set({ projectId }).where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
+    const claimedMats = await getMaterialsForProject(projectId);
+    if (claimedMats.length === 0) {
+      await generateMaterialsFromPlanSync(existingPlan.id, projectId);
+    }
+    return existingPlan;
+  }
+
+  const result = await generateRefinishingPlan(listingId, projectId);
+  if (!result) return null;
+
+  const storedPlan = await db.select().from(refinishingPlans)
+    .where(eq(refinishingPlans.projectId, projectId))
+    .orderBy(desc(refinishingPlans.createdAt))
+    .then(r => r[0]);
+  if (storedPlan) {
+    await generateMaterialsFromPlanSync(storedPlan.id, projectId);
+  }
+  return storedPlan ?? null;
+}
 
 export const projectsRouter = new Hono();
 
@@ -52,11 +86,7 @@ projectsRouter.get('/:id', async (c) => {
   const allPlans = plans.map((p) => ({ ...p, steps: parsePlanSteps(p.steps) }));
   const plan = allPlans[0] ?? null;
 
-  // Materials belong to plans; load all materials for this listing's plans
-  const planIds = plans.map((p) => p.id);
-  const mats = planIds.length > 0
-    ? await db.select().from(materials).where(inArray(materials.refinishingPlanId, planIds))
-    : [];
+  const mats = await getMaterialsForListing(project.listingId);
   const photos = await db.select().from(projectPhotos).where(eq(projectPhotos.projectId, id));
   const images = listing
     ? await db.select().from(listingImages).where(eq(listingImages.listingId, listing.id))
@@ -143,36 +173,8 @@ projectsRouter.post('/from-concept', async (c) => {
   }
 
   try {
-    // Claim existing listing-level plan if available
-    const existingPlan = await db.select().from(refinishingPlans)
-      .where(and(eq(refinishingPlans.listingId, listingId), isNull(refinishingPlans.projectId)))
-      .then(r => r[0]);
-
-    if (existingPlan) {
-      await db.update(refinishingPlans)
-        .set({ projectId: project.id })
-        .where(eq(refinishingPlans.id, existingPlan.id));
-      await db.update(materials)
-        .set({ projectId: project.id })
-        .where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
-      // If the claimed plan has no materials, generate them now
-      const claimedMats = await getMaterialsForProject(project.id);
-      if (claimedMats.length === 0) {
-        await generateMaterialsFromPlanSync(existingPlan.id, project.id);
-      }
-    } else {
-      // Fallback: generate plan + materials
-      const result = await generateRefinishingPlan(listing.id, project.id);
-      if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
-
-      const storedPlans = await db.select()
-        .from(refinishingPlans)
-        .where(eq(refinishingPlans.projectId, project.id));
-      const storedPlan = storedPlans[storedPlans.length - 1];
-      if (storedPlan) {
-        await generateMaterialsFromPlanSync(storedPlan.id, project.id);
-      }
-    }
+    const plan = await claimOrGeneratePlan(listingId, project.id);
+    if (!plan) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
     await db.update(projects).set({
       status: 'refinishing',
@@ -275,45 +277,17 @@ projectsRouter.post('/:id/refinish', async (c) => {
   }
 
   try {
-    // Try to claim existing listing-level plan first
-    const existingPlan = await db.select().from(refinishingPlans)
-      .where(and(eq(refinishingPlans.listingId, project.listingId), isNull(refinishingPlans.projectId)))
-      .then(r => r[0]);
-
-    if (existingPlan) {
-      await db.update(refinishingPlans).set({ projectId: id }).where(eq(refinishingPlans.id, existingPlan.id));
-      await db.update(materials).set({ projectId: id }).where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
-      // If the claimed plan has no materials (e.g. agent materials generation failed), generate them now
-      const claimedMats = await getMaterialsForProject(id);
-      if (claimedMats.length === 0) {
-        await generateMaterialsFromPlanSync(existingPlan.id, id);
-      }
-    } else {
-      // Fallback: generate plan + materials
-      const result = await generateRefinishingPlan(project.listingId, id);
-      if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
-
-      const storedPlans = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id));
-      const storedPlan = storedPlans[storedPlans.length - 1];
-      if (storedPlan) {
-        await generateMaterialsFromPlanSync(storedPlan.id, id);
-      }
-    }
+    const plan = await claimOrGeneratePlan(project.listingId, id);
+    if (!plan) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
     await db.update(projects).set({
       status: 'refinishing',
       updatedAt: new Date(),
     }).where(eq(projects.id, id));
 
-    // Reload plan + materials for response (through listing, not projectId)
-    const finalPlan = await db.select().from(refinishingPlans).where(eq(refinishingPlans.listingId, project.listingId)).orderBy(desc(refinishingPlans.createdAt)).then(r => r[0]);
-    const finalMats = finalPlan
-      ? await db.select().from(materials).where(eq(materials.refinishingPlanId, finalPlan.id))
-      : [];
-
     return c.json({
-      plan: finalPlan ? { ...finalPlan, steps: parsePlanSteps(finalPlan.steps) } : null,
-      materials: finalMats,
+      plan: { ...plan, steps: parsePlanSteps(plan.steps) },
+      materials: await getMaterialsForListing(project.listingId),
     });
   } catch (err: unknown) {
     logger.error({ err, projectId: id }, 'Error generating refinishing plan');

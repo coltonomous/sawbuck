@@ -773,32 +773,24 @@ listingsRouter.post('/:id/render', async (c) => {
       .where(eq(refinishingPlans.listingId, id))
       .then(r => r[0]).catch(() => null);
 
-    const { buildEditPrompt, buildRenderPrompt } = await import('../lib/render-prompt.js');
-    const promptOpts = { furnitureType: type!, finishType, label, summary };
-
+    const { buildConceptRenderRequest } = await import('../lib/render-prompt.js');
     const { getListingImageUrlForFal } = await import('../lib/images.js');
     let referenceImageUrl: string | null = null;
     try {
       referenceImageUrl = await getListingImageUrlForFal(id);
     } catch {}
 
-    let falModel: string;
-    let prompt: string;
-    const falInput: Record<string, unknown> = { num_images: 1 };
-
-    if (referenceImageUrl) {
-      // Use Kontext — an editing model that changes the surface finish
-      // while preserving furniture shape. Standard img2img can't do this.
-      falModel = agentConfig.conceptEditModel;
-      prompt = buildEditPrompt(promptOpts);
-      falInput.prompt = prompt;
-      falInput.image_url = referenceImageUrl;
-    } else {
-      falModel = agentConfig.falModel;
-      prompt = buildRenderPrompt({ ...promptOpts, afterDescription: existingPlan?.afterDescription ?? undefined, styleRecommendation: existingPlan?.styleRecommendation ?? undefined });
-      falInput.prompt = prompt;
-      falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
-    }
+    const { model: falModel, input: falInput } = buildConceptRenderRequest({
+      concept: { finishType, label, summary },
+      furnitureType: type!,
+      referenceImageUrl,
+      conceptEditModel: agentConfig.conceptEditModel,
+      textToImageModel: agentConfig.falModel,
+      imageSize: agentConfig.conceptRenderSize,
+      afterDescription: existingPlan?.afterDescription ?? undefined,
+      styleRecommendation: existingPlan?.styleRecommendation ?? undefined,
+    });
+    const prompt = falInput.prompt as string;
 
     const result = await fal.subscribe(falModel, {
       input: falInput,
