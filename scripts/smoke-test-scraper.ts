@@ -61,6 +61,15 @@ async function testCraigslist() {
   }
 }
 
+// US states that overlap with the target region's expected results.
+// Used to sanity-check that OfferUp is returning local listings, not
+// falling back to IP geolocation (which typically resolves to Kansas).
+const KANSAS_LOCATIONS = ['KS', 'Kansas', 'Wichita', 'Topeka', 'Overland Park', 'Olathe'];
+
+function looksLikeKansas(locationName: string): boolean {
+  return KANSAS_LOCATIONS.some((kw) => locationName.includes(kw));
+}
+
 async function testOfferUp() {
   console.log('\n=== OfferUp Smoke Test ===\n');
 
@@ -108,9 +117,24 @@ async function testOfferUp() {
       return false;
     }
 
-    const first = listings[0].listing!;
-    console.log(`  First item: "${first.title}" - $${first.price ?? '?'} (${first.locationName ?? '?'})`);
-    console.log(`  PASS: OfferUp scraper working`);
+    // Print all listing locations so the operator can eyeball them
+    console.log(`  Listing locations:`);
+    for (const tile of listings) {
+      const l = tile.listing!;
+      console.log(`    - "${l.title}" ($${l.price ?? '?'}) — ${l.locationName ?? 'unknown'}`);
+    }
+
+    // Check that results are NOT from Kansas (the IP-geolocation fallback)
+    const kansasCount = listings.filter((t) => looksLikeKansas(t.listing?.locationName ?? '')).length;
+    if (kansasCount > 0 && kansasCount === listings.length) {
+      console.error(`  FAIL: All ${listings.length} listings are from Kansas — location filter is not working`);
+      return false;
+    }
+    if (kansasCount > 0) {
+      console.warn(`  WARN: ${kansasCount}/${listings.length} listings from Kansas — location filter may be partially broken`);
+    }
+
+    console.log(`  PASS: OfferUp scraper returned ${listings.length} listings from expected region`);
     return true;
   } catch (err) {
     console.error(`  FAIL: ${err}`);
