@@ -6,10 +6,12 @@ export default function MaterialsList({
   materials,
   projectId,
   onUpdate,
+  readOnly = false,
 }: {
   materials: Material[];
-  projectId: number;
+  projectId?: number;
   onUpdate?: () => void;
+  readOnly?: boolean;
 }) {
   const [updating, setUpdating] = useState<number | null>(null);
   const { toast } = useToast();
@@ -20,6 +22,7 @@ export default function MaterialsList({
   const allPurchased = materials.length > 0 && purchased.length === materials.length;
 
   const handleTogglePurchased = async (mat: Material) => {
+    if (readOnly || !projectId) return;
     setUpdating(mat.id);
     try {
       await api.updateMaterial(projectId, mat.id, { purchased: !mat.purchased });
@@ -31,6 +34,7 @@ export default function MaterialsList({
   };
 
   const handleActualPrice = async (mat: Material, price: string) => {
+    if (readOnly || !projectId) return;
     const val = parseFloat(price);
     if (isNaN(val)) return;
     setUpdating(mat.id);
@@ -50,11 +54,11 @@ export default function MaterialsList({
     }
   };
 
-  const grouped = materials.reduce((acc, m) => {
+  const grouped = materials.reduce<Record<string, Material[]>>((acc, m) => {
     if (!acc[m.category]) acc[m.category] = [];
     acc[m.category].push(m);
     return acc;
-  }, {} as Record<string, Material[]>);
+  }, {});
 
   return (
     <div className="space-y-4">
@@ -65,15 +69,15 @@ export default function MaterialsList({
             <span className="text-gray-500">Estimated: </span>
             <span className="font-semibold">${totalEstimated.toFixed(2)}</span>
           </div>
-          <div>
-            <span className="text-gray-500">Actual: </span>
-            <span className="font-semibold">${totalActual.toFixed(2)}</span>
-          </div>
+          {!readOnly && (
+            <div>
+              <span className="text-gray-500">Actual: </span>
+              <span className="font-semibold">${totalActual.toFixed(2)}</span>
+            </div>
+          )}
           <div>
             <span className="text-gray-500">Items: </span>
-            <span className="font-semibold">
-              {materials.filter((m) => m.purchased).length}/{materials.length} purchased
-            </span>
+            <span className="font-semibold">{materials.length}</span>
           </div>
         </div>
         {!allPurchased && (
@@ -96,32 +100,40 @@ export default function MaterialsList({
             <tbody className="divide-y divide-gray-100">
               {items.map((mat) => (
                 <tr key={mat.id} className={mat.purchased ? 'bg-green-50/50' : ''}>
-                  <td className="px-4 py-2.5 w-8">
-                    <input
-                      type="checkbox"
-                      checked={mat.purchased}
-                      onChange={() => handleTogglePurchased(mat)}
-                      disabled={updating === mat.id}
-                      className="rounded"
-                    />
-                  </td>
-                  <td className={`px-2 py-2.5 ${mat.purchased ? 'line-through text-gray-400' : 'text-gray-900'}`}>
+                  {!readOnly && (
+                    <td className="px-4 py-2.5 w-8">
+                      <input
+                        type="checkbox"
+                        checked={mat.purchased}
+                        onChange={() => handleTogglePurchased(mat)}
+                        disabled={updating === mat.id}
+                        className="rounded"
+                      />
+                    </td>
+                  )}
+                  <td className={`px-${readOnly ? '4' : '2'} py-2.5 ${mat.purchased ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                     <span className="font-medium">{mat.brand}</span> {mat.productName}
                     <span className="text-gray-400 ml-1">
                       ({mat.quantity} {mat.unit})
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 w-28">
-                    <input
-                      key={`${mat.id}-${mat.actualPrice}`}
-                      type="number"
-                      step="0.01"
-                      placeholder={mat.estimatedPrice?.toFixed(2) ?? '-'}
-                      defaultValue={mat.actualPrice?.toFixed(2) ?? ''}
-                      onBlur={(e) => handleActualPrice(mat, e.target.value)}
-                      className="w-full border rounded px-2 py-1 text-sm text-right"
-                    />
-                  </td>
+                  {readOnly ? (
+                    <td className="px-2 py-2.5 w-24 text-right text-gray-600">
+                      {mat.estimatedPrice != null ? `$${mat.estimatedPrice.toFixed(2)}` : '—'}
+                    </td>
+                  ) : (
+                    <td className="px-2 py-2.5 w-28">
+                      <input
+                        key={`${mat.id}-${mat.actualPrice}`}
+                        type="number"
+                        step="0.01"
+                        placeholder={mat.estimatedPrice?.toFixed(2) ?? '-'}
+                        defaultValue={mat.actualPrice?.toFixed(2) ?? ''}
+                        onBlur={(e) => handleActualPrice(mat, e.target.value)}
+                        className="w-full border rounded px-2 py-1 text-sm text-right"
+                      />
+                    </td>
+                  )}
                   <td className="px-2 py-2.5 w-24 text-right">
                     <div className="flex gap-1 justify-end">
                       {mat.amazonSearchUrl && (

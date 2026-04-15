@@ -288,7 +288,7 @@ export default function ProjectDetail() {
                           estimatedHours: opt.estimatedHours,
                           estimatedMaterialCost: opt.estimatedMaterialCost,
                           estimatedResalePrice: opt.estimatedResalePrice,
-                        } as any).then(() => {
+                        }).then(() => {
                           load();
                           toast('success', 'Plan generated');
                         }).catch((err: Error) => {

@@ -102,6 +102,8 @@ export interface ConceptOption {
 
 export interface ListingDetail extends Listing {
   images: ListingImage[];
+  plans?: RefinishingPlan[] | null;
+  materials?: Material[] | null;
 }
 
 export interface Comparable {
@@ -330,8 +332,6 @@ export const api = {
     request<{ render: ConceptOption }>(`/listings/${listingId}/render`, { method: 'POST', body: JSON.stringify({ difficulty }) }),
   generateConcepts: (listingId: number) =>
     request<{ concepts: ConceptOption[] }>(`/listings/${listingId}/generate-concepts`, { method: 'POST' }),
-  previewPlan: (listingId: number, concept?: { difficulty: string; label?: string; summary?: string; estimatedHours?: number; estimatedMaterialCost?: number; estimatedResalePrice?: number }) =>
-    request<{ plan: RefinishingPlan }>(`/listings/${listingId}/preview-plan`, { method: 'POST', body: JSON.stringify(concept ?? {}) }),
 
   // Projects
   getProjects: (params?: Record<string, string>) => {

@@ -5,11 +5,12 @@ import fs from 'fs/promises';
 import path from 'path';
 import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { db } from '../../db/index.js';
-import { conceptRenders } from '../../db/schema.js';
+import { conceptRenders, refinishingPlans } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import { generateRefinishingPlan, type DifficultyContext } from '../../analysis/refinishing.js';
+import { generateMaterialsFromPlanSync } from '../../analysis/sourcing.js';
 import { getListingImageUrlForFal } from '../../lib/images.js';
 import type { AgentState, RefinishingOption, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
@@ -149,11 +150,31 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
           estimatedResalePrice: option.estimatedResalePrice,
         };
 
-        // 1. Generate refinishing plan
+        // 1. Generate refinishing plan + materials
         let generatedPlan: RefinishingPlan | null = null;
         try {
           const planResult = await generateRefinishingPlan(listing.listingId, undefined, diffCtx);
           generatedPlan = planResult?.plan ?? null;
+
+          // Generate materials from the stored plan
+          if (generatedPlan) {
+            const difficultyMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+              simple: 'beginner', moderate: 'intermediate', full: 'advanced',
+            };
+            const planDiff = difficultyMap[option.difficulty] ?? 'intermediate';
+            const storedPlan = await db.select({ id: refinishingPlans.id })
+              .from(refinishingPlans)
+              .where(and(eq(refinishingPlans.listingId, listing.listingId), eq(refinishingPlans.difficultyLevel, planDiff)))
+              .orderBy(refinishingPlans.id)
+              .then(r => r[r.length - 1]);
+            if (storedPlan) {
+              try {
+                await generateMaterialsFromPlanSync(storedPlan.id);
+              } catch (err) {
+                logger.warn({ listingId: listing.listingId, planId: storedPlan.id, error: String(err) }, 'Materials generation failed (non-fatal)');
+              }
+            }
+          }
         } catch (err) {
           logger.warn({ listingId: listing.listingId, difficulty: option.difficulty, error: String(err) }, 'Plan generation failed (non-fatal)');
         }

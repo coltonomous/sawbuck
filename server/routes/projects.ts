@@ -3,7 +3,7 @@ import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, isNull } from 'drizzle-orm';
 import { generateRefinishingPlan, parsePlanSteps, type DifficultyContext } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
@@ -144,11 +144,15 @@ projectsRouter.post('/from-concept', async (c) => {
       .then(r => r[0]);
 
     if (existingPlan && !existingPlan.projectId) {
-      // Associate the existing plan with this project
+      // Claim existing plan + its materials for this project
       await db.update(refinishingPlans)
         .set({ projectId: project.id })
         .where(eq(refinishingPlans.id, existingPlan.id));
+      await db.update(materials)
+        .set({ projectId: project.id })
+        .where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
     } else if (!existingPlan) {
+      // Fallback: generate plan + materials for user-posted listings
       const difficultyCtx: DifficultyContext = {
         difficulty,
         label: label ?? difficulty,
@@ -159,15 +163,14 @@ projectsRouter.post('/from-concept', async (c) => {
       };
       const result = await generateRefinishingPlan(listing.id, project.id, difficultyCtx);
       if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
-    }
 
-    const storedPlans = await db.select()
-      .from(refinishingPlans)
-      .where(eq(refinishingPlans.projectId, project.id));
-    const storedPlan = storedPlans[storedPlans.length - 1];
-
-    if (storedPlan) {
-      await generateMaterialsFromPlanSync(storedPlan.id, project.id);
+      const storedPlans = await db.select()
+        .from(refinishingPlans)
+        .where(eq(refinishingPlans.projectId, project.id));
+      const storedPlan = storedPlans[storedPlans.length - 1];
+      if (storedPlan) {
+        await generateMaterialsFromPlanSync(storedPlan.id, project.id);
+      }
     }
 
     await db.update(projects).set({
@@ -282,17 +285,34 @@ projectsRouter.post('/:id/refinish', async (c) => {
   } : undefined;
 
   try {
-    const result = await generateRefinishingPlan(project.listingId, id, difficultyCtx);
-    if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+    // Try to claim existing listing-level plan first
+    const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
+      simple: 'beginner', moderate: 'intermediate', full: 'advanced',
+    };
+    const planDiff = difficultyCtx ? (conceptToPlanDifficulty[difficultyCtx.difficulty] ?? 'intermediate' as const) : null;
 
-    // Generate materials + update project status atomically
-    const storedPlans = await db.select()
-      .from(refinishingPlans)
-      .where(eq(refinishingPlans.projectId, id));
-    const storedPlan = storedPlans[storedPlans.length - 1];
+    let claimed = false;
+    if (planDiff) {
+      const existingPlan = await db.select().from(refinishingPlans)
+        .where(and(eq(refinishingPlans.listingId, project.listingId), eq(refinishingPlans.difficultyLevel, planDiff), isNull(refinishingPlans.projectId)))
+        .then(r => r[0]);
+      if (existingPlan) {
+        await db.update(refinishingPlans).set({ projectId: id }).where(eq(refinishingPlans.id, existingPlan.id));
+        await db.update(materials).set({ projectId: id }).where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
+        claimed = true;
+      }
+    }
 
-    if (storedPlan) {
-      await generateMaterialsFromPlanSync(storedPlan.id, id);
+    // Fallback: generate plan + materials if nothing to claim
+    if (!claimed) {
+      const result = await generateRefinishingPlan(project.listingId, id, difficultyCtx);
+      if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
+
+      const storedPlans = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id));
+      const storedPlan = storedPlans[storedPlans.length - 1];
+      if (storedPlan) {
+        await generateMaterialsFromPlanSync(storedPlan.id, id);
+      }
     }
 
     await db.update(projects).set({
@@ -300,93 +320,12 @@ projectsRouter.post('/:id/refinish', async (c) => {
       updatedAt: new Date(),
     }).where(eq(projects.id, id));
 
-    // Fire-and-forget: generate concept render for this difficulty if FAL_KEY is set
-    if (difficultyCtx && process.env.FAL_KEY && listing) {
-      const renderDifficulty = difficultyCtx.difficulty as 'simple' | 'moderate' | 'full';
-      (async () => {
-        try {
-          const existing = await db.select().from(conceptRenders)
-            .where(and(eq(conceptRenders.listingId, project.listingId), eq(conceptRenders.difficulty, renderDifficulty)))
-            .then((r) => r[0]);
-          if (existing?.localPath) return; // already rendered
-
-          const { fal } = await import('@fal-ai/client');
-          const { agentConfig } = await import('../agents/config.js');
-          const sharp = (await import('sharp')).default;
-          const fs = await import('fs/promises');
-          const path = await import('path');
-
-          const CONCEPTS_DIR = 'data/images/concepts';
-          await fs.mkdir(CONCEPTS_DIR, { recursive: true });
-
-          const type = listing.furnitureType || 'furniture';
-          const summary = difficultyCtx.summary || renderDifficulty;
-
-          // Use the just-generated plan to build a specific render prompt
-          const planForRender = result?.plan;
-          let prompt: string;
-          if (planForRender) {
-            const changes = planForRender.steps.map((s: any) => s.title.toLowerCase()).join(', ');
-            prompt = `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${planForRender.after_description}. Specific steps applied: ${changes}. Style: ${planForRender.style_recommendation}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
-          } else {
-            prompt = `The same ${type} shown in the reference photo, with these changes applied: ${summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
-          }
-
-          // Try to use original listing image as reference for img2img
-          const { getListingImageUrlForFal } = await import('../lib/images.js');
-          let referenceImageUrl: string | null = null;
-          try { referenceImageUrl = await getListingImageUrlForFal(project.listingId); } catch {}
-
-          const falInput: Record<string, unknown> = { prompt, num_images: 1 };
-          let falModel: string = agentConfig.falModel;
-          if (referenceImageUrl) {
-            falModel = 'fal-ai/flux/dev/image-to-image';
-            falInput.image_url = referenceImageUrl;
-            falInput.strength = renderDifficulty === 'full' ? 0.55 : renderDifficulty === 'moderate' ? 0.4 : 0.3;
-          } else {
-            falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
-          }
-
-          const renderResult = await fal.subscribe(falModel, {
-            input: falInput,
-          }) as { data: { images: Array<{ url: string }> } };
-
-          const imageUrl = renderResult.data?.images?.[0]?.url;
-          if (!imageUrl) return;
-
-          const filename = `${project.listingId}_${renderDifficulty}.webp`;
-          const filePath = path.join(CONCEPTS_DIR, filename);
-          const relativePath = path.join('concepts', filename);
-          const response = await fetch(imageUrl);
-          const buffer = Buffer.from(await response.arrayBuffer());
-          await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
-
-          if (existing) {
-            await db.update(conceptRenders).set({ prompt, renderedImageUrl: imageUrl, localPath: relativePath }).where(eq(conceptRenders.id, existing.id));
-          } else {
-            await db.insert(conceptRenders).values({
-              listingId: project.listingId,
-              difficulty: renderDifficulty,
-              label: difficultyCtx.label || renderDifficulty,
-              summary: difficultyCtx.summary || '',
-              prompt,
-              renderedImageUrl: imageUrl,
-              localPath: relativePath,
-            });
-          }
-          logger.info({ listingId: project.listingId, difficulty: renderDifficulty }, 'Concept render generated alongside plan');
-        } catch (err) {
-          logger.debug({ error: String(err) }, 'Concept render generation failed (non-fatal)');
-        }
-      })();
-    }
+    // Reload plan for response
+    const finalPlan = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id)).orderBy(desc(refinishingPlans.createdAt)).then(r => r[0]);
 
     return c.json({
-      plan: result.plan,
-      ragSourcesUsed: result.ragSourcesUsed,
-      ragSourceTitles: result.ragSourceTitles,
-      ragSources: result.ragSources,
-      materials: storedPlan ? await getMaterialsForProject(id) : [],
+      plan: finalPlan ? { ...finalPlan, steps: parsePlanSteps(finalPlan.steps) } : null,
+      materials: await getMaterialsForProject(id),
     });
   } catch (err: unknown) {
     logger.error({ err, projectId: id }, 'Error generating refinishing plan');

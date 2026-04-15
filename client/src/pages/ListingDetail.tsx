@@ -1,15 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource } from '../api';
+import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource, type RefinishingPlan as RefinishingPlanType, type Material } from '../api';
 import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { SkeletonDetail } from '../components/Skeleton';
 import ComparablesList from '../components/ComparablesList';
 import RefinishingPlan from '../components/RefinishingPlan';
-import type { RefinishingPlan as RefinishingPlanType } from '../api';
+import MaterialsList from '../components/MaterialsList';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
 import { resolveImageUrl } from '../utils';
+
+const CONCEPT_TO_PLAN_DIFFICULTY: Record<string, string> = {
+  simple: 'beginner', moderate: 'intermediate', full: 'advanced',
+};
 
 export default function ListingDetail() {
   const { id } = useParams();
@@ -20,9 +24,6 @@ export default function ListingDetail() {
   const [analyzing, setAnalyzing] = useState(false);
   const [showProjectForm, setShowProjectForm] = useState(false);
   const [showRagSources, setShowRagSources] = useState(false);
-  const [previewPlan, setPreviewPlan] = useState<RefinishingPlanType | null>(null);
-  const [planCache, setPlanCache] = useState<Record<string, RefinishingPlanType>>({});
-  const [loadingPlan, setLoadingPlan] = useState(false);
   const [selectedConcept, setSelectedConcept] = useState<string | null>(null);
   const [generatingConcepts, setGeneratingConcepts] = useState(false);
   const [projectForm, setProjectForm] = useState({ name: '', purchasePrice: '' });
@@ -32,16 +33,15 @@ export default function ListingDetail() {
   const [savingEdit, setSavingEdit] = useState(false);
   const { toast } = useToast();
 
-  // Sync concept card hours from a loaded plan's step-sum
-  const syncConceptHours = (difficulty: string, plan: RefinishingPlanType) => {
-    const stepHours = Math.round(plan.steps.reduce((s, step) => s + step.duration_minutes, 0) / 60 * 10) / 10;
-    setListing((prev) => prev ? {
-      ...prev,
-      conceptImages: prev.conceptImages?.map((c) =>
-        c.difficulty === difficulty ? { ...c, estimatedHours: stepHours } : c
-      ) ?? null,
-    } : prev);
-  };
+  // Derive the active plan from the selected concept difficulty
+  const activePlan: RefinishingPlanType | null = selectedConcept && listing?.plans
+    ? listing.plans.find((p) => p.difficultyLevel === CONCEPT_TO_PLAN_DIFFICULTY[selectedConcept]) ?? null
+    : null;
+
+  // Derive materials for the active plan
+  const activeMaterials: Material[] = activePlan && listing?.materials
+    ? listing.materials.filter((m) => m.refinishingPlanId === activePlan.id)
+    : [];
 
   useEffect(() => {
     if (!id) return;
@@ -51,28 +51,15 @@ export default function ListingDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Auto-select concept based on user's experience level and load plan
+  // Auto-select concept based on user's experience level
   useEffect(() => {
-    if (!listing?.conceptImages?.length || selectedConcept || previewPlan) return;
+    if (!listing?.conceptImages?.length || selectedConcept) return;
     const expMap: Record<string, string> = { beginner: 'simple', intermediate: 'moderate', advanced: 'full' };
     const preferredDifficulty = expMap[session?.user?.experienceLevel ?? ''] ?? 'moderate';
-    const moderate = listing.conceptImages.find((c) => c.difficulty === preferredDifficulty) ?? listing.conceptImages.find((c) => c.difficulty === 'moderate') ?? listing.conceptImages[0];
-    setSelectedConcept(moderate.difficulty);
-    setLoadingPlan(true);
-    api.previewPlan(listing.id, {
-      difficulty: moderate.difficulty,
-      label: moderate.label,
-      summary: moderate.summary,
-      estimatedHours: moderate.estimatedHours ?? undefined,
-      estimatedMaterialCost: moderate.estimatedMaterialCost ?? undefined,
-      estimatedResalePrice: moderate.estimatedResalePrice ?? undefined,
-    }).then(({ plan }) => {
-      setPreviewPlan(plan);
-      setPlanCache((prev) => ({ ...prev, [moderate.difficulty]: plan }));
-      syncConceptHours(moderate.difficulty, plan);
-    })
-      .catch(() => {})
-      .finally(() => setLoadingPlan(false));
+    const best = listing.conceptImages.find((c) => c.difficulty === preferredDifficulty)
+      ?? listing.conceptImages.find((c) => c.difficulty === 'moderate')
+      ?? listing.conceptImages[0];
+    setSelectedConcept(best.difficulty);
   }, [listing?.conceptImages?.length]);
 
   const handleAnalyze = async () => {
@@ -297,32 +284,7 @@ export default function ListingDetail() {
             }).map((opt) => (
               <div
                 key={opt.difficulty}
-                onClick={async () => {
-                  setSelectedConcept(opt.difficulty);
-                  // Use cached plan if available
-                  if (planCache[opt.difficulty]) {
-                    setPreviewPlan(planCache[opt.difficulty]);
-                    return;
-                  }
-                  setPreviewPlan(null);
-                  setLoadingPlan(true);
-                  try {
-                    const { plan } = await api.previewPlan(listing.id, {
-                      difficulty: opt.difficulty,
-                      label: opt.label,
-                      summary: opt.summary,
-                      estimatedHours: opt.estimatedHours ?? undefined,
-                      estimatedMaterialCost: opt.estimatedMaterialCost ?? undefined,
-                      estimatedResalePrice: opt.estimatedResalePrice ?? undefined,
-                    });
-                    setPreviewPlan(plan);
-                    setPlanCache((prev) => ({ ...prev, [opt.difficulty]: plan }));
-                    syncConceptHours(opt.difficulty, plan);
-                  } catch (err) {
-                    toast('error', err instanceof Error ? err.message : 'Failed to generate plan');
-                  }
-                  setLoadingPlan(false);
-                }}
+                onClick={() => setSelectedConcept(opt.difficulty)}
                 className={`border rounded-lg overflow-hidden cursor-pointer transition-all ${
                   selectedConcept === opt.difficulty
                     ? 'border-blue-500 ring-2 ring-blue-200'
@@ -338,27 +300,9 @@ export default function ListingDetail() {
                     <span className="absolute top-1.5 left-1.5 text-[9px] font-medium bg-black/50 text-white px-1.5 py-0.5 rounded">AI Concept</span>
                   </div>
                 ) : (
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (loadingPlan || generatingConcepts) return;
-                      try {
-                        const { render } = await api.generateConceptRender(listing.id, opt.difficulty as 'simple' | 'moderate' | 'full');
-                        if (render?.localPath) {
-                          setListing((prev) => prev ? {
-                            ...prev,
-                            conceptImages: prev.conceptImages?.map((c) =>
-                              c.difficulty === opt.difficulty ? { ...c, localPath: render.localPath } : c
-                            ) ?? null,
-                          } : prev);
-                        }
-                      } catch {}
-                    }}
-                    className="w-full h-40 bg-gray-50 flex flex-col items-center justify-center gap-1.5 hover:bg-gray-100 transition-colors"
-                  >
-                    <svg className="w-6 h-6 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3.75 21h16.5a2.25 2.25 0 002.25-2.25V5.25a2.25 2.25 0 00-2.25-2.25H3.75A2.25 2.25 0 001.5 5.25v13.5A2.25 2.25 0 003.75 21z" /></svg>
-                    <span className="text-[10px] text-gray-400 font-medium">Generate concept</span>
-                  </button>
+                  <div className="w-full h-40 bg-gray-50 flex items-center justify-center">
+                    <span className="text-[10px] text-gray-300">No render</span>
+                  </div>
                 )}
                 <div className="p-3">
                   <div className="flex items-center justify-between mb-1.5">
@@ -399,7 +343,8 @@ export default function ListingDetail() {
                     )}
                   </div>
                   <button
-                    onClick={async () => {
+                    onClick={async (e) => {
+                      e.stopPropagation();
                       try {
                         const { project } = await api.createProjectFromConcept({
                           listingId: listing.id,
@@ -426,57 +371,40 @@ export default function ListingDetail() {
         </Card>
       )}
 
-      {/* Plan Preview */}
+      {/* Pre-generated Plan + Materials */}
       {listing.furnitureType && (
-        <div className="mb-4">
-          {(loadingPlan || generatingConcepts) && (
+        <div className="mb-4 space-y-4">
+          {generatingConcepts && (
             <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
-              <Spinner /> {generatingConcepts ? 'Generating refinishing options...' : 'Generating refinishing plan...'}
+              <Spinner /> Generating refinishing options...
             </div>
           )}
-          {previewPlan && !loadingPlan && (
-            <RefinishingPlan plan={previewPlan} />
-          )}
-          {!previewPlan && !loadingPlan && !generatingConcepts && (!listing.conceptImages || listing.conceptImages.length === 0) && (
+          {activePlan && <RefinishingPlan plan={activePlan} />}
+          {activeMaterials.length > 0 && <MaterialsList materials={activeMaterials} readOnly />}
+          {!activePlan && !generatingConcepts && (!listing.conceptImages || listing.conceptImages.length === 0) && (
             <button
               onClick={async () => {
-                if (generatingConcepts || loadingPlan) return;
+                if (generatingConcepts) return;
                 setGeneratingConcepts(true);
                 try {
-                  // Generate concepts first, then auto-select moderate and generate plan
                   const { concepts } = await api.generateConcepts(listing.id);
                   if (concepts.length > 0) {
-                    setListing((prev) => prev ? { ...prev, conceptImages: concepts } : prev);
-                    const moderate = concepts.find((c) => c.difficulty === 'moderate') ?? concepts[0];
-                    setSelectedConcept(moderate.difficulty);
-                    setGeneratingConcepts(false);
-                    setLoadingPlan(true);
-                    const { plan } = await api.previewPlan(listing.id, {
-                      difficulty: moderate.difficulty,
-                      label: moderate.label,
-                      summary: moderate.summary,
-                      estimatedHours: moderate.estimatedHours ?? undefined,
-                      estimatedMaterialCost: moderate.estimatedMaterialCost ?? undefined,
-                      estimatedResalePrice: moderate.estimatedResalePrice ?? undefined,
-                    });
-                    setPreviewPlan(plan);
-                    setPlanCache((prev) => ({ ...prev, [moderate.difficulty]: plan }));
-                    syncConceptHours(moderate.difficulty, plan);
+                    // Re-fetch the listing to get the full data (plans + materials generated alongside concepts)
+                    const updated = await api.getListing(listing.id);
+                    setListing(updated);
+                    const moderate = (updated.conceptImages ?? []).find((c) => c.difficulty === 'moderate') ?? (updated.conceptImages ?? [])[0];
+                    if (moderate) setSelectedConcept(moderate.difficulty);
                   }
                 } catch (err) {
-                  toast('error', err instanceof Error ? err.message : 'Failed to generate refinishing plan');
+                  toast('error', err instanceof Error ? err.message : 'Failed to generate refinishing options');
                 }
                 setGeneratingConcepts(false);
-                setLoadingPlan(false);
               }}
-              disabled={generatingConcepts || loadingPlan}
+              disabled={generatingConcepts}
               className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
             >
-              Generate Refinishing Plan
+              Generate Refinishing Options
             </button>
-          )}
-          {!previewPlan && !loadingPlan && !generatingConcepts && listing.conceptImages && listing.conceptImages.length > 0 && (
-            <p className="text-xs text-gray-400">Select a refinishing option above to see the detailed plan.</p>
           )}
         </div>
       )}

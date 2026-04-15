@@ -162,18 +162,15 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     return null;
   }
 
-  // When generated from a concept card, map difficulty and use concept estimates
-  // for material cost and resale price. Hours come from the step-sum (source of truth).
+  // Map concept difficulty to plan difficulty level when generated from a concept
   if (difficultyCtx) {
     const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
       simple: 'beginner', moderate: 'intermediate', full: 'advanced',
     };
     plan.difficulty_level = conceptToPlanDifficulty[difficultyCtx.difficulty] ?? plan.difficulty_level;
-    if (difficultyCtx.estimatedMaterialCost != null) plan.estimated_material_cost = difficultyCtx.estimatedMaterialCost;
-    if (difficultyCtx.estimatedResalePrice != null) plan.estimated_resale_price = difficultyCtx.estimatedResalePrice;
   }
 
-  // Store in DB
+  // Store in DB — plan values are the source of truth
   const [stored] = await db.insert(refinishingPlans).values({
     listingId,
     projectId: projectId ?? null,
@@ -192,10 +189,14 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     ragSources: ragSources.length > 0 ? JSON.stringify(ragSources) : null,
   }).returning();
 
-  // Sync plan hours back to concept card so the card reflects the step-sum
+  // Sync all plan values back to concept card so the card is always consistent with the plan
   if (difficultyCtx) {
     await db.update(conceptRenders)
-      .set({ estimatedHours: plan.estimated_total_hours })
+      .set({
+        estimatedHours: plan.estimated_total_hours,
+        estimatedMaterialCost: plan.estimated_material_cost,
+        estimatedResalePrice: plan.estimated_resale_price,
+      })
       .where(and(
         eq(conceptRenders.listingId, listingId),
         eq(conceptRenders.difficulty, difficultyCtx.difficulty),

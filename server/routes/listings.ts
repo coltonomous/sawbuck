@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { listings, listingImages, conceptRenders, refinishingPlans, userDismissals, listingClicks, users } from '../db/schema.js';
+import { listings, listingImages, conceptRenders, refinishingPlans, materials, userDismissals, listingClicks, users } from '../db/schema.js';
 import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
@@ -206,9 +206,30 @@ listingsRouter.get('/', async (c) => {
   return c.json({ listings: enriched, total });
 });
 
+// Per-user import rate limit: 5 imports per 10-minute sliding window
+const importHits = new Map<string, { count: number; resetAt: number }>();
+const IMPORT_LIMIT = 5;
+const IMPORT_WINDOW_MS = 10 * 60 * 1000;
+
 // POST /import — import a listing by pasting its URL
 listingsRouter.post('/import', async (c) => {
   const user = c.get('user');
+
+  // Enforce per-user import rate limit
+  const now = Date.now();
+  const key = user.id;
+  const entry = importHits.get(key);
+  if (entry && now < entry.resetAt) {
+    if (entry.count >= IMPORT_LIMIT) {
+      const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
+      c.header('Retry-After', String(retryAfterSec));
+      return c.json({ error: `Import limit reached (${IMPORT_LIMIT} per ${IMPORT_WINDOW_MS / 60000} minutes). Try again in ${Math.ceil(retryAfterSec / 60)} minutes.` }, 429);
+    }
+    entry.count++;
+  } else {
+    importHits.set(key, { count: 1, resetAt: now + IMPORT_WINDOW_MS });
+  }
+
   const raw = await c.req.json();
   const parsed = importListingSchema.safeParse(raw);
   if (!parsed.success) {
@@ -270,7 +291,7 @@ listingsRouter.post('/import', async (c) => {
   const listing = await db.select().from(listings).where(eq(listings.id, inserted.id)).then(r => r[0]);
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, inserted.id));
 
-  // Auto-analyze in background (fire-and-forget)
+  // Auto-analyze + generate concepts/plans/materials/renders in background (fire-and-forget)
   const listingId = inserted.id;
   (async () => {
     try {
@@ -279,8 +300,47 @@ listingsRouter.post('/import', async (c) => {
       await analyzeListing(listingId);
       await calculatePricing(listingId).catch(() => {});
       logger.info({ listingId }, 'Auto-analysis complete for imported listing');
+
+      // Generate concepts, plans, materials, and renders — same path as the agent pipeline
+      const analyzed = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
+      if (analyzed?.furnitureType) {
+        const { generatePlanOptions } = await import('../agents/nodes/plan-options.js');
+        const mockState = {
+          runId: `import-${listingId}`,
+          startedAt: new Date().toISOString(),
+          qualifiedListings: [{
+            externalId: analyzed.externalId,
+            platform: analyzed.platform,
+            url: analyzed.url,
+            title: analyzed.title,
+            askingPrice: analyzed.askingPrice,
+            location: analyzed.location ?? '',
+            imageUrls: [],
+            listingId,
+            triageResult: { isWoodFurniture: true, hasFlipPotential: true, furnitureType: analyzed.furnitureType ?? '', reasoning: '', confidenceScore: 1 },
+            evaluation: {
+              furnitureType: analyzed.furnitureType ?? 'unknown',
+              furnitureStyle: analyzed.furnitureStyle ?? 'unknown',
+              conditionScore: analyzed.conditionScore ?? 5,
+              woodSpecies: analyzed.woodSpecies ?? null,
+              estimatedValue: analyzed.estimatedValue ?? 0,
+              dealScore: analyzed.dealScore ?? 0,
+              flipRecommendation: 'buy' as const,
+              refinishingPotential: 'medium' as const,
+              profitVerdict: '',
+            },
+          }],
+          scrapedCandidates: [], triagedCandidates: [], passedTriage: [],
+          evaluatedCandidates: [], listingsWithOptions: [], conceptRenders: [],
+          removedIds: [], reconciledCount: 0, triageCount: {}, evalCount: {},
+          qualifiedCount: 0, conceptsRendered: 0, scrapeAttempts: {},
+          seenExternalIds: [], scrapeTask: null, errors: [], summary: null,
+        };
+        await generatePlanOptions(mockState as Parameters<typeof generatePlanOptions>[0]);
+        logger.info({ listingId }, 'Concept/plan/render generation complete for imported listing');
+      }
     } catch (err) {
-      logger.warn({ listingId, error: String(err) }, 'Auto-analysis failed for imported listing (non-fatal)');
+      logger.warn({ listingId, error: String(err) }, 'Auto-analysis/generation failed for imported listing (non-fatal)');
     }
   })();
 
@@ -419,7 +479,28 @@ listingsRouter.get('/:id', async (c) => {
     listing = (await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0]))!;
   }
 
-  return c.json({ ...listing, images, conceptImages: concepts.length > 0 ? concepts : null });
+  // Load pre-generated plans (listing-level, no project association)
+  const listingPlans = await db.select()
+    .from(refinishingPlans)
+    .where(and(eq(refinishingPlans.listingId, id), isNull(refinishingPlans.projectId)));
+  const parsedPlans = listingPlans.map((p) => {
+    const steps = typeof p.steps === 'string' ? JSON.parse(p.steps) : p.steps;
+    return { ...p, steps };
+  });
+
+  // Load materials for those plans
+  const planIds = listingPlans.map((p) => p.id);
+  const listingMaterials = planIds.length > 0
+    ? await db.select().from(materials).where(inArray(materials.refinishingPlanId, planIds))
+    : [];
+
+  return c.json({
+    ...listing,
+    images,
+    conceptImages: concepts.length > 0 ? concepts : null,
+    plans: parsedPlans.length > 0 ? parsedPlans : null,
+    materials: listingMaterials.length > 0 ? listingMaterials : null,
+  });
 });
 
 // PATCH /bulk — bulk update listings
@@ -756,7 +837,7 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
       seenExternalIds: [], scrapeTask: null, errors: [], summary: null,
     };
 
-    await generatePlanOptions(mockState as any);
+    await generatePlanOptions(mockState as Parameters<typeof generatePlanOptions>[0]);
 
     const concepts = await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, id));
     return c.json({ concepts });
@@ -766,75 +847,6 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
   }
 });
 
-// POST /:id/preview-plan — generate a refinishing plan preview without creating a project
-listingsRouter.post('/:id/preview-plan', async (c) => {
-  const user = c.get('user');
-  const id = parseId(c);
-  if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
-
-  const listing = await getVisibleListing(id, user.id);
-  if (!listing) return c.json({ error: 'Not found' }, 404);
-  if (!listing.furnitureType) {
-    return c.json({ error: 'Listing must be analyzed first' }, 422);
-  }
-
-  const body = await c.req.json().catch(() => ({}));
-  const requestedDifficulty = body.difficulty ?? null;
-
-  // Map concept difficulties (simple/moderate/full) to plan difficulty levels (beginner/intermediate/advanced)
-  const conceptToPlanDifficulty: Record<string, string> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
-
-  // Check for existing plan on this listing matching the requested difficulty
-  const existingPlans = await db.select().from(refinishingPlans)
-    .where(eq(refinishingPlans.listingId, id));
-
-  if (requestedDifficulty) {
-    const planDifficulty = conceptToPlanDifficulty[requestedDifficulty] ?? requestedDifficulty;
-    const match = existingPlans.find((p) => p.difficultyLevel === planDifficulty || p.difficultyLevel === requestedDifficulty);
-    if (match) {
-      const steps = typeof match.steps === 'string' ? JSON.parse(match.steps) : match.steps;
-      return c.json({ plan: { ...match, steps } });
-    }
-  } else if (existingPlans.length > 0) {
-    const plan = existingPlans[0];
-    const steps = typeof plan.steps === 'string' ? JSON.parse(plan.steps) : plan.steps;
-    return c.json({ plan: { ...plan, steps } });
-  }
-
-  try {
-    const { generateRefinishingPlan } = await import('../analysis/refinishing.js');
-    const difficultyCtx = body.difficulty ? {
-      difficulty: body.difficulty,
-      label: body.label ?? body.difficulty,
-      summary: body.summary ?? '',
-      estimatedHours: body.estimatedHours,
-      estimatedMaterialCost: body.estimatedMaterialCost,
-      estimatedResalePrice: body.estimatedResalePrice,
-    } : undefined;
-
-    const result = await generateRefinishingPlan(id, undefined, difficultyCtx);
-    if (!result) return c.json({ error: 'Failed to generate plan' }, 422);
-
-    // Return camelCase shape matching the DB schema (result.plan is snake_case from Zod)
-    const p = result.plan;
-    return c.json({ plan: {
-      styleRecommendation: p.style_recommendation,
-      description: p.description,
-      steps: p.steps,
-      estimatedHours: p.estimated_total_hours,
-      estimatedMaterialCost: p.estimated_material_cost,
-      estimatedResalePrice: p.estimated_resale_price,
-      difficultyLevel: p.difficulty_level,
-      beforeDescription: p.before_description,
-      afterDescription: p.after_description,
-      ragSourcesUsed: result.ragSourcesUsed,
-      ragSources: result.ragSources.length > 0 ? JSON.stringify(result.ragSources) : null,
-    }});
-  } catch (err) {
-    logger.error({ listingId: id, error: String(err) }, 'Plan preview failed');
-    return c.json({ error: 'Failed to generate plan preview' }, 500);
-  }
-});
 
 // GET /:id/price — get or calculate pricing
 listingsRouter.get('/:id/price', async (c) => {
