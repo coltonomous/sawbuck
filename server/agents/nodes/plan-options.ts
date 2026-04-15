@@ -22,6 +22,7 @@ import type { RefinishingPlan } from '../../analysis/refinishing.js';
 /**
  * Build a render prompt from the plan + finish concept.
  * The prompt describes the same piece with a specific surface finish applied.
+ * Must be aggressive enough that Flux img2img produces a visibly different surface.
  */
 function buildRenderPrompt(
   evaluation: ListingWithOptions['evaluation'],
@@ -32,7 +33,23 @@ function buildRenderPrompt(
   const afterDesc = plan?.after_description ?? concept.summary;
   const style = plan?.style_recommendation ?? concept.label;
 
-  return `The same ${type} shown in the reference photo, refinished with: ${concept.label} — ${concept.summary}. After: ${afterDesc}. Style: ${style}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+  const isPaint = /paint|chalk|milk|lacquer|enamel/i.test(concept.finishType) || /paint|chalk|milk|lacquer|enamel/i.test(concept.summary);
+
+  if (isPaint) {
+    return `A ${type} with a ${concept.label} finish. ${concept.summary}. The entire surface is covered in ${concept.label} — no bare wood visible. The paint color, sheen, and texture must dominate the image. Style: ${style}. Same piece shape and proportions as the reference photo. Photorealistic product photography, studio lighting with specular highlights to show the paint finish.`;
+  }
+
+  return `The same ${type} from the reference photo with a completely different surface finish: ${concept.label}. ${concept.summary}. After: ${afterDesc}. The surface color, sheen, and texture must be clearly different from the original — show the ${concept.finishType} finish in sharp detail (grain, tone, reflectivity). Style: ${style}. Same piece shape and proportions. Photorealistic product photography, studio lighting angled to highlight the surface texture and finish quality.`;
+}
+
+/**
+ * Pick img2img strength based on finish type.
+ * Paint/opaque finishes need higher strength since the surface color changes completely.
+ * Stain/oil finishes can use lower strength to preserve wood grain detail.
+ */
+function renderStrength(concept: FinishConcept): number {
+  const isPaint = /paint|chalk|milk|lacquer|enamel/i.test(concept.finishType) || /paint|chalk|milk|lacquer|enamel/i.test(concept.summary);
+  return isPaint ? 0.78 : 0.55;
 }
 
 const FINISH_CONCEPTS_SYSTEM = `You are a furniture refinishing advisor. Given a piece of furniture, suggest finish options that would maximize resale value. Each concept should describe a different surface treatment — stain, paint, oil, varnish, etc. — appropriate for the piece's wood species, style, and condition. Focus on finishes that are realistic for a hobbyist and popular in the resale market.`;
@@ -165,7 +182,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             if (referenceImageUrl) {
               falModel = 'fal-ai/flux/dev/image-to-image';
               falInput.image_url = referenceImageUrl;
-              falInput.strength = 0.45;
+              falInput.strength = renderStrength(concept);
             } else {
               falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
             }
