@@ -48,42 +48,35 @@ const { discover } = await import('../ingest.js');
 
 const testRegion = { id: 1, name: 'seattle', latitude: 47.6, longitude: -122.3, radiusMiles: 30, clSubdomain: 'seattle' };
 
-function mockOfferUpPage(listings: Array<{ id: string; title: string; price: number; city: string }>) {
+function mockGraphQLResponse(listings: Array<{ id: string; title: string; price: number; city: string }>) {
   const tiles = listings.map((l) => ({
-    __typename: 'ModularFeedTileListing',
+    tileId: l.id,
+    tileType: 'LISTING',
     listing: {
       listingId: l.id,
       title: l.title,
       price: l.price,
       locationName: l.city,
-      image: { url: `https://images.offerup.com/${l.id}.jpg` },
+      image: { url: `https://images.offerup.com/${l.id}.jpg`, width: 600, height: 600 },
     },
   }));
-
-  const nextData = {
-    props: {
-      pageProps: {
-        searchFeedResponse: {
-          looseTiles: [
-            ...tiles,
-            { __typename: 'ModularFeedTileGoogleDisplayAd' }, // noise tile
-          ],
-        },
-      },
-    },
-  };
 
   return {
     ok: true,
     status: 200,
     headers: { getSetCookie: () => [] },
-    text: () => Promise.resolve(
-      `<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`
-    ),
+    json: () => Promise.resolve({
+      data: {
+        modularFeed: {
+          looseTiles: tiles,
+        },
+      },
+    }),
+    text: () => Promise.resolve(JSON.stringify({ data: { modularFeed: { looseTiles: tiles } } })),
   };
 }
 
-const emptyPage = mockOfferUpPage([]);
+const emptyResponse = mockGraphQLResponse([]);
 const warmCookieResp = { ok: true, status: 200, headers: { getSetCookie: () => [] }, text: () => Promise.resolve('') };
 
 beforeEach(() => {
@@ -91,15 +84,15 @@ beforeEach(() => {
 });
 
 describe('OfferUp discover', () => {
-  it('parses listings from __NEXT_DATA__', async () => {
+  it('parses listings from GraphQL response', async () => {
     // warmCookies, then return listings on first query, empty for the rest
     mockFetch
       .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValueOnce(mockOfferUpPage([
+      .mockResolvedValueOnce(mockGraphQLResponse([
         { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
         { id: 'def-456', title: 'Pine Table', price: 75, city: 'Bellevue, WA' },
       ]))
-      .mockResolvedValue(emptyPage);
+      .mockResolvedValue(emptyResponse);
 
     const results = await discover(testRegion, 0);
 
@@ -113,26 +106,10 @@ describe('OfferUp discover', () => {
     expect(results[1].externalId).toBe('def-456');
   });
 
-  it('filters out non-listing tiles', async () => {
+  it('returns empty array when API returns no tiles', async () => {
     mockFetch
       .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValueOnce(mockOfferUpPage([
-        { id: 'only-one', title: 'Chair', price: 50, city: 'Renton, WA' },
-      ]))
-      .mockResolvedValue(emptyPage);
-
-    const results = await discover(testRegion, 0);
-    expect(results).toHaveLength(1);
-  });
-
-  it('returns empty array when no __NEXT_DATA__ found', async () => {
-    const noDataPage = {
-      ok: true, status: 200, headers: { getSetCookie: () => [] },
-      text: () => Promise.resolve('<html><body>No data</body></html>'),
-    };
-    mockFetch
-      .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValue(noDataPage);
+      .mockResolvedValue(emptyResponse);
 
     const results = await discover(testRegion, 0);
     expect(results).toHaveLength(0);
@@ -143,10 +120,10 @@ describe('OfferUp discover', () => {
     mockFetch
       .mockResolvedValueOnce(warmCookieResp)
       .mockResolvedValueOnce({ ok: false, status: 403, statusText: 'Forbidden', headers: { getSetCookie: () => [] } })
-      .mockResolvedValueOnce(mockOfferUpPage([
+      .mockResolvedValueOnce(mockGraphQLResponse([
         { id: 'recovered', title: 'Table', price: 100, city: 'Seattle, WA' },
       ]))
-      .mockResolvedValue(emptyPage);
+      .mockResolvedValue(emptyResponse);
 
     const results = await discover(testRegion, 0);
     expect(results).toHaveLength(1);
@@ -157,14 +134,14 @@ describe('OfferUp discover', () => {
     // Same listing appears in two different query results
     mockFetch
       .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValueOnce(mockOfferUpPage([
+      .mockResolvedValueOnce(mockGraphQLResponse([
         { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
       ]))
-      .mockResolvedValueOnce(mockOfferUpPage([
+      .mockResolvedValueOnce(mockGraphQLResponse([
         { id: 'abc-123', title: 'Oak Dresser', price: 150, city: 'Seattle, WA' },
         { id: 'def-456', title: 'Pine Table', price: 75, city: 'Bellevue, WA' },
       ]))
-      .mockResolvedValue(emptyPage);
+      .mockResolvedValue(emptyResponse);
 
     const results = await discover(testRegion, 0);
     expect(results).toHaveLength(2); // abc-123 only counted once
@@ -173,51 +150,53 @@ describe('OfferUp discover', () => {
   it('fetches all search queries per call', async () => {
     mockFetch
       .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValue(emptyPage);
+      .mockResolvedValue(emptyResponse);
 
     await discover(testRegion, 0);
 
     // 1 warmCookies call + N search query calls
     const searchCalls = mockFetch.mock.calls.slice(1);
     expect(searchCalls.length).toBeGreaterThan(1);
-    // All calls should be to offerup search
+    // All calls should be POST to the GraphQL API
     for (const call of searchCalls) {
-      expect(call[0]).toContain('offerup.com/search');
+      expect(call[0]).toBe('https://offerup.com/api/graphql');
+      expect(call[1]?.method).toBe('POST');
     }
-    // Different queries should be used
-    const queries = searchCalls.map((c: any) => new URL(c[0]).searchParams.get('q'));
+  });
+
+  it('passes region coordinates as lat/lon in GraphQL variables', async () => {
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValue(emptyResponse);
+
+    await discover(testRegion, 0);
+
+    const searchCalls = mockFetch.mock.calls.slice(1);
+    for (const call of searchCalls) {
+      const body = JSON.parse(call[1]?.body);
+      const params = body.variables.searchParams;
+      const lat = params.find((p: any) => p.key === 'lat');
+      const lon = params.find((p: any) => p.key === 'lon');
+      const distance = params.find((p: any) => p.key === 'distance');
+      expect(lat.value).toBe(String(testRegion.latitude));
+      expect(lon.value).toBe(String(testRegion.longitude));
+      expect(distance.value).toBe(String(testRegion.radiusMiles));
+    }
+  });
+
+  it('uses different search queries for each call', async () => {
+    mockFetch
+      .mockResolvedValueOnce(warmCookieResp)
+      .mockResolvedValue(emptyResponse);
+
+    await discover(testRegion, 0);
+
+    const searchCalls = mockFetch.mock.calls.slice(1);
+    const queries = searchCalls.map((c: any) => {
+      const body = JSON.parse(c[1]?.body);
+      return body.variables.searchParams.find((p: any) => p.key === 'q')?.value;
+    });
     const uniqueQueries = new Set(queries);
     expect(uniqueQueries.size).toBeGreaterThan(1);
-  });
-
-  it('passes region coordinates as lat/lng URL params', async () => {
-    mockFetch
-      .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValue(emptyPage);
-
-    await discover(testRegion, 0);
-
-    const searchCalls = mockFetch.mock.calls.slice(1);
-    for (const call of searchCalls) {
-      const url = new URL(call[0]);
-      expect(url.searchParams.get('lat')).toBe(String(testRegion.latitude));
-      expect(url.searchParams.get('lng')).toBe(String(testRegion.longitude));
-      expect(url.searchParams.get('radius')).toBe(String(testRegion.radiusMiles));
-    }
-  });
-
-  it('does not add spurious page param when iterating queries', async () => {
-    mockFetch
-      .mockResolvedValueOnce(warmCookieResp)
-      .mockResolvedValue(emptyPage);
-
-    await discover(testRegion, 0);
-
-    // No search URL should have a page param — each query is page 1
-    const searchCalls = mockFetch.mock.calls.slice(1);
-    for (const call of searchCalls) {
-      const url = new URL(call[0]);
-      expect(url.searchParams.has('page')).toBe(false);
-    }
   });
 });

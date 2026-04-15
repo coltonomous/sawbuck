@@ -7,10 +7,6 @@ import { offerUpFetch, warmCookies } from './client.js';
 import type { ScrapedCandidate, Region, EnrichResult } from '../common/types.js';
 import logger from '../../lib/logger.js';
 
-/**
- * Build OfferUp search URL with location params.
- * OfferUp's search pages embed results in __NEXT_DATA__ JSON.
- */
 // Rotate search queries to cover more furniture types across runs.
 // OfferUp's keyword search is noisy, so specific terms reduce junk.
 const SEARCH_QUERIES = [
@@ -36,20 +32,38 @@ const SEARCH_QUERIES = [
   'farmhouse furniture',
 ];
 
-function searchUrl(region: Region, query: string, page = 0): string {
-  const params = new URLSearchParams({
-    q: query,
-    lat: String(region.latitude),
-    lng: String(region.longitude),
-    radius: String(region.radiusMiles),
-    delivery_param: 'all',
-  });
-  if (page > 0) params.set('page', String(page + 1));
-  return `https://offerup.com/search?${params}`;
+// GraphQL query for OfferUp's modular feed endpoint.
+// Calling the API directly bypasses SSR, which falls back to server IP
+// geolocation (Kansas) and ignores URL/cookie location params.
+const MODULAR_FEED_QUERY = `
+query GetModularFeed($searchParams: [SearchParam]) {
+  modularFeed(params: $searchParams) {
+    looseTiles {
+      ...modularTileListing
+    }
+  }
 }
 
-interface OfferUpTile {
-  __typename: string;
+fragment modularTileListing on ModularFeedTileListing {
+  tileId
+  listing {
+    listingId
+    conditionText
+    image {
+      height
+      url
+      width
+    }
+    locationName
+    price
+    title
+  }
+  tileType
+}
+`;
+
+interface GraphQLTile {
+  tileType?: string;
   listing?: {
     listingId: string;
     title: string;
@@ -61,34 +75,53 @@ interface OfferUpTile {
 }
 
 /**
- * Parse listings from OfferUp's __NEXT_DATA__ embedded JSON.
+ * Search OfferUp via their GraphQL API with explicit lat/lon.
+ * This avoids the SSR HTML path which ignores location params and
+ * falls back to IP geolocation (resolving cloud IPs to Kansas).
  */
-function parseSearchPage(html: string): Array<{
+async function searchGraphQL(region: Region, query: string): Promise<Array<{
   externalId: string;
   title: string;
   askingPrice: number | null;
   location: string;
   imageUrl: string | null;
-}> {
-  const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-  if (!nextDataMatch) {
-    logger.warn('OfferUp integration: no __NEXT_DATA__ found in search page');
+}>> {
+  const searchParams = [
+    { key: 'q', value: query },
+    { key: 'lat', value: String(region.latitude) },
+    { key: 'lon', value: String(region.longitude) },
+    { key: 'distance', value: String(region.radiusMiles) },
+    { key: 'delivery_param', value: 'all' },
+    { key: 'platform', value: 'web' },
+  ];
+
+  const body = JSON.stringify({
+    query: MODULAR_FEED_QUERY,
+    variables: { searchParams },
+  });
+
+  const res = await offerUpFetch('https://offerup.com/api/graphql', {
+    method: 'POST',
+    body,
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!res.ok) {
+    logger.warn({ status: res.status, query }, 'OfferUp GraphQL returned non-200');
     return [];
   }
 
-  let tiles: OfferUpTile[];
+  let tiles: GraphQLTile[];
   try {
-    const data = JSON.parse(nextDataMatch[1]);
-    const feed = data?.props?.pageProps?.searchFeedResponse ?? {};
-    tiles = (feed.looseTiles ?? feed.tightTiles ?? []) as OfferUpTile[];
+    const json = await res.json() as { data?: { modularFeed?: { looseTiles?: GraphQLTile[] } } };
+    tiles = json?.data?.modularFeed?.looseTiles ?? [];
   } catch {
-    logger.error('OfferUp integration: failed to parse __NEXT_DATA__');
+    logger.error({ query }, 'OfferUp GraphQL: failed to parse response');
     return [];
   }
 
   const results = [];
   for (const tile of tiles) {
-    if (tile.__typename !== 'ModularFeedTileListing') continue;
     const item = tile.listing;
     if (!item?.listingId || !item?.title) continue;
 
@@ -107,9 +140,9 @@ function parseSearchPage(html: string): Array<{
 }
 
 /**
- * Phase 1: Discover new listings from OfferUp search pages.
- * OfferUp SSR only returns 2-3 listings per query, so we scrape all
- * search queries on every call to maximize coverage.
+ * Phase 1: Discover new listings from OfferUp via GraphQL API.
+ * Calls the API directly with lat/lon so location is always correct
+ * (the SSR HTML path falls back to IP geolocation → Kansas).
  */
 export async function discover(region: Region, _page = 0): Promise<ScrapedCandidate[]> {
   await warmCookies({ latitude: region.latitude, longitude: region.longitude, radiusMiles: region.radiusMiles, name: region.name });
@@ -119,17 +152,10 @@ export async function discover(region: Region, _page = 0): Promise<ScrapedCandid
 
   for (let i = 0; i < SEARCH_QUERIES.length; i++) {
     const query = SEARCH_QUERIES[i];
-    const url = searchUrl(region, query);
-    logger.info({ url, query, region: region.name }, 'OfferUp integration: fetching search page');
+    logger.info({ query, region: region.name }, 'OfferUp integration: searching via GraphQL API');
 
     try {
-      const res = await offerUpFetch(url);
-      if (!res.ok) {
-        logger.warn({ status: res.status, query: SEARCH_QUERIES[i] }, 'OfferUp search page returned non-200');
-        continue;
-      }
-      const html = await res.text();
-      const parsed = parseSearchPage(html);
+      const parsed = await searchGraphQL(region, query);
       for (const item of parsed) {
         if (!seenIds.has(item.externalId)) {
           seenIds.add(item.externalId);
@@ -137,7 +163,7 @@ export async function discover(region: Region, _page = 0): Promise<ScrapedCandid
         }
       }
     } catch (err) {
-      logger.warn({ query: SEARCH_QUERIES[i], error: String(err) }, 'OfferUp search fetch failed');
+      logger.warn({ query, error: String(err) }, 'OfferUp search fetch failed');
     }
 
     // Brief delay between queries to avoid rate limiting

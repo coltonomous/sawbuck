@@ -77,37 +77,45 @@ async function testOfferUp() {
     await warmOfferUpCookies(REGION);
     console.log('  Cookies warmed');
 
-    const params = new URLSearchParams({
-      q: 'wood furniture',
-      lat: String(REGION.latitude),
-      lng: String(REGION.longitude),
-      radius: String(REGION.radiusMiles),
-      delivery_param: 'all',
+    // Use the GraphQL API directly — SSR HTML falls back to IP geolocation
+    const searchParams = [
+      { key: 'q', value: 'wood furniture' },
+      { key: 'lat', value: String(REGION.latitude) },
+      { key: 'lon', value: String(REGION.longitude) },
+      { key: 'distance', value: String(REGION.radiusMiles) },
+      { key: 'delivery_param', value: 'all' },
+      { key: 'platform', value: 'web' },
+    ];
+    const body = JSON.stringify({
+      query: `query GetModularFeed($searchParams: [SearchParam]) {
+        modularFeed(params: $searchParams) {
+          looseTiles { ...modularTileListing }
+        }
+      }
+      fragment modularTileListing on ModularFeedTileListing {
+        tileId
+        listing { listingId title price locationName image { url } }
+        tileType
+      }`,
+      variables: { searchParams },
     });
 
-    const searchUrl = `https://offerup.com/search?${params}`;
-    console.log(`  Fetching: ${searchUrl}`);
+    console.log(`  Calling GraphQL API with lat=${REGION.latitude}, lon=${REGION.longitude}`);
 
-    const res = await offerUpFetch(searchUrl);
+    const res = await offerUpFetch('https://offerup.com/api/graphql', {
+      method: 'POST',
+      body,
+      headers: { 'Content-Type': 'application/json' },
+    });
 
     if (!res.ok) {
       console.error(`  FAIL: HTTP ${res.status} ${res.statusText}`);
       return false;
     }
 
-    const html = await res.text();
-    console.log(`  Response: ${html.length} bytes`);
-
-    const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-    if (!nextDataMatch) {
-      console.error('  FAIL: No __NEXT_DATA__ found in search page');
-      return false;
-    }
-
-    const nextData = JSON.parse(nextDataMatch[1]);
-    const feed = nextData?.props?.pageProps?.searchFeedResponse ?? {};
-    const tiles = (feed.looseTiles ?? feed.tightTiles ?? []) as Array<{ __typename: string; listing?: { listingId: string; title: string; price: number | null; locationName?: string } }>;
-    const listings = tiles.filter((t) => t.__typename === 'ModularFeedTileListing');
+    const json = await res.json() as { data?: { modularFeed?: { looseTiles?: Array<{ listing?: { listingId: string; title: string; price: number | null; locationName?: string } }> } } };
+    const tiles = json?.data?.modularFeed?.looseTiles ?? [];
+    const listings = tiles.filter((t) => t.listing?.listingId);
 
     console.log(`  Total tiles: ${tiles.length}`);
     console.log(`  Listing tiles: ${listings.length}`);
