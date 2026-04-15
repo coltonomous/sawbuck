@@ -132,18 +132,13 @@ export default function ListingDetail() {
             <PlatformBadge platform={listing.platform} />
             <span className="text-sm text-gray-500">{listing.location || 'No location'}</span>
           </div>
-          {listing.matchedSearchTerms && (() => {
-            try {
-              const terms: string[] = JSON.parse(listing.matchedSearchTerms);
-              return terms.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 mt-2.5">
-                  {terms.map((t: string) => (
-                    <span key={t} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs">{t}</span>
-                  ))}
-                </div>
-              ) : null;
-            } catch { return null; }
-          })()}
+          {listing.matchedSearchTerms && listing.matchedSearchTerms.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              {listing.matchedSearchTerms.map((t: string) => (
+                <span key={t} className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 text-xs">{t}</span>
+              ))}
+            </div>
+          )}
         </div>
         <div className="text-right shrink-0">
           {listing.askingPrice != null && (

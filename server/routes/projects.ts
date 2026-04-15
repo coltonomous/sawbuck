@@ -349,7 +349,7 @@ export const projectsRouter = new Hono()
   if (listing?.conditionNotes) context.push(`Original condition notes: ${listing.conditionNotes}`);
   if (listing?.description) context.push(`Original listing description: ${listing.description}`);
   if (plan?.description) context.push(`Refinishing plan summary: ${plan.description}`);
-  if (plan?.steps && Array.isArray(plan.steps)) {
+  if (plan?.steps) {
     context.push(`Refinishing work done: ${plan.steps.map((s: { name?: string; title?: string }) => s.name || s.title || '').filter(Boolean).join(', ')}`);
   }
   if (mats.length > 0) {
