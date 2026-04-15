@@ -262,12 +262,31 @@ listingsRouter.post('/import', async (c) => {
     return c.json({ error: 'Could not extract listing ID from URL. Make sure this is a direct link to a listing.' }, 400);
   }
 
-  // Check if already imported by this user
+  // Check if this listing already exists in the database (any user or agent-discovered)
   const existing = await db.select()
     .from(listings)
-    .where(and(eq(listings.platform, match.platform), eq(listings.externalId, externalId), eq(listings.userId, user.id)))
+    .where(and(eq(listings.platform, match.platform), eq(listings.externalId, externalId)))
     .then(r => r[0]);
   if (existing) {
+    // Ensure the listing is visible for this user: remove any per-user dismissal
+    await db.delete(userDismissals).where(
+      and(eq(userDismissals.userId, user.id), eq(userDismissals.listingId, existing.id))
+    );
+
+    // If the agent globally dismissed it, restore it so it appears in feeds
+    if (existing.status === 'dismissed' || existing.status === 'removed') {
+      await db.update(listings)
+        .set({ status: existing.furnitureType ? 'analyzed' : 'new' })
+        .where(eq(listings.id, existing.id));
+    }
+
+    // If another user owns it, promote to shared so both users can see it
+    if (existing.userId && existing.userId !== user.id) {
+      await db.update(listings)
+        .set({ userId: null })
+        .where(eq(listings.id, existing.id));
+    }
+
     return c.json({ listing: existing, alreadyExists: true });
   }
 
@@ -407,6 +426,59 @@ listingsRouter.post('/create', async (c) => {
   }
 
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, inserted.id));
+
+  // Auto-analyze + generate concepts/plans/materials/renders in background (fire-and-forget)
+  const listingId = inserted.id;
+  (async () => {
+    try {
+      // Photos are already on disk — just process (resize) them
+      await processListingImages(listingId);
+      await analyzeListing(listingId);
+      await calculatePricing(listingId).catch(() => {});
+      logger.info({ listingId }, 'Auto-analysis complete for sawbuck listing');
+
+      const analyzed = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
+      if (analyzed?.furnitureType) {
+        const { generatePlanOptions } = await import('../agents/nodes/plan-options.js');
+        const mockState = {
+          runId: `sawbuck-${listingId}`,
+          startedAt: new Date().toISOString(),
+          qualifiedListings: [{
+            externalId: analyzed.externalId,
+            platform: analyzed.platform,
+            url: analyzed.url,
+            title: analyzed.title,
+            askingPrice: analyzed.askingPrice,
+            location: analyzed.location ?? '',
+            imageUrls: [],
+            listingId,
+            triageResult: { isWoodFurniture: true, hasFlipPotential: true, furnitureType: analyzed.furnitureType ?? '', reasoning: '', confidenceScore: 1 },
+            evaluation: {
+              furnitureType: analyzed.furnitureType ?? 'unknown',
+              furnitureStyle: analyzed.furnitureStyle ?? 'unknown',
+              conditionScore: analyzed.conditionScore ?? 5,
+              woodSpecies: analyzed.woodSpecies ?? null,
+              estimatedValue: analyzed.estimatedValue ?? 0,
+              dealScore: analyzed.dealScore ?? 0,
+              flipRecommendation: 'buy' as const,
+              refinishingPotential: 'medium' as const,
+              profitVerdict: '',
+            },
+          }],
+          scrapedCandidates: [], triagedCandidates: [], passedTriage: [],
+          evaluatedCandidates: [], listingsWithOptions: [], conceptRenders: [],
+          removedIds: [], reconciledCount: 0, triageCount: {}, evalCount: {},
+          qualifiedCount: 0, conceptsRendered: 0, scrapeAttempts: {},
+          seenExternalIds: [], scrapeTask: null, errors: [], summary: null,
+        };
+        await generatePlanOptions(mockState as Parameters<typeof generatePlanOptions>[0]);
+        logger.info({ listingId }, 'Concept/plan/render generation complete for sawbuck listing');
+      }
+    } catch (err) {
+      logger.warn({ listingId, error: String(err) }, 'Auto-analysis/generation failed for sawbuck listing (non-fatal)');
+    }
+  })();
+
   return c.json({ listing: { ...inserted, images } }, 201);
 });
 
