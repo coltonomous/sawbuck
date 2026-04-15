@@ -25,7 +25,7 @@ export default function ProjectDetail() {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [showExport, setShowExport] = useState(false);
   const [selectedPlanIdx, setSelectedPlanIdx] = useState(0);
-  const [selectedConceptDifficulty, setSelectedConceptDifficulty] = useState<string | null>(null);
+  const [selectedConceptFinish, setSelectedConceptFinish] = useState<string | null>(null);
   const { toast } = useToast();
 
   const load = () => {
@@ -256,49 +256,19 @@ export default function ProjectDetail() {
 
       {tab === 'plan' && (
         <div className="space-y-4">
-          {/* Concept options from the agent pipeline */}
+          {/* Finish concepts from the agent pipeline */}
           {project.concepts && project.concepts.length > 0 && (
             <Card>
-              <CardHeader>Refinishing Concepts</CardHeader>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {[...project.concepts].sort((a, b) => {
-                  const order = { simple: 0, moderate: 1, full: 2 };
-                  return (order[a.difficulty as keyof typeof order] ?? 1) - (order[b.difficulty as keyof typeof order] ?? 1);
-                }).map((opt) => {
-                // Map concept difficulty to plan difficulty for matching
-                const planDiffMap: Record<string, string> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
-                const matchingPlanIdx = project.plans?.findIndex((p) => p.difficultyLevel === planDiffMap[opt.difficulty]);
-                const isSelected = selectedConceptDifficulty === opt.difficulty;
+              <CardHeader>Finish Options</CardHeader>
+              <div className={`grid grid-cols-2 sm:grid-cols-${Math.min(project.concepts.length, 5)} gap-3`}>
+                {project.concepts.map((opt) => {
+                const isSelected = selectedConceptFinish === opt.finishType;
 
                 return (
                   <div
-                    key={opt.difficulty}
+                    key={opt.finishType}
                     onClick={() => {
-                      if (generatingPlan) return;
-                      setSelectedConceptDifficulty(opt.difficulty);
-                      const matchingPlan = matchingPlanIdx != null && matchingPlanIdx >= 0
-                        ? project.plans?.[matchingPlanIdx]
-                        : null;
-                      if (matchingPlan && matchingPlan.projectId === project.id) {
-                        // Plan already claimed by this project — just switch display
-                        setSelectedPlanIdx(matchingPlanIdx!);
-                      } else {
-                        // Claim existing listing-level plan or generate a new one
-                        setGeneratingPlan(true);
-                        api.generateRefinishingPlan(project.id, {
-                          difficulty: opt.difficulty,
-                          label: opt.label,
-                          summary: opt.summary,
-                          estimatedHours: opt.estimatedHours,
-                          estimatedMaterialCost: opt.estimatedMaterialCost,
-                          estimatedResalePrice: opt.estimatedResalePrice,
-                        }).then(() => {
-                          load();
-                          toast('success', matchingPlan ? 'Plan selected' : 'Plan generated');
-                        }).catch((err: Error) => {
-                          toast('error', err.message || 'Failed');
-                        }).finally(() => setGeneratingPlan(false));
-                      }
+                      setSelectedConceptFinish(opt.finishType);
                     }}
                     className={`rounded-lg overflow-hidden cursor-pointer transition-all ${
                       isSelected ? 'border-2 border-blue-500 ring-2 ring-blue-200' : 'border border-gray-200 hover:border-gray-300'
@@ -316,18 +286,9 @@ export default function ProjectDetail() {
                     <div className="p-2.5">
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-xs font-semibold text-gray-900">{opt.label}</span>
-                        <span className={`text-[9px] font-medium px-1.5 py-0.5 rounded ${
-                          opt.difficulty === 'simple' ? 'bg-green-100 text-green-700'
-                            : opt.difficulty === 'moderate' ? 'bg-amber-100 text-amber-700'
-                            : 'bg-red-100 text-red-700'
-                        }`}>{opt.difficulty}</span>
+                        <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{opt.finishType}</span>
                       </div>
-                      <p className="text-[10px] text-gray-500 line-clamp-2 mb-1">{opt.summary}</p>
-                      <div className="flex gap-3 text-[10px] text-gray-400">
-                        {opt.estimatedHours != null && <span>{opt.estimatedHours}h</span>}
-                        {opt.estimatedMaterialCost != null && <span>${opt.estimatedMaterialCost}</span>}
-                        {opt.estimatedResalePrice != null && <span className="text-green-600">${opt.estimatedResalePrice}</span>}
-                      </div>
+                      <p className="text-[10px] text-gray-500 line-clamp-2">{opt.summary}</p>
                     </div>
                   </div>
                 );
@@ -354,7 +315,7 @@ export default function ProjectDetail() {
                   >
                     {project.plans.map((p, i) => (
                       <option key={p.id} value={i}>
-                        {p.difficultyLevel ? `${p.difficultyLevel} - ` : ''}{p.styleRecommendation || `Plan ${i + 1}`}
+                        {p.styleRecommendation || `Plan ${i + 1}`}
                       </option>
                     ))}
                   </select>

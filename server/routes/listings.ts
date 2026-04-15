@@ -158,23 +158,17 @@ listingsRouter.get('/', async (c) => {
   // Batch-load concept renders for agent listings
   const agentListingIds = results.filter((l) => l.userId === null).map((l) => l.id);
   const conceptMap = new Map<number, Array<{
-    difficulty: string;
+    finishType: string;
     label: string;
     summary: string;
-    estimatedHours: number | null;
-    estimatedMaterialCost: number | null;
-    estimatedResalePrice: number | null;
     localPath: string | null;
   }>>();
   if (agentListingIds.length > 0) {
     const renders = await db.select({
       listingId: conceptRenders.listingId,
-      difficulty: conceptRenders.difficulty,
+      finishType: conceptRenders.finishType,
       label: conceptRenders.label,
       summary: conceptRenders.summary,
-      estimatedHours: conceptRenders.estimatedHours,
-      estimatedMaterialCost: conceptRenders.estimatedMaterialCost,
-      estimatedResalePrice: conceptRenders.estimatedResalePrice,
       localPath: conceptRenders.localPath,
     })
       .from(conceptRenders)
@@ -183,12 +177,9 @@ listingsRouter.get('/', async (c) => {
     for (const r of renders) {
       if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
       conceptMap.get(r.listingId)!.push({
-        difficulty: r.difficulty,
+        finishType: r.finishType,
         label: r.label,
         summary: r.summary,
-        estimatedHours: r.estimatedHours,
-        estimatedMaterialCost: r.estimatedMaterialCost,
-        estimatedResalePrice: r.estimatedResalePrice,
         localPath: r.localPath,
       });
     }
@@ -448,12 +439,9 @@ listingsRouter.get('/:id', async (c) => {
   // Load images and concept renders
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
   const concepts = await db.select({
-    difficulty: conceptRenders.difficulty,
+    finishType: conceptRenders.finishType,
     label: conceptRenders.label,
     summary: conceptRenders.summary,
-    estimatedHours: conceptRenders.estimatedHours,
-    estimatedMaterialCost: conceptRenders.estimatedMaterialCost,
-    estimatedResalePrice: conceptRenders.estimatedResalePrice,
     localPath: conceptRenders.localPath,
   }).from(conceptRenders).where(eq(conceptRenders.listingId, id));
 
@@ -668,14 +656,13 @@ listingsRouter.post('/:id/render', async (c) => {
   }
 
   const body = await c.req.json().catch(() => ({}));
-  const difficulty = (body.difficulty as string) || 'moderate';
-  if (!['simple', 'moderate', 'full'].includes(difficulty)) {
-    return c.json({ error: 'difficulty must be simple, moderate, or full' }, 400);
-  }
+  const finishType = (body.finishType as string) || 'stain';
+  const label = (body.label as string) || finishType;
+  const summary = (body.summary as string) || '';
 
-  // Check if a render already exists for this listing + difficulty
+  // Check if a render already exists for this listing + finishType
   const existing = await db.select().from(conceptRenders)
-    .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.difficulty, difficulty as 'simple' | 'moderate' | 'full')))
+    .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
     .then(r => r[0]);
 
   if (existing?.localPath) {
@@ -693,34 +680,18 @@ listingsRouter.post('/:id/render', async (c) => {
     const CONCEPTS_DIR = 'data/images/concepts';
     await fs.mkdir(CONCEPTS_DIR, { recursive: true });
 
-    const SUMMARIES: Record<string, string> = {
-      simple: 'cleaned and oiled with natural finish, minimal intervention.',
-      moderate: 'sanded and refinished with a smooth satin stain, updated hardware.',
-      full: 'completely transformed with professional-grade finish, premium hardware.',
-    };
-    const LABELS: Record<string, string> = {
-      simple: 'Quick Clean & Oil',
-      moderate: 'Sand & Refinish',
-      full: 'Full Transformation',
-    };
-
     const type = listing.furnitureType;
-    const summary = SUMMARIES[difficulty];
 
-    // Try to load existing plan for this difficulty to build a specific prompt
-    const difficultyMap: Record<string, 'beginner' | 'intermediate' | 'advanced'> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
-    const planDiff = difficultyMap[difficulty] ?? 'intermediate' as const;
+    // Try to load existing plan to build a specific prompt
     const existingPlan = await db.select().from(refinishingPlans)
-      .where(and(eq(refinishingPlans.listingId, id), eq(refinishingPlans.difficultyLevel, planDiff)))
+      .where(eq(refinishingPlans.listingId, id))
       .then(r => r[0]).catch(() => null);
 
     let prompt: string;
     if (existingPlan?.afterDescription) {
-      const steps = typeof existingPlan.steps === 'string' ? JSON.parse(existingPlan.steps) : existingPlan.steps;
-      const changes = Array.isArray(steps) ? steps.map((s: any) => s.title?.toLowerCase()).join(', ') : summary;
-      prompt = `The same ${type} shown in the reference photo, with only these refinishing changes applied: ${existingPlan.afterDescription}. Specific steps applied: ${changes}. Style: ${existingPlan.styleRecommendation ?? ''}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+      prompt = `The same ${type} shown in the reference photo, refinished with: ${label} — ${summary || existingPlan.afterDescription}. Style: ${existingPlan.styleRecommendation ?? ''}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
     } else {
-      prompt = `The same ${type} shown in the reference photo, with these changes applied: ${summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
+      prompt = `The same ${type} shown in the reference photo, refinished with: ${label}. ${summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
     }
 
     // Try to use original listing image as reference for img2img
@@ -735,7 +706,7 @@ listingsRouter.post('/:id/render', async (c) => {
     if (referenceImageUrl) {
       falModel = 'fal-ai/flux/dev/image-to-image';
       falInput.image_url = referenceImageUrl;
-      falInput.strength = difficulty === 'full' ? 0.55 : difficulty === 'moderate' ? 0.4 : 0.3;
+      falInput.strength = 0.45;
     } else {
       falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
     }
@@ -749,7 +720,7 @@ listingsRouter.post('/:id/render', async (c) => {
       return c.json({ error: 'Image generation returned no results' }, 502);
     }
 
-    const filename = `${id}_${difficulty}.webp`;
+    const filename = `${id}_${finishType}.webp`;
     const filePath = path.join(CONCEPTS_DIR, filename);
     const relativePath = path.join('concepts', filename);
     const response = await fetch(imageUrl);
@@ -764,9 +735,9 @@ listingsRouter.post('/:id/render', async (c) => {
     } else {
       await db.insert(conceptRenders).values({
         listingId: id,
-        difficulty: difficulty as 'simple' | 'moderate' | 'full',
-        label: LABELS[difficulty],
-        summary,
+        finishType,
+        label,
+        summary: summary || label,
         prompt,
         renderedImageUrl: imageUrl,
         localPath: relativePath,
@@ -774,12 +745,12 @@ listingsRouter.post('/:id/render', async (c) => {
     }
 
     const render = await db.select().from(conceptRenders)
-      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.difficulty, difficulty as 'simple' | 'moderate' | 'full')))
+      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
       .then(r => r[0]);
 
     return c.json({ render });
   } catch (err) {
-    logger.error({ listingId: id, difficulty, error: String(err) }, 'On-demand concept render failed');
+    logger.error({ listingId: id, finishType, error: String(err) }, 'On-demand concept render failed');
     return c.json({ error: 'Failed to generate concept render' }, 500);
   }
 });

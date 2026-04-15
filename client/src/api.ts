@@ -91,12 +91,9 @@ export interface Listing {
 }
 
 export interface ConceptOption {
-  difficulty: string;
+  finishType: string;
   label: string;
   summary: string;
-  estimatedHours: number | null;
-  estimatedMaterialCost: number | null;
-  estimatedResalePrice: number | null;
   localPath: string | null;
 }
 
@@ -328,8 +325,8 @@ export const api = {
     request<AnalysisResult>(`/listings/${id}/analyze`, { method: 'POST' }),
   importListing: (url: string) =>
     request<{ listing: ListingDetail; alreadyExists: boolean }>('/listings/import', { method: 'POST', body: JSON.stringify({ url }) }),
-  generateConceptRender: (listingId: number, difficulty: 'simple' | 'moderate' | 'full' = 'moderate') =>
-    request<{ render: ConceptOption }>(`/listings/${listingId}/render`, { method: 'POST', body: JSON.stringify({ difficulty }) }),
+  generateConceptRender: (listingId: number, finishType = 'stain', label?: string, summary?: string) =>
+    request<{ render: ConceptOption }>(`/listings/${listingId}/render`, { method: 'POST', body: JSON.stringify({ finishType, label, summary }) }),
   generateConcepts: (listingId: number) =>
     request<{ concepts: ConceptOption[] }>(`/listings/${listingId}/generate-concepts`, { method: 'POST' }),
 
@@ -341,7 +338,7 @@ export const api = {
   getProject: (id: number) => request<ProjectDetail>(`/projects/${id}`),
   createProject: (data: CreateProjectInput) =>
     request<Project>('/projects', { method: 'POST', body: JSON.stringify(data) }),
-  createProjectFromConcept: (data: { listingId: number; difficulty: string; label?: string; summary?: string; estimatedHours?: number; estimatedMaterialCost?: number; estimatedResalePrice?: number }) =>
+  createProjectFromConcept: (data: { listingId: number }) =>
     request<{ project: Project; planGenerated: boolean }>('/projects/from-concept', { method: 'POST', body: JSON.stringify(data) }),
   updateProject: (id: number, data: Partial<Project>) =>
     request<Project>(`/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
@@ -357,8 +354,8 @@ export const api = {
     request<{ success: boolean }>('/user/preferences', { method: 'PATCH', body: JSON.stringify(data) }),
 
   // Refinishing
-  generateRefinishingPlan: (projectId: number, conceptCtx?: { difficulty: string; label?: string; summary?: string; estimatedHours?: number | null; estimatedMaterialCost?: number | null; estimatedResalePrice?: number | null }) =>
-    request<{ plan: RefinishingPlan; materials: Material[] }>(`/projects/${projectId}/refinish`, { method: 'POST', body: JSON.stringify(conceptCtx ?? {}) }),
+  generateRefinishingPlan: (projectId: number) =>
+    request<{ plan: RefinishingPlan; materials: Material[] }>(`/projects/${projectId}/refinish`, { method: 'POST', body: '{}' }),
   getRefinishingPlan: (projectId: number) =>
     request<RefinishingPlan>(`/projects/${projectId}/refinish`),
 

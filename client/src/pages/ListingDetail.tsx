@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource, type RefinishingPlan as RefinishingPlanType } from '../api';
+import { api, type ListingDetail as ListingDetailType, type ListingImage, type RagSource } from '../api';
 import { FLIP_REC_COLORS, type FlipRecommendation } from '@shared/constants';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
@@ -9,10 +9,6 @@ import ComparablesList from '../components/ComparablesList';
 import RefinishingPlan from '../components/RefinishingPlan';
 import { PlatformBadge, DealScoreBadge, Spinner, EmptyState, BackButton, ExternalLinkIcon, NotFoundIcon, Card, CardHeader } from '../components/ui';
 import { resolveImageUrl } from '../utils';
-
-const CONCEPT_TO_PLAN_DIFFICULTY: Record<string, string> = {
-  simple: 'beginner', moderate: 'intermediate', full: 'advanced',
-};
 
 export default function ListingDetail() {
   const { id } = useParams();
@@ -32,10 +28,8 @@ export default function ListingDetail() {
   const [savingEdit, setSavingEdit] = useState(false);
   const { toast } = useToast();
 
-  // Derive the active plan from the selected concept difficulty
-  const activePlan: RefinishingPlanType | null = selectedConcept && listing?.plans
-    ? listing.plans.find((p) => p.difficultyLevel === CONCEPT_TO_PLAN_DIFFICULTY[selectedConcept]) ?? null
-    : null;
+  // Single plan per listing (no difficulty tiers)
+  const activePlan = listing?.plans?.[0] ?? null;
 
 
   useEffect(() => {
@@ -46,15 +40,10 @@ export default function ListingDetail() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Auto-select concept based on user's experience level
+  // Auto-select first finish concept
   useEffect(() => {
     if (!listing?.conceptImages?.length || selectedConcept) return;
-    const expMap: Record<string, string> = { beginner: 'simple', intermediate: 'moderate', advanced: 'full' };
-    const preferredDifficulty = expMap[session?.user?.experienceLevel ?? ''] ?? 'moderate';
-    const best = listing.conceptImages.find((c) => c.difficulty === preferredDifficulty)
-      ?? listing.conceptImages.find((c) => c.difficulty === 'moderate')
-      ?? listing.conceptImages[0];
-    setSelectedConcept(best.difficulty);
+    setSelectedConcept(listing.conceptImages[0].finishType);
   }, [listing?.conceptImages?.length]);
 
   const handleAnalyze = async () => {
@@ -268,20 +257,17 @@ export default function ListingDetail() {
         </div>
       )}
 
-      {/* Refinishing Options (from agent pipeline) */}
+      {/* Finish Concepts (from agent pipeline) */}
       {listing.conceptImages && listing.conceptImages.length > 0 && (
         <Card className="mb-4">
-          <CardHeader>Refinishing Options</CardHeader>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {[...listing.conceptImages].sort((a, b) => {
-              const order = { simple: 0, moderate: 1, full: 2 };
-              return (order[a.difficulty as keyof typeof order] ?? 1) - (order[b.difficulty as keyof typeof order] ?? 1);
-            }).map((opt) => (
+          <CardHeader>Finish Options</CardHeader>
+          <div className={`grid grid-cols-2 sm:grid-cols-${Math.min(listing.conceptImages.length, 5)} gap-3`}>
+            {listing.conceptImages.map((opt) => (
               <div
-                key={opt.difficulty}
-                onClick={() => setSelectedConcept(opt.difficulty)}
+                key={opt.finishType}
+                onClick={() => setSelectedConcept(opt.finishType)}
                 className={`border rounded-lg overflow-hidden cursor-pointer transition-all ${
-                  selectedConcept === opt.difficulty
+                  selectedConcept === opt.finishType
                     ? 'border-blue-500 ring-2 ring-blue-200'
                     : 'border-gray-200 hover:border-gray-300'
                 }`}>
@@ -302,67 +288,28 @@ export default function ListingDetail() {
                 <div className="p-3">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-semibold text-gray-900">{opt.label}</span>
-                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
-                      opt.difficulty === 'simple' ? 'bg-green-100 text-green-700'
-                        : opt.difficulty === 'moderate' ? 'bg-amber-100 text-amber-700'
-                        : 'bg-red-100 text-red-700'
-                    }`}>{opt.difficulty}</span>
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">{opt.finishType}</span>
                   </div>
-                  <p className="text-xs text-gray-500 mb-2 line-clamp-2">{opt.summary}</p>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                    {opt.estimatedHours != null && (
-                      <>
-                        <span className="text-gray-400">Time</span>
-                        <span className="text-right font-medium text-gray-700">{opt.estimatedHours}h</span>
-                      </>
-                    )}
-                    {opt.estimatedMaterialCost != null && (
-                      <>
-                        <span className="text-gray-400">Materials</span>
-                        <span className="text-right font-medium text-gray-700">${opt.estimatedMaterialCost}</span>
-                      </>
-                    )}
-                    {opt.estimatedResalePrice != null && (
-                      <>
-                        <span className="text-gray-400">Resale est.</span>
-                        <span className="text-right font-medium text-green-700">${opt.estimatedResalePrice}</span>
-                      </>
-                    )}
-                    {opt.estimatedResalePrice != null && listing.askingPrice != null && opt.estimatedMaterialCost != null && (
-                      <>
-                        <span className="text-gray-400">Profit est.</span>
-                        <span className="text-right font-medium text-green-700">
-                          ${Math.round(opt.estimatedResalePrice - listing.askingPrice - opt.estimatedMaterialCost)}
-                        </span>
-                      </>
-                    )}
-                  </div>
-                  <button
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      try {
-                        const { project } = await api.createProjectFromConcept({
-                          listingId: listing.id,
-                          difficulty: opt.difficulty,
-                          label: opt.label,
-                          summary: opt.summary,
-                          estimatedHours: opt.estimatedHours ?? undefined,
-                          estimatedMaterialCost: opt.estimatedMaterialCost ?? undefined,
-                          estimatedResalePrice: opt.estimatedResalePrice ?? undefined,
-                        });
-                        navigate(`/projects/${project.id}?tab=plan`);
-                      } catch (err) {
-                        toast('error', err instanceof Error ? err.message : 'Failed to create project');
-                      }
-                    }}
-                    className="mt-2 w-full py-1.5 text-xs font-medium text-blue-700 bg-blue-50 rounded hover:bg-blue-100 transition-colors"
-                  >
-                    Use this plan
-                  </button>
+                  <p className="text-xs text-gray-500 line-clamp-2">{opt.summary}</p>
                 </div>
               </div>
             ))}
           </div>
+          <button
+            onClick={async () => {
+              try {
+                const { project } = await api.createProjectFromConcept({
+                  listingId: listing.id,
+                });
+                navigate(`/projects/${project.id}?tab=plan`);
+              } catch (err) {
+                toast('error', err instanceof Error ? err.message : 'Failed to create project');
+              }
+            }}
+            className="mt-3 w-full py-2 text-sm font-medium text-blue-700 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+          >
+            Start Project
+          </button>
         </Card>
       )}
 
@@ -371,7 +318,7 @@ export default function ListingDetail() {
         <div className="mb-4 space-y-4">
           {generatingConcepts && (
             <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
-              <Spinner /> Generating refinishing options...
+              <Spinner /> Generating refinishing plan &amp; finish options...
             </div>
           )}
           {activePlan && <RefinishingPlan plan={activePlan} />}
@@ -383,11 +330,10 @@ export default function ListingDetail() {
                 try {
                   const { concepts } = await api.generateConcepts(listing.id);
                   if (concepts.length > 0) {
-                    // Re-fetch the listing to get the full data (plans + materials generated alongside concepts)
                     const updated = await api.getListing(listing.id);
                     setListing(updated);
-                    const moderate = (updated.conceptImages ?? []).find((c) => c.difficulty === 'moderate') ?? (updated.conceptImages ?? [])[0];
-                    if (moderate) setSelectedConcept(moderate.difficulty);
+                    const first = (updated.conceptImages ?? [])[0];
+                    if (first) setSelectedConcept(first.finishType);
                   }
                 } catch (err) {
                   toast('error', err instanceof Error ? err.message : 'Failed to generate refinishing options');
@@ -397,7 +343,7 @@ export default function ListingDetail() {
               disabled={generatingConcepts}
               className="px-4 py-2 bg-white border border-blue-300 text-blue-700 text-sm font-medium rounded-lg hover:bg-blue-50 disabled:opacity-50 transition-colors inline-flex items-center gap-2"
             >
-              Generate Refinishing Options
+              Generate Refinishing Plan
             </button>
           )}
         </div>

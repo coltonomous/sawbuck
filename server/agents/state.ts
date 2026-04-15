@@ -32,22 +32,19 @@ export interface EvaluatedCandidate extends TriagedCandidate {
   evaluation: EvaluationResult;
 }
 
-export interface RefinishingOption {
-  difficulty: 'simple' | 'moderate' | 'full';
+export interface FinishConcept {
+  finishType: string;
   label: string;
   summary: string;
-  estimatedHours: number;
-  estimatedMaterialCost: number;
-  estimatedResalePrice: number;
 }
 
 export interface ListingWithOptions extends EvaluatedCandidate {
-  options: RefinishingOption[];
+  concepts: FinishConcept[];
 }
 
 export interface ConceptRenderResult {
   listingId: number;
-  difficulty: string;
+  finishType: string;
   conceptImageUrl: string;
   localPath: string;
   prompt: string;

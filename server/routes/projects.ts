@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
 import { eq, and, desc, sql, isNull } from 'drizzle-orm';
-import { generateRefinishingPlan, parsePlanSteps, type DifficultyContext } from '../analysis/refinishing.js';
+import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject } from '../analysis/sourcing.js';
 import { generateText } from '../lib/bedrock.js';
@@ -97,14 +97,14 @@ projectsRouter.post('/', async (c) => {
   return c.json(project, 201);
 });
 
-// POST /from-concept — create project + generate plan from a concept option in one step
+// POST /from-concept — create project + claim/generate plan in one step
 projectsRouter.post('/from-concept', async (c) => {
   const user = c.get('user');
   const body = await c.req.json();
-  const { listingId, difficulty, label, summary, estimatedHours, estimatedMaterialCost, estimatedResalePrice } = body;
+  const { listingId } = body;
 
-  if (!listingId || !difficulty) {
-    return c.json({ error: 'listingId and difficulty are required' }, 400);
+  if (!listingId) {
+    return c.json({ error: 'listingId is required' }, 400);
   }
 
   const listing = await getEditableListing(listingId, user.id);
@@ -119,7 +119,6 @@ projectsRouter.post('/from-concept', async (c) => {
     .then(r => r[0]);
 
   if (!project) {
-    // Create the project
     project = await db.transaction(async (tx) => {
       const [created] = await tx.insert(projects).values({
         listingId,
@@ -133,35 +132,22 @@ projectsRouter.post('/from-concept', async (c) => {
     });
   }
 
-  // Reuse existing plan for this listing+difficulty if available, otherwise generate
   try {
-    const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = { simple: 'beginner', moderate: 'intermediate', full: 'advanced' };
-    const planDifficulty = conceptToPlanDifficulty[difficulty] ?? 'intermediate' as const;
-
-    // Check for existing plan on this listing (from preview-plan or agent pipeline)
+    // Claim existing listing-level plan if available
     const existingPlan = await db.select().from(refinishingPlans)
-      .where(and(eq(refinishingPlans.listingId, listingId), eq(refinishingPlans.difficultyLevel, planDifficulty)))
+      .where(and(eq(refinishingPlans.listingId, listingId), isNull(refinishingPlans.projectId)))
       .then(r => r[0]);
 
-    if (existingPlan && !existingPlan.projectId) {
-      // Claim existing plan + its materials for this project
+    if (existingPlan) {
       await db.update(refinishingPlans)
         .set({ projectId: project.id })
         .where(eq(refinishingPlans.id, existingPlan.id));
       await db.update(materials)
         .set({ projectId: project.id })
         .where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
-    } else if (!existingPlan) {
-      // Fallback: generate plan + materials for user-posted listings
-      const difficultyCtx: DifficultyContext = {
-        difficulty,
-        label: label ?? difficulty,
-        summary: summary ?? '',
-        estimatedHours,
-        estimatedMaterialCost,
-        estimatedResalePrice,
-      };
-      const result = await generateRefinishingPlan(listing.id, project.id, difficultyCtx);
+    } else {
+      // Fallback: generate plan + materials
+      const result = await generateRefinishingPlan(listing.id, project.id);
       if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
       const storedPlans = await db.select()
@@ -180,7 +166,7 @@ projectsRouter.post('/from-concept', async (c) => {
 
     return c.json({ project, planGenerated: true }, 201);
   } catch (err) {
-    logger.error({ err, listingId, difficulty }, 'Error in from-concept flow');
+    logger.error({ err, listingId }, 'Error in from-concept flow');
     return c.json({ error: 'Failed to generate refinishing plan' }, 500);
   }
 });
@@ -273,39 +259,18 @@ projectsRouter.post('/:id/refinish', async (c) => {
     return c.json({ error: 'Analyze the listing first — the refinishing plan needs furniture type, condition, and wood data to be useful.' }, 422);
   }
 
-  // Accept optional difficulty context from concept option selection
-  const body = await c.req.json().catch(() => ({}));
-  const difficultyCtx: DifficultyContext | undefined = body.difficulty ? {
-    difficulty: body.difficulty,
-    label: body.label ?? body.difficulty,
-    summary: body.summary ?? '',
-    estimatedHours: body.estimatedHours,
-    estimatedMaterialCost: body.estimatedMaterialCost,
-    estimatedResalePrice: body.estimatedResalePrice,
-  } : undefined;
-
   try {
     // Try to claim existing listing-level plan first
-    const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-      simple: 'beginner', moderate: 'intermediate', full: 'advanced',
-    };
-    const planDiff = difficultyCtx ? (conceptToPlanDifficulty[difficultyCtx.difficulty] ?? 'intermediate' as const) : null;
+    const existingPlan = await db.select().from(refinishingPlans)
+      .where(and(eq(refinishingPlans.listingId, project.listingId), isNull(refinishingPlans.projectId)))
+      .then(r => r[0]);
 
-    let claimed = false;
-    if (planDiff) {
-      const existingPlan = await db.select().from(refinishingPlans)
-        .where(and(eq(refinishingPlans.listingId, project.listingId), eq(refinishingPlans.difficultyLevel, planDiff), isNull(refinishingPlans.projectId)))
-        .then(r => r[0]);
-      if (existingPlan) {
-        await db.update(refinishingPlans).set({ projectId: id }).where(eq(refinishingPlans.id, existingPlan.id));
-        await db.update(materials).set({ projectId: id }).where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
-        claimed = true;
-      }
-    }
-
-    // Fallback: generate plan + materials if nothing to claim
-    if (!claimed) {
-      const result = await generateRefinishingPlan(project.listingId, id, difficultyCtx);
+    if (existingPlan) {
+      await db.update(refinishingPlans).set({ projectId: id }).where(eq(refinishingPlans.id, existingPlan.id));
+      await db.update(materials).set({ projectId: id }).where(and(eq(materials.refinishingPlanId, existingPlan.id), isNull(materials.projectId)));
+    } else {
+      // Fallback: generate plan + materials
+      const result = await generateRefinishingPlan(project.listingId, id);
       if (!result) return c.json({ error: 'Failed to generate refinishing plan' }, 422);
 
       const storedPlans = await db.select().from(refinishingPlans).where(eq(refinishingPlans.projectId, id));

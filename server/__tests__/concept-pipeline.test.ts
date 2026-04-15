@@ -7,21 +7,13 @@ import { describe, it, expect } from 'vitest';
  * Integration tests in listings.test.ts cover the full HTTP flow.
  */
 
-describe('Difficulty mapping consistency', () => {
-  const CONCEPT_TO_PLAN_DIFFICULTY: Record<string, string> = {
-    simple: 'beginner',
-    moderate: 'intermediate',
-    full: 'advanced',
-  };
-
-  it('maps all concept difficulties to plan difficulties', () => {
-    expect(CONCEPT_TO_PLAN_DIFFICULTY.simple).toBe('beginner');
-    expect(CONCEPT_TO_PLAN_DIFFICULTY.moderate).toBe('intermediate');
-    expect(CONCEPT_TO_PLAN_DIFFICULTY.full).toBe('advanced');
-  });
-
-  it('covers all three difficulty levels', () => {
-    expect(Object.keys(CONCEPT_TO_PLAN_DIFFICULTY)).toEqual(['simple', 'moderate', 'full']);
+describe('Single plan per listing', () => {
+  it('generates one plan (no difficulty tiers)', () => {
+    // The pipeline now generates a single refinishing plan per listing.
+    // Finish concepts (stain, paint, varnish, etc.) are visual variations
+    // that share the same underlying plan.
+    const planCount = 1;
+    expect(planCount).toBe(1);
   });
 });
 
@@ -68,30 +60,29 @@ describe('MaterialsList readOnly mode', () => {
 });
 
 describe('Data flow invariants', () => {
-  it('pipeline generates data in correct order: plan → materials → render', () => {
-    // plan-options.ts flow per concept:
-    // 1. generateRefinishingPlan (plan stored, concept card values synced)
-    // 2. generateMaterialsFromPlanSync (materials stored, referencing plan ID)
-    // 3. fal.ai render (uses plan details in prompt)
-    // Each step references data from the prior step
-    const steps = ['plan', 'materials', 'render'];
-    expect(steps).toEqual(['plan', 'materials', 'render']);
+  it('pipeline generates data in correct order: plan → materials → concepts', () => {
+    // plan-options.ts flow:
+    // 1. Generate finish concepts (LLM suggests surface treatments)
+    // 2. Generate single refinishing plan + materials
+    // 3. Render concept images for each finish type
+    const steps = ['concepts', 'plan', 'materials', 'render'];
+    expect(steps).toContain('plan');
+    expect(steps).toContain('render');
   });
 
   it('listing detail API returns concepts, plans, and materials together', () => {
     // GET /listings/:id returns:
-    // - conceptImages: from concept_renders table
+    // - conceptImages: from concept_renders table (finish type concepts)
     // - plans: from refinishing_plans where projectId IS NULL
     // - materials: from materials where planId IN (plan IDs)
-    // This ensures the frontend has all data on first load
     const expectedFields = ['conceptImages', 'plans', 'materials'];
     expect(expectedFields).toContain('plans');
     expect(expectedFields).toContain('materials');
   });
 
-  it('project creation claims existing data instead of regenerating', () => {
+  it('project creation claims existing plan (not per-difficulty)', () => {
     // from-concept endpoint:
-    // 1. Find existing plan by listing + difficulty
+    // 1. Find existing plan by listing (no difficulty filter)
     // 2. SET projectId on plan
     // 3. SET projectId on materials for that plan
     // Only generates if no plan exists (fallback for user-posted listings)

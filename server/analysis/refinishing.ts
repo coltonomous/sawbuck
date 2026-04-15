@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { listings, refinishingPlans, conceptRenders } from '../db/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { listings, refinishingPlans } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 import { generateText, extractJson } from '../lib/bedrock.js';
 import { getFullContext } from '../rag/retrieval.js';
 import logger from '../lib/logger.js';
@@ -45,34 +45,9 @@ You recommend specific products by brand name and provide precise quantities. Yo
 
 IMPORTANT: Respond with ONLY a valid JSON object matching the requested schema. No markdown, no explanation, just JSON.`;
 
-export interface DifficultyContext {
-  difficulty: 'simple' | 'moderate' | 'full';
-  label: string;
-  summary: string;
-  estimatedHours?: number;
-  estimatedMaterialCost?: number;
-  estimatedResalePrice?: number;
-}
-
-function buildDifficultyGuidance(ctx: DifficultyContext): string {
-  const base = `\nThe user has chosen the "${ctx.difficulty}" approach: "${ctx.label}" — ${ctx.summary}\nTarget this difficulty level specifically. Use the following estimates as guidelines:\n- Estimated hours: ${ctx.estimatedHours ?? 'unknown'}\n- Estimated material cost: $${ctx.estimatedMaterialCost ?? 'unknown'}\n- Estimated resale price: $${ctx.estimatedResalePrice ?? 'unknown'}`;
-
-  if (ctx.difficulty === 'simple') {
-    return base + `\n\nFor this simple/beginner plan: preserve the original character of the piece. Clean, oil, minor touch-ups only. Minimal new materials. The piece should look cared-for but fundamentally unchanged.`;
-  }
-
-  if (ctx.difficulty === 'moderate') {
-    return base + `\n\nFor this moderate/intermediate plan: go beyond just cleaning and re-staining. Include new hardware (knobs, pulls, hinges) where the piece has them. Choose a stain or finish that noticeably shifts the appearance. The result should look refreshed and modernized, clearly different from the simple option.`;
-  }
-
-  // full
-  return base + `\n\nFor this full/advanced plan: this must be a DRAMATIC transformation — not just a nicer refinish. Think bold paint colors, two-tone treatments, structural modifications (adding new legs or a shelf, removing doors to create open shelving, converting function), creative techniques like color washing or stencil work, or a complete aesthetic reinvention. The result should be barely recognizable as the same piece. Do NOT just do a more thorough version of sanding and staining — go in a completely different creative direction.`;
-}
-
-function buildPrompt(listing: typeof listings.$inferSelect, difficultyCtx?: DifficultyContext): string {
+function buildPrompt(listing: typeof listings.$inferSelect): string {
   const parts = [
     `Generate a detailed refinishing plan for this furniture piece to maximize resale value.`,
-    difficultyCtx ? buildDifficultyGuidance(difficultyCtx) : null,
     ``,
     `Piece details:`,
     `- Type: ${listing.furnitureType || 'Unknown'}`,
@@ -113,8 +88,6 @@ function buildPrompt(listing: typeof listings.$inferSelect, difficultyCtx?: Diff
     `- If stripping old finish, recommend a specific stripper product`,
     `- Include primer if painting, or wood conditioner if staining softwood`,
     `- Specify finish type: oil-based polyurethane, water-based poly, wax, chalk paint, milk paint, etc.`,
-    `- For moderate/intermediate plans: include new hardware (knobs, pulls, hinges) where the piece has them`,
-    `- For full/advanced plans: include any structural materials (wood, brackets, screws, new legs) and paint/creative supplies needed for the transformation`,
     `- Be realistic about time — include drying time between coats`,
     `- Estimated resale price should be realistic for the style and market`,
   ];
@@ -135,13 +108,13 @@ export interface RefinishingResult {
   ragSources: RagSourceRef[];
 }
 
-export async function generateRefinishingPlan(listingId: number, projectId?: number, difficultyCtx?: DifficultyContext): Promise<RefinishingResult | null> {
+export async function generateRefinishingPlan(listingId: number, projectId?: number): Promise<RefinishingResult | null> {
   const listing = await db.select().from(listings).where(eq(listings.id, listingId)).then(r => r[0]);
   if (!listing) throw new Error(`Listing ${listingId} not found`);
 
-  logger.info({ listingId, title: listing.title, difficulty: difficultyCtx?.difficulty }, 'Generating refinishing plan');
+  logger.info({ listingId, title: listing.title }, 'Generating refinishing plan');
 
-  let prompt = buildPrompt(listing, difficultyCtx);
+  let prompt = buildPrompt(listing);
 
   // Augment prompt with RAG context (past flips, product specs, technique guides)
   let ragChunksUsed = 0;
@@ -178,14 +151,6 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     return null;
   }
 
-  // Map concept difficulty to plan difficulty level when generated from a concept
-  if (difficultyCtx) {
-    const conceptToPlanDifficulty: Record<string, 'beginner' | 'intermediate' | 'advanced'> = {
-      simple: 'beginner', moderate: 'intermediate', full: 'advanced',
-    };
-    plan.difficulty_level = conceptToPlanDifficulty[difficultyCtx.difficulty] ?? plan.difficulty_level;
-  }
-
   // Derive hours from step durations — the LLM's per-step breakdown is more
   // accurate than its stated total, and this ensures the concept card and plan
   // header always show the same number.
@@ -209,20 +174,6 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     ragSourceTitles: ragSourceTitles.length > 0 ? JSON.stringify(ragSourceTitles) : null,
     ragSources: ragSources.length > 0 ? JSON.stringify(ragSources) : null,
   }).returning();
-
-  // Sync all plan values back to concept card so the card is always consistent with the plan
-  if (difficultyCtx) {
-    await db.update(conceptRenders)
-      .set({
-        estimatedHours: stepDerivedHours,
-        estimatedMaterialCost: plan.estimated_material_cost,
-        estimatedResalePrice: plan.estimated_resale_price,
-      })
-      .where(and(
-        eq(conceptRenders.listingId, listingId),
-        eq(conceptRenders.difficulty, difficultyCtx.difficulty),
-      )).catch(() => {}); // non-fatal
-  }
 
   logger.info({
     planId: stored.id,
