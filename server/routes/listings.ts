@@ -773,12 +773,15 @@ listingsRouter.post('/:id/render', async (c) => {
       .where(eq(refinishingPlans.listingId, id))
       .then(r => r[0]).catch(() => null);
 
-    let prompt: string;
-    if (existingPlan?.afterDescription) {
-      prompt = `The same ${type} shown in the reference photo, refinished with: ${label} — ${summary || existingPlan.afterDescription}. Style: ${existingPlan.styleRecommendation ?? ''}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
-    } else {
-      prompt = `The same ${type} shown in the reference photo, refinished with: ${label}. ${summary}. Keep the exact same piece, angle, shape, and proportions. Only change the finish/surface as described. Photorealistic product photography, natural lighting.`;
-    }
+    const { buildRenderPrompt, renderStrength } = await import('../lib/render-prompt.js');
+    const prompt = buildRenderPrompt({
+      furnitureType: type!,
+      finishType,
+      label,
+      summary,
+      afterDescription: existingPlan?.afterDescription ?? undefined,
+      styleRecommendation: existingPlan?.styleRecommendation ?? undefined,
+    });
 
     // Try to use original listing image as reference for img2img
     const { getListingImageUrlForFal } = await import('../lib/images.js');
@@ -792,7 +795,7 @@ listingsRouter.post('/:id/render', async (c) => {
     if (referenceImageUrl) {
       falModel = 'fal-ai/flux/dev/image-to-image';
       falInput.image_url = referenceImageUrl;
-      falInput.strength = 0.45;
+      falInput.strength = renderStrength(finishType, summary);
     } else {
       falInput.image_size = { width: agentConfig.conceptRenderSize, height: agentConfig.conceptRenderSize };
     }
