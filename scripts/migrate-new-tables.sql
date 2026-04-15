@@ -43,6 +43,25 @@ CREATE TABLE IF NOT EXISTS user_dismissals (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_dismissals_unique ON user_dismissals(user_id, listing_id);
 
+-- Rename concept_renders.difficulty → finish_type and drop per-concept estimate
+-- columns (estimates now live on the single refinishing plan).
+-- drizzle-kit push cannot detect renames, so this must run first.
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'concept_renders' AND column_name = 'difficulty'
+  ) THEN
+    ALTER TABLE concept_renders RENAME COLUMN difficulty TO finish_type;
+  END IF;
+END $$;
+ALTER TABLE concept_renders DROP COLUMN IF EXISTS estimated_hours;
+ALTER TABLE concept_renders DROP COLUMN IF EXISTS estimated_material_cost;
+ALTER TABLE concept_renders DROP COLUMN IF EXISTS estimated_resale_price;
+
+-- Unique index on (listing_id, finish_type) for onConflictDoNothing
+CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_renders_listing_finish
+  ON concept_renders USING btree (listing_id, finish_type);
+
 -- Consolidate knowledge_chunks: add embedding + content_hash columns
 -- so knowledge_vec is no longer needed as a separate table.
 DO $$ BEGIN

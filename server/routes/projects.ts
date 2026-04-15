@@ -58,9 +58,14 @@ projectsRouter.get('/:id', async (c) => {
     : [];
 
   // Include concept options from the listing
-  const concepts = listing
-    ? await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, listing.id))
-    : [];
+  let concepts: (typeof conceptRenders.$inferSelect)[] = [];
+  if (listing) {
+    try {
+      concepts = await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, listing.id));
+    } catch (err) {
+      logger.warn({ listingId: listing.id, error: String(err) }, 'Failed to load concept renders for project — run db:push or apply migration 0002');
+    }
+  }
 
   return c.json({ ...project, listing: listing ? { ...listing, images } : null, plan, plans: allPlans, concepts, materials: mats, photos });
 });
