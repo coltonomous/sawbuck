@@ -10,7 +10,8 @@ import { recordJobRun } from '../lib/metrics.js';
 let running = false;
 let runStartedAt: number | null = null;
 let currentRunId: string | null = null;
-let timer: ReturnType<typeof setInterval> | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
+let schedulerStarted = false;
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
@@ -100,14 +101,28 @@ async function cleanupStaleRuns(): Promise<void> {
   }
 }
 
+function scheduleNext(): void {
+  // Re-read the interval on each tick so DB/env changes take effect
+  // without needing to restart the scheduler.
+  const intervalMs = agentConfig.runIntervalMs;
+  timer = setTimeout(async () => {
+    try {
+      await runOnce();
+    } finally {
+      if (schedulerStarted) scheduleNext();
+    }
+  }, intervalMs);
+  timer.unref();
+}
+
 export async function startScheduler(): Promise<void> {
-  if (timer) {
+  if (schedulerStarted) {
     logger.warn('Agent scheduler already started');
     return;
   }
+  schedulerStarted = true;
 
-  const intervalMs = agentConfig.runIntervalMs;
-  logger.info({ intervalMs }, 'Agent scheduler: starting');
+  logger.info({ intervalMs: agentConfig.runIntervalMs }, 'Agent scheduler: starting');
 
   // Ensure checkpoint tables exist before first run
   try {
@@ -120,8 +135,7 @@ export async function startScheduler(): Promise<void> {
   await cleanupStaleRuns();
 
   // Don't run immediately on startup/deploy — wait for the first interval
-  timer = setInterval(runOnce, intervalMs);
-  timer.unref();
+  scheduleNext();
 }
 
 /** Manually trigger a pipeline run. Returns false if one is already running. */
@@ -132,8 +146,9 @@ export function triggerRun(): boolean {
 }
 
 export function stopScheduler(): void {
+  schedulerStarted = false;
   if (timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
     logger.info('Agent scheduler: stopped');
   }

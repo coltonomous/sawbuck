@@ -119,6 +119,43 @@ describe('OfferUp enrich', () => {
     expect(enriched[0].imageUrls).toContain('https://images.offerup.com/og.jpg');
   });
 
+  it('strips "Make an offer on ..." boilerplate from descriptions', async () => {
+    const nextData = {
+      props: {
+        pageProps: {
+          listing: {
+            description: 'Make an offer on this beautiful dresser. Solid oak, hand-crafted.',
+            photos: [],
+          },
+        },
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].description).toBe('Solid oak, hand-crafted.');
+  });
+
+  it('strips "Make an offer" boilerplate from meta description fallback', async () => {
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html>
+        <meta name="description" content="Make an Offer on solid wood desk. Mid-century modern style.">
+      </html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].description).toBe('Mid-century modern style.');
+  });
+
   it('keeps original candidate data on fetch failure', async () => {
     mockFetch.mockRejectedValueOnce(new Error('Network error'));
 

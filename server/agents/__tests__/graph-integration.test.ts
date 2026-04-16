@@ -79,7 +79,6 @@ vi.mock('../config.js', () => ({
     targetCity: 'seattle',
     triageModel: 'test-model',
     evaluationModel: 'test-model',
-    falModel: 'test-model',
     conceptRenderSize: 768,
     agentImageRetentionDays: 14,
   },
