@@ -792,9 +792,14 @@ listingsRouter.post('/:id/render', async (c) => {
     });
     const prompt = falInput.prompt as string;
 
-    const result = await fal.subscribe(falModel, {
-      input: falInput,
-    }) as { data: { images: Array<{ url: string }> } };
+    const FAL_TIMEOUT_MS = 120_000; // 2 min timeout to avoid indefinite hang
+    // fal SDK timeout is not enforced (per SDK docs), so use Promise.race
+    const result = await Promise.race([
+      fal.subscribe(falModel, { input: falInput }),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error(`Render timed out after ${FAL_TIMEOUT_MS / 1000}s`)), FAL_TIMEOUT_MS)
+      ),
+    ]) as { data: { images: Array<{ url: string }> } };
 
     const imageUrl = result.data?.images?.[0]?.url;
     if (!imageUrl) {
