@@ -5,7 +5,13 @@ import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
 import PipelineGraph from '../components/PipelineGraph';
-import { CITIES, formatCityLabel, findCityByLabel, findCityByCoords } from '@shared/cities';
+
+interface NominatimResult {
+  place_id: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+}
 
 interface Preferences {
   preferredLatitude: number | null;
@@ -53,6 +59,9 @@ export default function Settings() {
   const [knowledgeFilter, setKnowledgeFilter] = useState<'all' | 'project' | 'product' | 'guide'>('all');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [cityQuery, setCityQuery] = useState('');
+  const [cityResults, setCityResults] = useState<NominatimResult[]>([]);
+  const [cityLoading, setCityLoading] = useState(false);
+  const [cityFocused, setCityFocused] = useState(false);
   const { toast } = useToast();
 
   const isAdmin = session?.user?.role === 'admin';
@@ -75,15 +84,42 @@ export default function Settings() {
 
   useEffect(() => {
     api.getPreferences()
-      .then((p) => {
-        setPrefs(p);
-        const match = findCityByCoords(p.preferredLatitude, p.preferredLongitude);
-        if (match) setCityQuery(formatCityLabel(match));
-      })
+      .then(setPrefs)
       .catch((err) => toast('error', `Failed to load settings: ${err instanceof Error ? err.message : 'Unknown error'}`))
       .finally(() => setLoading(false));
     loadAdmin();
   }, []);
+
+  // Debounced Nominatim city search
+  useEffect(() => {
+    const query = cityQuery.trim();
+    if (query.length < 3) {
+      setCityResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setCityLoading(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`,
+          { headers: { 'Accept-Language': 'en' } },
+        );
+        const data: NominatimResult[] = await res.json();
+        setCityResults(data);
+      } catch {
+        setCityResults([]);
+      } finally {
+        setCityLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [cityQuery]);
+
+  const selectCity = (r: NominatimResult) => {
+    setPrefs((prev) => prev ? { ...prev, preferredLatitude: parseFloat(r.lat), preferredLongitude: parseFloat(r.lon) } : prev);
+    setCityQuery(r.display_name);
+    setCityResults([]);
+  };
 
   // Poll agent runs every 5s while a run is in progress and the runs tab is active
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -111,8 +147,7 @@ export default function Settings() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
       setPrefs((prev) => prev ? { ...prev, preferredLatitude: pos.coords.latitude, preferredLongitude: pos.coords.longitude } : prev);
-      const match = findCityByCoords(pos.coords.latitude, pos.coords.longitude);
-      setCityQuery(match ? formatCityLabel(match) : '');
+      setCityQuery('');
     });
   };
 
@@ -199,26 +234,31 @@ export default function Settings() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
-              <input
-                type="text"
-                list="city-options"
-                placeholder="Search a city to autofill coordinates"
-                value={cityQuery}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setCityQuery(val);
-                  const match = findCityByLabel(val);
-                  if (match) {
-                    setPrefs({ ...prefs, preferredLatitude: match.latitude, preferredLongitude: match.longitude });
-                  }
-                }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2"
-              />
-              <datalist id="city-options">
-                {CITIES.map((c) => (
-                  <option key={`${c.name}-${c.state}`} value={formatCityLabel(c)} />
-                ))}
-              </datalist>
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  placeholder="Search a city to autofill coordinates"
+                  value={cityQuery}
+                  onChange={(e) => setCityQuery(e.target.value)}
+                  onFocus={() => setCityFocused(true)}
+                  onBlur={() => setCityFocused(false)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                {cityFocused && cityQuery.trim().length >= 3 && (cityLoading || cityResults.length > 0) && (
+                  <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                    {cityLoading && <li className="px-3 py-2 text-sm text-gray-400">Searching...</li>}
+                    {!cityLoading && cityResults.map((r) => (
+                      <li
+                        key={r.place_id}
+                        onMouseDown={(e) => { e.preventDefault(); selectCity(r); }}
+                        className="px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"
+                      >
+                        {r.display_name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="number"
