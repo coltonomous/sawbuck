@@ -357,7 +357,7 @@ EC2 Instance:
 ### Startup Sequence
 
 1. `entrypoint.sh`: create data dirs, run pre-push SQL migration (idempotent CREATE TABLE IF NOT EXISTS), `drizzle-kit push --force`, start server
-2. Server: promote ADMIN_EMAIL user, seed platform settings + default region, bootstrap RAG (incremental sync), start image cleanup scheduler
+2. Server: seed platform settings + default region, bootstrap RAG (incremental sync), start image cleanup scheduler. Admins are promoted manually via `npx tsx scripts/promote-admin.ts <email>` (no auto-promotion to avoid email-squatting races)
 3. If `AWS_REGION` set: start agent scheduler (waits for first interval, use Run Now for immediate trigger). Reconcile runs independently every 6h.
 4. Docker HEALTHCHECK: `GET /health` every 30s (checks DB connectivity, returns 503 if unreachable)
 

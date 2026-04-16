@@ -83,10 +83,11 @@ jobs:
           grep -q '^AWS_REGION=' .env 2>/dev/null || echo 'AWS_REGION=${{ secrets.AWS_REGION }}' >> .env
           grep -q '^AWS_ACCESS_KEY_ID=' .env 2>/dev/null || echo 'AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}' >> .env
           grep -q '^AWS_SECRET_ACCESS_KEY=' .env 2>/dev/null || echo 'AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}' >> .env
-          grep -q '^ADMIN_EMAIL=' .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
+          grep -q '^SENTRY_DSN=' .env 2>/dev/null || echo 'SENTRY_DSN=${{ secrets.SENTRY_DSN }}' >> .env
+          grep -q '^BACKUP_S3_BUCKET=' .env 2>/dev/null || echo 'BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}' >> .env
 
           # Inject AWS credentials into Docker daemon for awslogs driver
           # (IMDS is unreachable from the daemon's log driver context)
