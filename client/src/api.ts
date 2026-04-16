@@ -291,6 +291,15 @@ export interface MaterialUpdate {
   actualPrice?: number;
 }
 
+export interface KnowledgeSourceSummary {
+  source: string;
+  type: 'project' | 'product' | 'guide';
+  title: string;
+  chunks: number;
+  firstAdded: string;
+  lastAccessed: string;
+}
+
 export interface AgentRun {
   id: number;
   runId: string;
@@ -464,4 +473,7 @@ export const api = {
     request<{ ok: boolean }>(`/admin/regions/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteRegion: (id: number) =>
     request<{ ok: boolean }>(`/admin/regions/${id}`, { method: 'DELETE' }),
+
+  // Knowledge Base
+  getKnowledgeSources: () => request<KnowledgeSourceSummary[]>('/admin/knowledge-sources'),
 };

@@ -232,6 +232,42 @@ export async function search(
   }));
 }
 
+/** List unique sources in the knowledge base, grouped by URL. */
+export interface KnowledgeSourceSummary {
+  source: string;
+  type: ChunkType;
+  title: string;
+  chunks: number;
+  firstAdded: string;
+  lastAccessed: string;
+}
+
+export async function listSources(): Promise<KnowledgeSourceSummary[]> {
+  await initStore();
+
+  const result = await pool.query(`
+    SELECT
+      source,
+      type,
+      MIN(title) AS title,
+      COUNT(*) AS chunks,
+      MIN(created_at) AS first_added,
+      MAX(last_accessed_at) AS last_accessed
+    FROM knowledge_chunks
+    GROUP BY source, type
+    ORDER BY MAX(created_at) DESC
+  `);
+
+  return result.rows.map((row) => ({
+    source: row.source,
+    type: row.type as ChunkType,
+    title: row.title,
+    chunks: parseInt(row.chunks, 10),
+    firstAdded: row.first_added,
+    lastAccessed: row.last_accessed,
+  }));
+}
+
 /** Get total chunk count, optionally filtered by type. */
 export async function chunkCount(type?: ChunkType): Promise<number> {
   await initStore();

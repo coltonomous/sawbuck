@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region } from '../api';
+import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region, type KnowledgeSourceSummary } from '../api';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
@@ -21,7 +21,7 @@ const STYLES = [
   'danish modern', 'colonial', 'craftsman', 'rustic', 'modern',
 ];
 
-type Tab = 'preferences' | 'users' | 'platforms' | 'agent' | 'runs';
+type Tab = 'preferences' | 'users' | 'platforms' | 'agent' | 'runs' | 'knowledge';
 
 const ADMIN_TABS: { key: Tab; label: string }[] = [
   { key: 'preferences', label: 'Preferences' },
@@ -29,6 +29,7 @@ const ADMIN_TABS: { key: Tab; label: string }[] = [
   { key: 'platforms', label: 'Platforms & Regions' },
   { key: 'agent', label: 'Agent Config' },
   { key: 'runs', label: 'Agent Runs' },
+  { key: 'knowledge', label: 'Knowledge Base' },
 ];
 
 export default function Settings() {
@@ -47,6 +48,8 @@ export default function Settings() {
   const [regionsData, setRegionsData] = useState<Region[]>([]);
   const [newRegion, setNewRegion] = useState({ name: '', latitude: '', longitude: '', radiusMiles: '30', clSubdomain: '' });
   const [configChangedDuringRun, setConfigChangedDuringRun] = useState(false);
+  const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceSummary[]>([]);
+  const [knowledgeFilter, setKnowledgeFilter] = useState<'all' | 'project' | 'product' | 'guide'>('all');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
@@ -65,6 +68,7 @@ export default function Settings() {
     }).catch(() => {});
     api.getPlatforms().then(setPlatforms).catch(() => {});
     api.getRegions().then(setRegionsData).catch(() => {});
+    api.getKnowledgeSources().then(setKnowledgeSources).catch(() => {});
   };
 
   useEffect(() => {
@@ -642,6 +646,86 @@ export default function Settings() {
             </div>
           )}
         </Card>
+        </div>
+      )}
+
+      {/* Knowledge Base tab (admin) */}
+      {tab === 'knowledge' && isAdmin && (
+        <div className="space-y-4">
+          <Card>
+            <div className="flex items-center justify-between mb-1">
+              <CardHeader>Knowledge Base</CardHeader>
+              <button
+                onClick={() => api.getKnowledgeSources().then(setKnowledgeSources).catch(() => {})}
+                className="text-xs text-blue-600 hover:text-blue-700 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              Sources ingested into the RAG vector store. The agent uses these to ground analyses and refinishing plans.
+            </p>
+
+            {/* Summary counts */}
+            {knowledgeSources.length > 0 && (
+              <div className="flex gap-3 mb-4">
+                {(['all', 'project', 'product', 'guide'] as const).map((f) => {
+                  const count = f === 'all' ? knowledgeSources.length : knowledgeSources.filter((s) => s.type === f).length;
+                  const chunks = f === 'all'
+                    ? knowledgeSources.reduce((sum, s) => sum + s.chunks, 0)
+                    : knowledgeSources.filter((s) => s.type === f).reduce((sum, s) => sum + s.chunks, 0);
+                  return (
+                    <button
+                      key={f}
+                      onClick={() => setKnowledgeFilter(f)}
+                      className={`flex flex-col items-center px-3 py-2 rounded-lg border text-xs transition-colors ${
+                        knowledgeFilter === f
+                          ? 'border-blue-300 bg-blue-50 text-blue-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}
+                    >
+                      <span className="font-semibold text-sm">{count}</span>
+                      <span>{f === 'all' ? 'All Sources' : `${f.charAt(0).toUpperCase() + f.slice(1)}s`}</span>
+                      <span className="text-[10px] text-gray-400">{chunks} chunks</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Source list */}
+            {knowledgeSources.length === 0 ? (
+              <p className="text-sm text-gray-500">No sources ingested yet.</p>
+            ) : (
+              <div className="divide-y divide-gray-100 max-h-[32rem] overflow-y-auto">
+                {knowledgeSources
+                  .filter((s) => knowledgeFilter === 'all' || s.type === knowledgeFilter)
+                  .map((s) => (
+                  <div key={`${s.type}-${s.source}`} className="py-2.5 flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium uppercase ${
+                          s.type === 'project' ? 'bg-green-100 text-green-700'
+                            : s.type === 'product' ? 'bg-purple-100 text-purple-700'
+                            : 'bg-amber-100 text-amber-700'
+                        }`}>{s.type}</span>
+                        <span className="text-sm font-medium text-gray-900 truncate">{s.title}</span>
+                      </div>
+                      {!s.source.startsWith('project:') && (
+                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{s.source}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <span className="text-xs text-gray-500">{s.chunks} chunk{s.chunks !== 1 ? 's' : ''}</span>
+                      <span className="text-[10px] text-gray-300">
+                        {new Date(s.firstAdded).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
         </div>
       )}
     </div>
