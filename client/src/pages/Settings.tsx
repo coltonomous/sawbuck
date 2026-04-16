@@ -745,7 +745,6 @@ interface ConfigField {
 const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.triage_model', configKey: 'triageModel', label: 'Triage model', type: 'text', group: 'Models' },
   { key: 'agent.eval_model', configKey: 'evaluationModel', label: 'Evaluation model (vision)', type: 'text', group: 'Models' },
-  { key: 'agent.fal_model', configKey: 'falModel', label: 'fal.ai model (text-to-image)', type: 'text', group: 'Models' },
   { key: 'agent.concept_edit_model', configKey: 'conceptEditModel', label: 'Concept edit model (Kontext)', type: 'text', group: 'Models' },
   { key: 'agent.max_triages', configKey: 'maxTriages', label: 'Max triages per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.max_evals', configKey: 'maxEvals', label: 'Max evaluations per run', type: 'number', group: 'Per-Run Caps' },

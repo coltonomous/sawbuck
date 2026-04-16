@@ -30,65 +30,26 @@ export function buildEditPrompt(opts: {
 }
 
 /**
- * Build a generation prompt for text-to-image fallback (no reference photo).
- */
-export function buildRenderPrompt(opts: {
-  furnitureType: string;
-  finishType: string;
-  label: string;
-  summary: string;
-  afterDescription?: string;
-  styleRecommendation?: string;
-}): string {
-  const { furnitureType, finishType, label, summary } = opts;
-  const afterDesc = opts.afterDescription ?? summary;
-  const style = opts.styleRecommendation ?? label;
-
-  if (isPaintFinish(finishType, summary)) {
-    return `A ${furnitureType} with a ${label} finish. ${summary}. The entire surface is covered in ${label} — no bare wood visible. The paint color, sheen, and texture must dominate the image. Style: ${style}. Photorealistic product photography, studio lighting with specular highlights to show the paint finish.`;
-  }
-
-  return `A ${furnitureType} with a ${label} finish. ${summary}. After: ${afterDesc}. The surface color, sheen, and texture show the ${finishType} finish in sharp detail (grain, tone, reflectivity). Style: ${style}. Photorealistic product photography, studio lighting angled to highlight the surface texture and finish quality.`;
-}
-
-/**
- * Build the complete fal.ai request (model + input) for a concept render.
- * Uses Kontext editing when a reference image is available, text-to-image otherwise.
+ * Build the fal.ai request (model + input) for a concept render using
+ * the image-editing model. A reference image is required.
  */
 export function buildConceptRenderRequest(opts: {
   concept: { finishType: string; label: string; summary: string };
   furnitureType: string;
-  referenceImageUrl: string | null;
+  referenceImageUrl: string;
   conceptEditModel: string;
-  textToImageModel: string;
-  imageSize: number;
-  afterDescription?: string;
-  styleRecommendation?: string;
 }): { model: string; input: Record<string, unknown> } {
-  const promptOpts = {
-    furnitureType: opts.furnitureType,
-    finishType: opts.concept.finishType,
-    label: opts.concept.label,
-    summary: opts.concept.summary,
-  };
-
-  if (opts.referenceImageUrl) {
-    return {
-      model: opts.conceptEditModel,
-      input: {
-        prompt: buildEditPrompt(promptOpts),
-        image_url: opts.referenceImageUrl,
-        num_images: 1,
-      },
-    };
-  }
-
   return {
-    model: opts.textToImageModel,
+    model: opts.conceptEditModel,
     input: {
-      prompt: buildRenderPrompt({ ...promptOpts, afterDescription: opts.afterDescription, styleRecommendation: opts.styleRecommendation }),
+      prompt: buildEditPrompt({
+        furnitureType: opts.furnitureType,
+        finishType: opts.concept.finishType,
+        label: opts.concept.label,
+        summary: opts.concept.summary,
+      }),
+      image_url: opts.referenceImageUrl,
       num_images: 1,
-      image_size: { width: opts.imageSize, height: opts.imageSize },
     },
   };
 }

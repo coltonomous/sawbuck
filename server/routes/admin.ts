@@ -15,7 +15,7 @@ const VALID_SETTINGS = new Set([
   'agent.triage_threshold', 'agent.deal_score_threshold',
   'agent.min_delay_ms', 'agent.max_delay_ms', 'agent.daily_request_cap',
   'agent.run_interval_ms', 'agent.triage_model',
-  'agent.eval_model', 'agent.fal_model', 'agent.concept_edit_model', 'agent.concept_size',
+  'agent.eval_model', 'agent.concept_edit_model', 'agent.concept_size',
   'agent.image_retention_days',
   'rag.max_chunks_per_type',
 ]);

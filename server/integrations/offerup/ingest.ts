@@ -252,6 +252,16 @@ type DetailResult = {
   longitude?: number;
 };
 
+// OfferUp's rendered pages and meta tags prefix descriptions with a
+// "Make an offer on ..." call-to-action that isn't part of the seller's text.
+function stripOfferUpBoilerplate(description: string): string {
+  let cleaned = description
+    .replace(/^\s*Make an? (?:Offer|offer)\s+on\b[^.!\n]*[.!\n]?\s*/g, '')
+    .replace(/\bMake an? (?:Offer|offer)\b[.!]?\s*/g, '')
+    .trim();
+  return cleaned;
+}
+
 async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | null> {
   try {
     const res = await offerUpFetch(url);
@@ -298,7 +308,7 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
           }
 
           return {
-            description: listing.description ?? '',
+            description: stripOfferUpBoilerplate(listing.description ?? ''),
             imageUrls,
             latitude,
             longitude,
@@ -311,7 +321,7 @@ async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | 
 
     // Fallback: meta tags
     const descMatch = html.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
-    const description = descMatch?.[1] ?? '';
+    const description = stripOfferUpBoilerplate(descMatch?.[1] ?? '');
 
     const imageUrls: string[] = [];
     const ogImageMatch = html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/i);

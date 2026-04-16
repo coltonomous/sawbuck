@@ -768,11 +768,6 @@ listingsRouter.post('/:id/render', async (c) => {
 
     const type = listing.furnitureType;
 
-    // Try to load existing plan to build a specific prompt
-    const existingPlan = await db.select().from(refinishingPlans)
-      .where(eq(refinishingPlans.listingId, id))
-      .then(r => r[0]).catch(() => null);
-
     const { buildConceptRenderRequest } = await import('../lib/render-prompt.js');
     const { getListingImageUrlForFal } = await import('../lib/images.js');
     let referenceImageUrl: string | null = null;
@@ -780,15 +775,15 @@ listingsRouter.post('/:id/render', async (c) => {
       referenceImageUrl = await getListingImageUrlForFal(id);
     } catch {}
 
+    if (!referenceImageUrl) {
+      return c.json({ error: 'No reference image available for this listing' }, 400);
+    }
+
     const { model: falModel, input: falInput } = buildConceptRenderRequest({
       concept: { finishType, label, summary },
       furnitureType: type!,
       referenceImageUrl,
       conceptEditModel: agentConfig.conceptEditModel,
-      textToImageModel: agentConfig.falModel,
-      imageSize: agentConfig.conceptRenderSize,
-      afterDescription: existingPlan?.afterDescription ?? undefined,
-      styleRecommendation: existingPlan?.styleRecommendation ?? undefined,
     });
     const prompt = falInput.prompt as string;
 
