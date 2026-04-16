@@ -122,21 +122,28 @@ function chunkByWords(text: string, maxWords: number): string[] {
   return chunks;
 }
 
+export interface IngestedGuide {
+  title: string;
+  url: string;
+  chunks: number;
+}
+
 /**
  * Ingest guides from a list of sources.
  */
 export async function ingestGuides(
   sources: GuideSource[],
-): Promise<{ ingested: number; failed: number }> {
+): Promise<{ ingested: number; failed: number; sources: IngestedGuide[] }> {
   if (sources.length === 0) {
     logger.info('No guide sources to ingest');
-    return { ingested: 0, failed: 0 };
+    return { ingested: 0, failed: 0, sources: [] };
   }
 
   logger.info({ count: sources.length }, 'Ingesting guide sources');
 
   const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = [];
   let failed = 0;
+  const ingestedGuides: IngestedGuide[] = [];
 
   for (const source of sources) {
     const text = await fetchPageText(source.url);
@@ -170,16 +177,17 @@ export async function ingestGuides(
       });
     }
 
+    ingestedGuides.push({ title: source.title, url: source.url, chunks: textChunks.length });
     logger.debug({ guide: source.title, chunks: textChunks.length }, 'Guide chunked');
   }
 
   if (allChunks.length === 0) {
-    return { ingested: 0, failed };
+    return { ingested: 0, failed, sources: [] };
   }
 
   const embeddings = await embedBatch(allChunks.map((c) => c.content));
   const inserted = await upsertChunks(allChunks, embeddings);
 
-  logger.info({ inserted, failed }, 'Guide ingestion complete');
-  return { ingested: inserted, failed };
+  logger.info({ inserted, failed, sources: ingestedGuides.map((s) => s.title) }, 'Guide ingestion complete');
+  return { ingested: inserted, failed, sources: ingestedGuides };
 }

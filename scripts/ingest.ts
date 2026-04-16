@@ -70,14 +70,22 @@ async function main() {
 
   if (!only || only === 'products') {
     console.log(`--- Ingesting ${sources.products.length} product sources ---`);
-    results.products = await ingestProducts(sources.products);
-    console.log(`   ${results.products.ingested} product chunks ingested, ${results.products.failed} failed\n`);
+    const productResult = await ingestProducts(sources.products);
+    results.products = productResult;
+    for (const s of productResult.sources) {
+      console.log(`   + ${s.brand} ${s.name} (${s.chunks} chunks)`);
+    }
+    console.log(`   ${productResult.ingested} product chunks ingested, ${productResult.failed} failed\n`);
   }
 
   if (!only || only === 'guides') {
     console.log(`--- Ingesting ${sources.guides.length} guide sources ---`);
-    results.guides = await ingestGuides(sources.guides);
-    console.log(`   ${results.guides.ingested} guide chunks ingested, ${results.guides.failed} failed\n`);
+    const guideResult = await ingestGuides(sources.guides);
+    results.guides = guideResult;
+    for (const s of guideResult.sources) {
+      console.log(`   + ${s.title} (${s.chunks} chunks)`);
+    }
+    console.log(`   ${guideResult.ingested} guide chunks ingested, ${guideResult.failed} failed\n`);
   }
 
   await printStats();

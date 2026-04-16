@@ -55,6 +55,21 @@ export async function bootstrapKnowledgeBase(): Promise<void> {
       if (removed > 0) evicted[type] = removed;
     }
 
+    // Log newly ingested sources so each sync shows what was added
+    const newProducts = productResult.sources;
+    const newGuides = guideResult.sources;
+    const newAutoDiscovered = workerResult.sources;
+
+    if (newProducts.length > 0) {
+      logger.info({ sources: newProducts.map((s) => `${s.brand} ${s.name}`) }, `Knowledge base: ingested ${newProducts.length} product sources`);
+    }
+    if (newGuides.length > 0) {
+      logger.info({ sources: newGuides.map((s) => s.title) }, `Knowledge base: ingested ${newGuides.length} guide sources`);
+    }
+    if (newAutoDiscovered.length > 0) {
+      logger.info({ sources: newAutoDiscovered.map((s) => ({ title: s.title, url: s.url })) }, `Knowledge base: ingested ${newAutoDiscovered.length} auto-discovered sources`);
+    }
+
     logger.info(
       {
         projects: projectResult.ingested,
