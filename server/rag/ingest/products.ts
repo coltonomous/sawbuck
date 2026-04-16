@@ -77,22 +77,30 @@ function chunkText(text: string, maxWords = 300): string[] {
   return chunks;
 }
 
+export interface IngestedProduct {
+  name: string;
+  brand: string;
+  url: string;
+  chunks: number;
+}
+
 /**
  * Ingest products from a list of sources.
  * Each source URL is fetched, text-extracted, chunked, and embedded.
  */
 export async function ingestProducts(
   sources: ProductSource[],
-): Promise<{ ingested: number; failed: number }> {
+): Promise<{ ingested: number; failed: number; sources: IngestedProduct[] }> {
   if (sources.length === 0) {
     logger.info('No product sources to ingest');
-    return { ingested: 0, failed: 0 };
+    return { ingested: 0, failed: 0, sources: [] };
   }
 
   logger.info({ count: sources.length }, 'Ingesting product sources');
 
   const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = [];
   let failed = 0;
+  const ingestedProducts: IngestedProduct[] = [];
 
   for (const source of sources) {
     const text = await fetchPageText(source.url);
@@ -127,16 +135,17 @@ export async function ingestProducts(
       });
     }
 
+    ingestedProducts.push({ name: source.name, brand: source.brand, url: source.url, chunks: textChunks.length });
     logger.debug({ product: source.name, chunks: textChunks.length }, 'Product chunked');
   }
 
   if (allChunks.length === 0) {
-    return { ingested: 0, failed };
+    return { ingested: 0, failed, sources: [] };
   }
 
   const embeddings = await embedBatch(allChunks.map((c) => c.content));
   const inserted = await upsertChunks(allChunks, embeddings);
 
-  logger.info({ inserted, failed }, 'Product ingestion complete');
-  return { ingested: inserted, failed };
+  logger.info({ inserted, failed, sources: ingestedProducts.map((s) => `${s.brand} ${s.name}`) }, 'Product ingestion complete');
+  return { ingested: inserted, failed, sources: ingestedProducts };
 }

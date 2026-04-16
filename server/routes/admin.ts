@@ -6,7 +6,7 @@ import { eq, and, count, inArray } from 'drizzle-orm';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
 import { triggerRun } from '../agents/scheduler.js';
 import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
-import { chunkCount } from '../rag/store.js';
+import { chunkCount, listSources } from '../rag/store.js';
 
 // Derived from the DB key names used in agents/config.ts resolve*() calls.
 // Adding a new config option there automatically makes it settable here.
@@ -260,6 +260,13 @@ adminRouter.get('/metrics', async (c) => {
     jobs: jobHealth,
     overdueJobs,
   });
+});
+
+// ── Knowledge Base sources ────────────────────────────────────────
+
+adminRouter.get('/knowledge-sources', async (c) => {
+  const sources = await listSources();
+  return c.json(sources);
 });
 
 export { adminRouter };

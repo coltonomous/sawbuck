@@ -217,5 +217,57 @@ describe('RAG retrieval', () => {
       expect(ctx.chunkCount).toBe(0);
       expect(ctx.text).toBe('');
     });
+
+    it('deduplicates sources by URL, keeping the closest match', async () => {
+      const sharedUrl = 'https://minwax.com/guides/staining';
+      mockSearch.mockImplementation((_vec, _k, type) => {
+        if (type === 'product') {
+          return [
+            makeResult({
+              type: 'product',
+              id: 1,
+              title: 'Minwax Staining Guide',
+              source: sharedUrl,
+              content: 'Part one of the guide...',
+              distance: 0.3,
+            }),
+            makeResult({
+              type: 'product',
+              id: 2,
+              title: 'Minwax Staining Guide (part 2)',
+              source: sharedUrl,
+              content: 'Part two of the guide...',
+              distance: 0.5,
+            }),
+          ];
+        }
+        if (type === 'guide') {
+          return [
+            makeResult({
+              type: 'guide',
+              id: 3,
+              title: 'Minwax Staining Guide (part 3)',
+              source: sharedUrl,
+              content: 'Part three of the guide...',
+              distance: 0.6,
+            }),
+          ];
+        }
+        return [];
+      });
+
+      const ctx = await getFullContext({
+        furnitureType: 'dresser',
+        woodSpecies: 'oak',
+      });
+
+      // All 3 chunks should be in results (used for prompt context)
+      expect(ctx.chunkCount).toBe(3);
+      // But sources should be deduplicated to 1 unique URL
+      expect(ctx.sources).toHaveLength(1);
+      expect(ctx.sources[0].source).toBe(sharedUrl);
+      // Should keep the closest match (distance 0.3)
+      expect(ctx.sources[0].distance).toBe(0.3);
+    });
   });
 });
