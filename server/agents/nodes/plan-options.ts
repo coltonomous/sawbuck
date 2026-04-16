@@ -135,7 +135,9 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         }
       }
 
-      for (const concept of concepts) {
+      // Render all concepts in parallel (with timeout) then persist rows
+      const FAL_TIMEOUT_MS = 120_000; // 2 min per render
+      const renderResults = await Promise.all(concepts.map(async (concept) => {
         let renderPrompt = '';
         let localPath: string | null = null;
         let renderedImageUrl: string | null = null;
@@ -154,9 +156,13 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             });
             renderPrompt = falInput.prompt as string;
 
-            const renderResult = await fal.subscribe(falModel, {
-              input: falInput,
-            }) as { data: { images: Array<{ url: string }> } };
+            // fal SDK timeout is not enforced (per SDK docs), so use Promise.race
+            const renderResult = await Promise.race([
+              fal.subscribe(falModel, { input: falInput }),
+              new Promise((_, reject) =>
+                setTimeout(() => reject(new Error(`Render timed out after ${FAL_TIMEOUT_MS / 1000}s`)), FAL_TIMEOUT_MS)
+              ),
+            ]) as { data: { images: Array<{ url: string }> } };
 
             const imageUrl = renderResult.data?.images?.[0]?.url;
             if (imageUrl) {
@@ -181,7 +187,11 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
           }
         }
 
-        // Persist concept_renders row (with or without render)
+        return { concept, renderPrompt, renderedImageUrl, localPath };
+      }));
+
+      // Persist concept_renders rows
+      for (const { concept, renderPrompt, renderedImageUrl, localPath } of renderResults) {
         await db.insert(conceptRenders).values({
           listingId: listing.listingId,
           agentRunId: state.runId,
