@@ -137,6 +137,9 @@ export async function getFullContext(params: {
     allSources.push(...guides.sources);
   }
 
+  // Deduplicate sources by URL — keep the closest (most relevant) hit per source
+  const dedupedSources = deduplicateSources(allSources);
+
   const text = sections.length > 0
     ? `--- REFERENCE KNOWLEDGE (retrieved from knowledge base) ---\n\n${sections.join('\n\n')}\n\n--- END REFERENCE KNOWLEDGE ---`
     : '';
@@ -145,17 +148,35 @@ export async function getFullContext(params: {
     projects: projects.chunkCount,
     products: products.chunkCount,
     guides: guides.chunkCount,
+    totalSources: allSources.length,
+    uniqueSources: dedupedSources.length,
   }, 'RAG context retrieved');
 
   return {
     text,
     chunkCount: allResults.length,
     results: allResults,
-    sources: allSources,
+    sources: dedupedSources,
   };
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────
+
+/**
+ * Deduplicate sources by URL, keeping the closest (lowest distance) hit
+ * for each unique source. This prevents multi-chunk pages from dominating
+ * the source list.
+ */
+function deduplicateSources(sources: RagSource[]): RagSource[] {
+  const seen = new Map<string, RagSource>();
+  for (const s of sources) {
+    const existing = seen.get(s.source);
+    if (!existing || s.distance < existing.distance) {
+      seen.set(s.source, s);
+    }
+  }
+  return Array.from(seen.values());
+}
 
 function buildQuery(
   furnitureType: string,
@@ -192,12 +213,12 @@ async function retrieveFormatted(
   }
 
   const text = relevant.map(formatter).join('\n\n');
-  const sources: RagSource[] = relevant.map((r) => ({
+  const sources = deduplicateSources(relevant.map((r) => ({
     title: r.title,
     source: r.source,
     type: r.type,
     distance: r.distance,
-  }));
+  })));
 
   return { text, chunkCount: relevant.length, results: relevant, sources };
 }
