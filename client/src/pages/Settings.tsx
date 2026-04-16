@@ -5,6 +5,7 @@ import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
 import PipelineGraph from '../components/PipelineGraph';
+import { CITIES, formatCityLabel, findCityByLabel, findCityByCoords } from '@shared/cities';
 
 interface Preferences {
   preferredLatitude: number | null;
@@ -51,6 +52,7 @@ export default function Settings() {
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceSummary[]>([]);
   const [knowledgeFilter, setKnowledgeFilter] = useState<'all' | 'project' | 'product' | 'guide'>('all');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [cityQuery, setCityQuery] = useState('');
   const { toast } = useToast();
 
   const isAdmin = session?.user?.role === 'admin';
@@ -73,7 +75,11 @@ export default function Settings() {
 
   useEffect(() => {
     api.getPreferences()
-      .then(setPrefs)
+      .then((p) => {
+        setPrefs(p);
+        const match = findCityByCoords(p.preferredLatitude, p.preferredLongitude);
+        if (match) setCityQuery(formatCityLabel(match));
+      })
       .catch((err) => toast('error', `Failed to load settings: ${err instanceof Error ? err.message : 'Unknown error'}`))
       .finally(() => setLoading(false));
     loadAdmin();
@@ -105,6 +111,8 @@ export default function Settings() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
       setPrefs((prev) => prev ? { ...prev, preferredLatitude: pos.coords.latitude, preferredLongitude: pos.coords.longitude } : prev);
+      const match = findCityByCoords(pos.coords.latitude, pos.coords.longitude);
+      setCityQuery(match ? formatCityLabel(match) : '');
     });
   };
 
@@ -191,6 +199,26 @@ export default function Settings() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+              <input
+                type="text"
+                list="city-options"
+                placeholder="Search a city to autofill coordinates"
+                value={cityQuery}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCityQuery(val);
+                  const match = findCityByLabel(val);
+                  if (match) {
+                    setPrefs({ ...prefs, preferredLatitude: match.latitude, preferredLongitude: match.longitude });
+                  }
+                }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-2"
+              />
+              <datalist id="city-options">
+                {CITIES.map((c) => (
+                  <option key={`${c.name}-${c.state}`} value={formatCityLabel(c)} />
+                ))}
+              </datalist>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="number"
