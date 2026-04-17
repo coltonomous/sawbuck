@@ -1,4 +1,3 @@
-import { Sentry } from './instrument.js';
 import { serve } from '@hono/node-server';
 import app from './app.js';
 import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
@@ -38,7 +37,6 @@ function runImageCleanup() {
     recordJobRun('image-cleanup', 'success', Date.now() - start);
   }).catch((err) => {
     recordJobRun('image-cleanup', 'failure', Date.now() - start);
-    Sentry.captureException(err, { tags: { job: 'image-cleanup' } });
     logger.error({ err }, 'Scheduled image cleanup failed');
   });
 }
@@ -51,7 +49,6 @@ cleanupTimer.unref();
 // Purge expired sessions daily (same cadence as image cleanup)
 function purgeExpiredSessions() {
   db.delete(sessions).where(lt(sessions.expiresAt, new Date())).catch((err) => {
-    Sentry.captureException(err, { tags: { job: 'session-cleanup' } });
     logger.error({ err }, 'Session cleanup failed');
   });
 }
@@ -114,7 +111,6 @@ async function runReconcile() {
     }
   } catch (err) {
     recordJobRun('reconcile', 'failure', Date.now() - start);
-    Sentry.captureException(err, { tags: { job: 'reconcile' } });
     logger.error({ err }, 'Standalone reconcile failed');
   }
 }
@@ -159,8 +155,6 @@ async function shutdown() {
     logger.error({ err }, 'Failed to drain connection pool');
   }
 
-  await Sentry.close(2000);
-
   logger.info('Server closed');
   process.exit(0);
 }
@@ -169,12 +163,10 @@ process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
 process.on('unhandledRejection', (reason) => {
-  Sentry.captureException(reason);
   logger.error({ err: reason }, 'Unhandled promise rejection');
 });
 
 process.on('uncaughtException', (err) => {
-  Sentry.captureException(err);
   logger.fatal({ err }, 'Uncaught exception');
 });
 

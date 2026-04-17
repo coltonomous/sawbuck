@@ -86,7 +86,6 @@ jobs:
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
-          grep -q '^SENTRY_DSN=' .env 2>/dev/null || echo 'SENTRY_DSN=${{ secrets.SENTRY_DSN }}' >> .env
           grep -q '^BACKUP_S3_BUCKET=' .env 2>/dev/null || echo 'BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}' >> .env
 
           # Inject AWS credentials into Docker daemon for awslogs driver

@@ -4,7 +4,6 @@ import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { pinoLogger } from 'hono-pino';
 import { sql } from 'drizzle-orm';
-import { Sentry } from './instrument.js';
 import logger from './lib/logger.js';
 import { db } from './db/index.js';
 import { auth } from './auth.js';
@@ -82,9 +81,6 @@ app.use('/api/*', rateLimit(RATE_LIMIT_API));
 
 // ── Global error handler ────────────────────────────────────────────
 app.onError((err, c) => {
-  Sentry.captureException(err, {
-    tags: { path: c.req.path, method: c.req.method },
-  });
   const ctxLogger = c.get?.('logger');
   if (ctxLogger) {
     ctxLogger.error({ err, path: c.req.path, method: c.req.method }, 'Unhandled error');
