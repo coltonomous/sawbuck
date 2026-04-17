@@ -155,8 +155,9 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
           .where(eq(listings.id, listingId));
         logger.info({ listingId, recommendation: effectiveRecommendation, original: analysis.flip_recommendation }, 'Evaluate: dismissed (pass)');
       } else {
-        // 'maybe' — not qualified but still worth the full treatment at low volume
-        toTreat.push(evalCandidate);
+        // 'maybe' — stays in the feed but plans/renders are deferred
+        // until a user views the listing (on-demand via generate-concepts)
+        logger.info({ listingId, recommendation: effectiveRecommendation }, 'Evaluate: maybe — plans deferred');
       }
 
       logger.info(
