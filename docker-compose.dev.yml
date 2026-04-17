@@ -19,7 +19,6 @@ services:
       - ./client/vite.config.ts:/app/client/vite.config.ts
       - ./client/tsconfig.json:/app/client/tsconfig.json
       - ./shared:/app/shared
-      - ./data/images:/app/data/images
     entrypoint: ["sh", "-c"]
     command:
       - |
