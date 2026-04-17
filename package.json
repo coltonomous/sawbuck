@@ -14,7 +14,6 @@
     "agent": "tsx --env-file=.env scripts/agent-runner.ts",
     "test": "vitest",
     "ingest": "tsx scripts/ingest.ts",
-    "cleanup:images": "tsx scripts/cleanup-images.ts",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up"
   },

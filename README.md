@@ -122,7 +122,6 @@ Settings can also be set via `AGENT_*` env vars as initial defaults before the D
 | `npm run db:push` | Push schema to database |
 | `npm run db:studio` | Open Drizzle Studio |
 | `npm run ingest` | Populate RAG knowledge base |
-| `npm run cleanup:images` | Run image retention cleanup |
 
 ## Agent Pipeline
 
