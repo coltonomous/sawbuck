@@ -53,7 +53,10 @@ vi.mock('../../images/processor.js', () => ({
   getImageBase64: vi.fn(),
 }));
 
-vi.mock('../../lib/paths.js', () => ({ IMAGES_DIR: '/tmp/test-images' }));
+vi.mock('../../lib/s3.js', () => ({
+  downloadFromS3: vi.fn().mockResolvedValue(Buffer.alloc(0)),
+  deleteFromS3: vi.fn().mockResolvedValue(undefined),
+}));
 
 vi.mock('../config.js', () => ({
   agentConfig: {

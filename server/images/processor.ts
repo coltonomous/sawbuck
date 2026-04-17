@@ -1,47 +1,33 @@
 import sharp from 'sharp';
-import fs from 'fs/promises';
 import path from 'path';
 import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
 import { eq, and } from 'drizzle-orm';
-import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
+import { uploadToS3, downloadFromS3 } from '../lib/s3.js';
 import logger from '../lib/logger.js';
 
 const MAX_EDGE = config.images.maxEdge;
 const WEBP_QUALITY = config.images.webpQuality;
 
-function assertSafePath(p: string): void {
-  if (p.includes('..') || path.isAbsolute(p)) {
-    throw new Error(`Invalid image path: ${p}`);
-  }
-}
-
 export async function processImage(originalPath: string, listingId: number, index: number, platform: string): Promise<{ resizedPath: string; width: number; height: number }> {
-  assertSafePath(originalPath);
-  const inputPath = path.join(IMAGES_DIR, originalPath);
-  await fs.access(inputPath).catch(() => { throw new Error(`Image not found: ${inputPath}`); });
+  const inputBuffer = await downloadFromS3(originalPath);
 
-  const resizedDir = path.join(IMAGES_DIR, 'resized', platform, String(listingId));
-  await fs.mkdir(resizedDir, { recursive: true });
+  const s3Key = `resized/${platform}/${listingId}/${index}.webp`;
 
-  const filename = `${index}.webp`;
-  const outputPath = path.join(resizedDir, filename);
-  const relativePath = path.join('resized', platform, String(listingId), filename);
-
-  const metadata = await sharp(inputPath).metadata();
+  const metadata = await sharp(inputBuffer).metadata();
   const longestEdge = Math.max(metadata.width ?? 0, metadata.height ?? 0);
 
-  let pipeline = sharp(inputPath);
+  let pipeline = sharp(inputBuffer);
   if (longestEdge > MAX_EDGE) {
     pipeline = pipeline.resize(MAX_EDGE, MAX_EDGE, { fit: 'inside', withoutEnlargement: true });
   }
 
   const result = await pipeline.webp({ quality: WEBP_QUALITY }).toBuffer({ resolveWithObject: true });
-  await fs.writeFile(outputPath, result.data);
+  await uploadToS3(s3Key, result.data, 'image/webp');
 
   return {
-    resizedPath: relativePath,
+    resizedPath: s3Key,
     width: result.info.width,
     height: result.info.height,
   };
@@ -83,9 +69,7 @@ export async function processListingImages(listingId: number): Promise<number> {
 }
 
 export async function getImageBase64(imagePath: string): Promise<{ base64: string; mediaType: string }> {
-  assertSafePath(imagePath);
-  const fullPath = path.join(IMAGES_DIR, imagePath);
-  const buffer = await fs.readFile(fullPath);
+  const buffer = await downloadFromS3(imagePath);
   const base64 = buffer.toString('base64');
   const ext = path.extname(imagePath).toLowerCase();
   const mediaType = ext === '.webp' ? 'image/webp' : ext === '.png' ? 'image/png' : 'image/jpeg';

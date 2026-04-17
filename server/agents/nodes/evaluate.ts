@@ -9,10 +9,8 @@ import { agentConfig } from '../config.js';
 import type { AgentState, EvaluatedCandidate } from '../state.js';
 import { reportProgress } from '../progress.js';
 import logger from '../../lib/logger.js';
-import fs from 'fs/promises';
-import path from 'path';
 import sharp from 'sharp';
-import { IMAGES_DIR } from '../../lib/paths.js';
+import { downloadFromS3, deleteFromS3 } from '../../lib/s3.js';
 
 export async function evaluateCandidates(state: AgentState): Promise<Partial<AgentState>> {
   const evalCounts = state.evalCount;
@@ -82,15 +80,13 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
       await downloadListingImages(listingId);
       await processListingImages(listingId);
 
-      // Delete originals after processing — only if the resized WebP is valid
-      // Update DB reference first, then delete file, so a crash never leaves
-      // the DB pointing at a deleted file.
+      // Delete originals from S3 after processing — only if the resized WebP is valid
       const images = await db.select().from(listingImages).where(eq(listingImages.listingId, listingId));
       for (const img of images) {
         if (img.localPathOriginal && img.localPathResized) {
           try {
-            const resizedFullPath = path.join(IMAGES_DIR, img.localPathResized);
-            const metadata = await sharp(resizedFullPath).metadata();
+            const resizedBuffer = await downloadFromS3(img.localPathResized);
+            const metadata = await sharp(resizedBuffer).metadata();
             if (!metadata.width || !metadata.height) {
               logger.warn({ imagePath: img.localPathResized }, 'Resized image invalid, keeping original');
               continue;
@@ -98,7 +94,7 @@ export async function evaluateCandidates(state: AgentState): Promise<Partial<Age
             await db.update(listingImages)
               .set({ localPathOriginal: null })
               .where(eq(listingImages.id, img.id));
-            await fs.unlink(path.join(IMAGES_DIR, img.localPathOriginal));
+            await deleteFromS3(img.localPathOriginal);
           } catch {
             // not critical if cleanup fails — keep original as fallback
           }

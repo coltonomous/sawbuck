@@ -119,14 +119,7 @@ app.route('/api/stats', statsRouter);
 app.route('/api/admin', adminRouter);
 app.route('/api/user/preferences', preferencesRouter);
 
-// ── Serve listing images with cache headers ─────────────────────────
-app.use('/images/*', async (c, next) => {
-  await next();
-  if (c.res.status === 200) {
-    c.res.headers.set('Cache-Control', 'public, max-age=86400, immutable');
-  }
-});
-app.use('/images/*', serveStatic({ root: './data/' }));
+// Images are served via S3 + CloudFront CDN — no local static serving needed.
 
 // ── SPA serving in production ───────────────────────────────────────
 if (isProd) {
