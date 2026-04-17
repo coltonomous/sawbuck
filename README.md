@@ -103,7 +103,7 @@ All pipeline parameters are stored in the database and editable from the admin S
 | `agent.max_triages` | `50` | Max listings to triage per run |
 | `agent.max_evals` | `10` | Max listings to evaluate per run |
 | `agent.max_renders` | `5` | Max listings to render concepts for |
-| `agent.run_interval_ms` | `14400000` | Run interval (4 hours) |
+| `agent.cron_schedule` | `0 */4 * * *` | Cron schedule for pipeline runs |
 | `agent.target_city` | `seattle` | Legacy CL city (use regions instead) |
 | `agent.triage_threshold` | `0.75` | Min confidence to pass triage |
 | `agent.deal_score_threshold` | `1.3` | Min deal score to qualify |

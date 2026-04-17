@@ -841,6 +841,9 @@ listingsRouter.post('/:id/render', async (c) => {
   }
 });
 
+// Guard against concurrent plan/render generation for the same listing
+const generatingPlans = new Set<number>();
+
 // POST /:id/generate-concepts — generate refinishing concept options for a listing
 listingsRouter.post('/:id/generate-concepts', async (c) => {
   const user = c.get('user');
@@ -858,6 +861,11 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
   if (existing.length > 0) {
     return c.json({ concepts: existing });
   }
+
+  if (generatingPlans.has(id)) {
+    return c.json({ error: 'Plan generation already in progress for this listing' }, 409);
+  }
+  generatingPlans.add(id);
 
   try {
     const { generatePlanOptions } = await import('../agents/nodes/plan-options.js');
@@ -901,6 +909,8 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
   } catch (err) {
     logger.error({ listingId: id, error: String(err) }, 'On-demand concept generation failed');
     return c.json({ error: 'Failed to generate concepts' }, 500);
+  } finally {
+    generatingPlans.delete(id);
   }
 });
 

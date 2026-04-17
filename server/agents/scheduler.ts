@@ -6,11 +6,13 @@ import { agentRuns } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import logger from '../lib/logger.js';
 import { recordJobRun } from '../lib/metrics.js';
+import { msUntilNext } from '../lib/cron.js';
 
 let running = false;
 let runStartedAt: number | null = null;
 let currentRunId: string | null = null;
-let timer: ReturnType<typeof setInterval> | null = null;
+let timer: ReturnType<typeof setTimeout> | null = null;
+let started = false;
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
@@ -74,7 +76,23 @@ async function runOnce(): Promise<void> {
     running = false;
     runStartedAt = null;
     currentRunId = null;
+    scheduleNext();
   }
+}
+
+function scheduleNext(): void {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+
+  const cron = agentConfig.cronSchedule;
+  const delayMs = msUntilNext(cron);
+  const nextAt = new Date(Date.now() + delayMs);
+  logger.info({ cron, nextAt: nextAt.toISOString(), delayMs }, 'Agent scheduler: next run scheduled');
+
+  timer = setTimeout(runOnce, delayMs);
+  timer.unref();
 }
 
 /**
@@ -101,13 +119,13 @@ async function cleanupStaleRuns(): Promise<void> {
 }
 
 export async function startScheduler(): Promise<void> {
-  if (timer) {
+  if (started) {
     logger.warn('Agent scheduler already started');
     return;
   }
+  started = true;
 
-  const intervalMs = agentConfig.runIntervalMs;
-  logger.info({ intervalMs }, 'Agent scheduler: starting');
+  logger.info({ cron: agentConfig.cronSchedule }, 'Agent scheduler: starting');
 
   // Ensure checkpoint tables exist before first run
   try {
@@ -119,9 +137,14 @@ export async function startScheduler(): Promise<void> {
   // Clean up orphaned 'running' rows from previous process crashes
   await cleanupStaleRuns();
 
-  // Don't run immediately on startup/deploy — wait for the first interval
-  timer = setInterval(runOnce, intervalMs);
-  timer.unref();
+  scheduleNext();
+}
+
+/** Restart the scheduler with the current cron schedule (called when config changes). */
+export function restartScheduler(): void {
+  if (!started) return;
+  logger.info('Agent scheduler: restarting with updated schedule');
+  scheduleNext();
 }
 
 /** Manually trigger a pipeline run. Returns false if one is already running. */
@@ -133,8 +156,9 @@ export function triggerRun(): boolean {
 
 export function stopScheduler(): void {
   if (timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
-    logger.info('Agent scheduler: stopped');
   }
+  started = false;
+  logger.info('Agent scheduler: stopped');
 }
