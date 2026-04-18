@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '../db/index.js';
 import { users, listings, projects, listingClicks, platformSettings, regions } from '../db/schema.js';
 import { eq, and, count, inArray } from 'drizzle-orm';
-import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
+import { getAllSettings, updateSetting, deleteSetting, getAgentConfig, refreshAgentConfig } from '../agents/config.js';
 import { triggerRun, restartScheduler } from '../agents/scheduler.js';
 import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
 import { chunkCount, listSources } from '../rag/store.js';
@@ -102,6 +102,7 @@ adminRouter.delete('/users/:id', async (c) => {
 
 // GET /settings — get all agent config (current resolved values + DB overrides)
 adminRouter.get('/settings', async (c) => {
+  await refreshAgentConfig();
   const dbSettings = await getAllSettings();
   const resolved = getAgentConfig();
   return c.json({ resolved, overrides: dbSettings });
