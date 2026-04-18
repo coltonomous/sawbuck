@@ -88,6 +88,7 @@ jobs:
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
           grep -q '^S3_BUCKET=' .env 2>/dev/null || echo 'S3_BUCKET=${{ secrets.S3_BUCKET }}' >> .env
           grep -q '^VITE_CDN_DOMAIN=' .env 2>/dev/null || echo 'VITE_CDN_DOMAIN=${{ secrets.VITE_CDN_DOMAIN }}' >> .env
+          grep -q '^BRAVE_API_KEY=' .env 2>/dev/null || echo 'BRAVE_API_KEY=${{ secrets.BRAVE_API_KEY }}' >> .env
 
           # Inject AWS credentials into Docker daemon for awslogs driver
           # (IMDS is unreachable from the daemon's log driver context)

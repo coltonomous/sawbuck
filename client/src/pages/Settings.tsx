@@ -782,7 +782,7 @@ export default function Settings() {
                         <span className="text-sm font-medium text-gray-900 truncate">{s.title}</span>
                       </div>
                       {!s.source.startsWith('project:') && (
-                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{s.source}</p>
+                        <a href={s.source} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-400 hover:text-blue-300 truncate mt-0.5 block">{s.source}</a>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-0.5 shrink-0">
