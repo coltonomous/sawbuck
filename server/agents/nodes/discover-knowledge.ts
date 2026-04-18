@@ -118,7 +118,13 @@ async function hasGap(query: string, type: 'guide' | 'product'): Promise<boolean
 }
 
 export async function discoverKnowledge(state: AgentState): Promise<Partial<AgentState>> {
-  if (state.qualifiedListings.length === 0) return {};
+  // Use qualified listings when available; fall back to all evaluated candidates so
+  // gap detection runs even on runs where nothing cleared the deal-score threshold.
+  const candidates = state.qualifiedListings.length > 0
+    ? state.qualifiedListings
+    : state.evaluatedCandidates;
+
+  if (candidates.length === 0) return {};
 
   try {
     await initStore();
@@ -132,7 +138,7 @@ export async function discoverKnowledge(state: AgentState): Promise<Partial<Agen
   // Deduplicate by type + species across listings
   const seen = new Set<string>();
 
-  for (const listing of state.qualifiedListings.slice(0, MAX_GAPS_PER_RUN)) {
+  for (const listing of candidates.slice(0, MAX_GAPS_PER_RUN)) {
     const { furnitureType, furnitureStyle, woodSpecies } = listing.evaluation;
     const dedupeKey = `${furnitureType}:${woodSpecies ?? ''}`;
     if (seen.has(dedupeKey)) continue;

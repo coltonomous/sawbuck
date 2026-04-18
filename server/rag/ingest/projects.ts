@@ -220,11 +220,13 @@ export async function ingestProjects(): Promise<{ ingested: number; skipped: num
 
   // Remove chunks for projects no longer in the sold set
   const activeSources = chunks.map((c) => c.source);
-  const placeholders = activeSources.map((_, i) => `$${i + 1}`).join(', ');
-  await pool.query(
-    `DELETE FROM knowledge_chunks WHERE type = 'project' AND source NOT IN (${placeholders})`,
-    activeSources,
-  );
+  if (activeSources.length > 0) {
+    const placeholders = activeSources.map((_, i) => `$${i + 1}`).join(', ');
+    await pool.query(
+      `DELETE FROM knowledge_chunks WHERE type = 'project' AND source NOT IN (${placeholders})`,
+      activeSources,
+    );
+  }
 
   logger.info({ inserted, total: flips.length }, 'Project ingestion complete');
   return { ingested: inserted, skipped: flips.length - inserted };

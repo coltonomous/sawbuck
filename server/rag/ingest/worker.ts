@@ -6,7 +6,7 @@
 
 import { db } from '../../db/index.js';
 import { knowledgeSources } from '../../db/schema.js';
-import { isNull, eq, lt, or } from 'drizzle-orm';
+import { isNull, eq } from 'drizzle-orm';
 import { embedBatch } from '../embeddings.js';
 import { upsertChunks, initStore, evictExcess } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
@@ -70,11 +70,7 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
   const pending = await db
     .select()
     .from(knowledgeSources)
-    .where(
-      or(
-        isNull(knowledgeSources.lastIngestedAt),
-      ) as any,
-    )
+    .where(isNull(knowledgeSources.lastIngestedAt))
     .limit(MAX_SOURCES_PER_RUN);
 
   // Filter out sources that have exceeded retry limit in JS (avoids complex drizzle query)
