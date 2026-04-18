@@ -9,6 +9,10 @@ if (!process.env.BETTER_AUTH_SECRET || process.env.BETTER_AUTH_SECRET.length < 3
   throw new Error('BETTER_AUTH_SECRET must be set and at least 32 characters');
 }
 
+const trustedOrigins = isProd
+  ? ['https://sawbuck.coltonomous.com', 'https://sawbuck.dev']
+  : ['http://localhost:5173'];
+
 export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: 'pg',
@@ -19,7 +23,8 @@ export const auth = betterAuth({
       verification: schema.verifications,
     },
   }),
-  baseURL: process.env.BETTER_AUTH_URL || (isProd ? undefined : 'http://localhost:3001'),
+  baseURL: isProd ? undefined : 'http://localhost:3001',
+  trustedOrigins,
   secret: process.env.BETTER_AUTH_SECRET,
   emailAndPassword: {
     enabled: true,
