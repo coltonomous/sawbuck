@@ -7,6 +7,8 @@ COPY client/public/ ./client/public/
 COPY client/src/ ./client/src/
 COPY shared/ ./shared/
 RUN npm ci --ignore-scripts
+ARG VITE_CDN_DOMAIN
+ENV VITE_CDN_DOMAIN=$VITE_CDN_DOMAIN
 RUN cd client && npx vite build
 
 # Stage 2: Production server
