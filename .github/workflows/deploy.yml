@@ -86,6 +86,8 @@ jobs:
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
+          grep -q '^S3_BUCKET=' .env 2>/dev/null || echo 'S3_BUCKET=${{ secrets.S3_BUCKET }}' >> .env
+          grep -q '^VITE_CDN_DOMAIN=' .env 2>/dev/null || echo 'VITE_CDN_DOMAIN=${{ secrets.VITE_CDN_DOMAIN }}' >> .env
 
           # Inject AWS credentials into Docker daemon for awslogs driver
           # (IMDS is unreachable from the daemon's log driver context)
