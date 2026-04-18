@@ -157,12 +157,18 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
   // header always show the same number.
   const stepDerivedHours = Math.round(plan.steps.reduce((sum, s) => sum + s.duration_minutes, 0) / 60 * 10) / 10;
 
-  // Derive material cost from step products — the LLM tends to echo the example
-  // total from the schema template, so we compute the real sum from the
-  // per-product prices it recommended.
+  // Derive material cost from step products — deduplicate by brand:name first,
+  // matching the dedup logic in sourcing.ts so the header total equals the sum
+  // of the displayed line items.
+  const seenProducts = new Set<string>();
   const stepDerivedMaterialCost = Math.round(
-    plan.steps.reduce(
-      (sum, s) => sum + s.products.reduce((ps, p) => ps + p.quantity * p.estimated_price, 0),
+    plan.steps.reduce((sum, s) =>
+      sum + s.products.reduce((ps, p) => {
+        const key = `${p.brand.toLowerCase()}:${p.name.toLowerCase()}`;
+        if (seenProducts.has(key)) return ps;
+        seenProducts.add(key);
+        return ps + p.quantity * p.estimated_price;
+      }, 0),
       0,
     ) * 100,
   ) / 100;
