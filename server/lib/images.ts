@@ -2,7 +2,7 @@ import { db } from '../db/index.js';
 import { listingImages } from '../db/schema.js';
 import { eq, inArray, sql } from 'drizzle-orm';
 import path from 'path';
-import { downloadFromS3, getPublicUrl } from './s3.js';
+import { downloadFromS3 } from './s3.js';
 
 /** Returns the best available path for a listing's primary image, or null. */
 export async function getPrimaryImagePath(listingId: number): Promise<string | null> {

@@ -82,8 +82,7 @@ npm run dev
 | `AWS_ACCESS_KEY_ID` | If not using IAM role | Bedrock credentials |
 | `AWS_SECRET_ACCESS_KEY` | If not using IAM role | Bedrock credentials |
 | `S3_BUCKET` | Yes | S3 bucket for image storage |
-| `CLOUDFRONT_DOMAIN` | Yes | CloudFront distribution domain for serving images |
-| `VITE_CDN_DOMAIN` | Yes | Same CloudFront domain, used at client build time |
+| `VITE_CDN_DOMAIN` | Yes | CloudFront distribution domain for serving images |
 | `BETTER_AUTH_SECRET` | Yes | Auth encryption key (32+ chars) |
 | `FAL_KEY` | Optional | fal.ai API key for concept renders |
 | `EBAY_CLIENT_ID` | Optional | eBay Browse API credentials |

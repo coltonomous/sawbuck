@@ -2,7 +2,6 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import logger from './logger.js';
 
 const bucket = process.env.S3_BUCKET || '';
-const cloudfrontDomain = process.env.CLOUDFRONT_DOMAIN || '';
 const region = process.env.S3_REGION || process.env.AWS_REGION || 'us-west-2';
 
 const client = new S3Client({ region });
@@ -38,14 +37,6 @@ export async function deleteFromS3(key: string): Promise<void> {
   } catch (err) {
     logger.warn({ key, error: String(err) }, 'S3 delete failed (non-fatal)');
   }
-}
-
-export function getPublicUrl(key: string): string {
-  if (cloudfrontDomain) {
-    const domain = cloudfrontDomain.replace(/\/$/, '');
-    return `${domain.startsWith('http') ? domain : `https://${domain}`}/${key}`;
-  }
-  return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
 }
 
 const MIME_MAP: Record<string, string> = {
