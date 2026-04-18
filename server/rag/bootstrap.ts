@@ -70,12 +70,30 @@ export async function bootstrapKnowledgeBase(): Promise<void> {
       logger.info({ sources: newAutoDiscovered.map((s) => ({ title: s.title, url: s.url })) }, `Knowledge base: ingested ${newAutoDiscovered.length} auto-discovered sources`);
     }
 
+    // Warn loudly if a type has zero chunks after ingestion — indicates all source URLs are dead
+    const guideChunks = await chunkCount('guide');
+    const productChunks = await chunkCount('product');
+    if (sources.guides.length > 0 && guideChunks === 0) {
+      logger.error(
+        { failed: guideResult.failed, sources: sources.guides.length },
+        'Knowledge base: ZERO guide chunks — all guide URLs failed to fetch. Update sources.json with working URLs.',
+      );
+    }
+    if (sources.products.length > 0 && productChunks === 0) {
+      logger.error(
+        { failed: productResult.failed, sources: sources.products.length },
+        'Knowledge base: ZERO product chunks — all product URLs failed to fetch. Update sources.json with working URLs.',
+      );
+    }
+
     logger.info(
       {
         projects: projectResult.ingested,
         products: productResult.ingested,
         guides: guideResult.ingested,
         autoDiscovered: workerResult.ingested,
+        productChunksTotal: productChunks,
+        guideChunksTotal: guideChunks,
         ...(Object.keys(evicted).length > 0 && { evicted }),
       },
       'Knowledge base sync complete',
