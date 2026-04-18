@@ -6,15 +6,17 @@
 
 import { db } from '../../db/index.js';
 import { knowledgeSources } from '../../db/schema.js';
-import { isNull, eq } from 'drizzle-orm';
+import { isNull, eq, lt, or } from 'drizzle-orm';
 import { embedBatch } from '../embeddings.js';
 import { upsertChunks, initStore, evictExcess } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
+import { chunkGuide } from './guides.js';
 import { agentConfig } from '../../agents/config.js';
 import logger from '../../lib/logger.js';
 import { createHash } from 'crypto';
 
 const MAX_SOURCES_PER_RUN = 20;
+const MAX_RETRIES = 5;
 
 async function fetchPageText(url: string): Promise<string | null> {
   try {
@@ -25,7 +27,10 @@ async function fetchPageText(url: string): Promise<string | null> {
       },
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      logger.warn({ url, status: response.status }, 'Worker: failed to fetch source');
+      return null;
+    }
     const html = await response.text();
     return htmlToText(html);
   } catch (err) {
@@ -51,26 +56,6 @@ function htmlToText(html: string): string {
     .trim();
 }
 
-function chunkText(text: string, maxWords = 350): string[] {
-  const paragraphs = text.split('\n').filter((p) => p.trim().length > 20);
-  const chunks: string[] = [];
-  let current: string[] = [];
-  let wordCount = 0;
-
-  for (const para of paragraphs) {
-    const words = para.split(/\s+/).length;
-    if (wordCount + words > maxWords && current.length > 0) {
-      chunks.push(current.join('\n'));
-      current = [];
-      wordCount = 0;
-    }
-    current.push(para.trim());
-    wordCount += words;
-  }
-  if (current.length > 0) chunks.push(current.join('\n'));
-  return chunks;
-}
-
 export interface IngestedSource {
   title: string;
   url: string;
@@ -81,33 +66,45 @@ export interface IngestedSource {
 export async function processSourceQueue(): Promise<{ ingested: number; failed: number; sources: IngestedSource[] }> {
   await initStore();
 
-  // Fetch sources that haven't been ingested yet
+  // Only process sources that haven't been ingested and haven't exceeded retry limit
   const pending = await db
     .select()
     .from(knowledgeSources)
-    .where(isNull(knowledgeSources.lastIngestedAt))
+    .where(
+      or(
+        isNull(knowledgeSources.lastIngestedAt),
+      ) as any,
+    )
     .limit(MAX_SOURCES_PER_RUN);
 
-  if (pending.length === 0) {
+  // Filter out sources that have exceeded retry limit in JS (avoids complex drizzle query)
+  const actionable = pending.filter((s) => (s.retryCount ?? 0) < MAX_RETRIES);
+
+  if (actionable.length === 0) {
     return { ingested: 0, failed: 0, sources: [] };
   }
 
-  logger.info({ count: pending.length }, 'Worker: processing pending knowledge sources');
+  logger.info({ count: actionable.length }, 'Worker: processing pending knowledge sources');
 
   let ingested = 0;
   let failed = 0;
   const ingestedSources: IngestedSource[] = [];
 
-  for (const source of pending) {
+  for (const source of actionable) {
     const text = await fetchPageText(source.url);
     if (!text) {
       failed++;
+      await db.update(knowledgeSources)
+        .set({ lastFailedAt: new Date(), retryCount: (source.retryCount ?? 0) + 1 })
+        .where(eq(knowledgeSources.id, source.id));
+      if ((source.retryCount ?? 0) + 1 >= MAX_RETRIES) {
+        logger.warn({ url: source.url, retries: MAX_RETRIES }, 'Worker: source exceeded retry limit, skipping permanently');
+      }
       continue;
     }
 
     const hash = createHash('sha256').update(text).digest('hex');
 
-    // Skip if content hasn't changed (for re-runs)
     if (source.contentHash === hash) {
       await db.update(knowledgeSources)
         .set({ lastIngestedAt: new Date() })
@@ -115,17 +112,20 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
       continue;
     }
 
-    const textChunks = chunkText(text);
+    const textChunks = chunkGuide(text);
     if (textChunks.length === 0) {
       failed++;
+      await db.update(knowledgeSources)
+        .set({ lastFailedAt: new Date(), retryCount: (source.retryCount ?? 0) + 1 })
+        .where(eq(knowledgeSources.id, source.id));
       continue;
     }
 
     const metadata = JSON.parse(source.metadata || '{}');
-    const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = textChunks.map((content, i) => ({
+    const allChunks: Omit<KnowledgeChunk, 'id' | 'createdAt'>[] = textChunks.map((content: string, i: number) => ({
       type: source.type as 'product' | 'guide',
       source: source.url,
-      title: textChunks.length === 1 ? source.title : `${source.title} (part ${i + 1})`,
+      title: textChunks.length === 1 ? source.title : `${source.title} (section ${i + 1})`,
       content,
       metadata,
     }));
@@ -134,15 +134,14 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
     const inserted = await upsertChunks(allChunks, embeddings);
 
     await db.update(knowledgeSources)
-      .set({ lastIngestedAt: new Date(), contentHash: hash })
+      .set({ lastIngestedAt: new Date(), contentHash: hash, lastFailedAt: null, retryCount: 0 })
       .where(eq(knowledgeSources.id, source.id));
 
     ingested += inserted;
     ingestedSources.push({ title: source.title, url: source.url, type: source.type, chunks: inserted });
-    logger.info({ source: source.title, url: source.url, type: source.type, chunks: inserted }, 'Worker: source ingested');
+    logger.info({ source: source.title, url: source.url, chunks: inserted }, 'Worker: source ingested');
   }
 
-  // Enforce chunk limits after ingesting new sources
   if (ingested > 0) {
     const maxPerType = agentConfig.ragMaxChunksPerType;
     await evictExcess('product', maxPerType);

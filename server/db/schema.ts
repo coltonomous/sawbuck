@@ -372,6 +372,8 @@ export const knowledgeSources = pgTable('knowledge_sources', {
   metadata: text('metadata').notNull().default('{}'),
   autoDiscovered: boolean('auto_discovered').notNull().default(false),
   lastIngestedAt: timestamp('last_ingested_at'),
+  lastFailedAt: timestamp('last_failed_at'),
+  retryCount: integer('retry_count').notNull().default(0),
   contentHash: text('content_hash'),
   enabled: boolean('enabled').notNull().default(true),
   createdAt: timestamp('created_at').notNull().defaultNow(),

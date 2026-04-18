@@ -2,10 +2,11 @@
  * Post-evaluation node: identifies knowledge gaps in the RAG knowledge base
  * and queues new sources for automatic ingestion.
  *
+ * Checks both guide and product coverage for each qualified listing.
  * Strategy (in priority order):
- * 1. Deterministic URLs — wood species → wood-database.com, furniture types → Family Handyman
- * 2. Brave Search API — if BRAVE_API_KEY is set, search for relevant articles
- *    and queue the top result URLs (actual article pages, not search pages)
+ * 1. Deterministic URLs — wood species → wood-database.com
+ * 2. Brave Search API — if BRAVE_API_KEY is set, resolves the gap query to
+ *    real article URLs filtered to a known-scrapable domain allowlist
  */
 
 import { db } from '../../db/index.js';
@@ -15,11 +16,10 @@ import { embed } from '../../rag/embeddings.js';
 import type { AgentState } from '../state.js';
 import logger from '../../lib/logger.js';
 
-const MAX_SOURCES_PER_RUN = 5;
-const GAP_DISTANCE_THRESHOLD = 0.8;
+const GAP_DISTANCE_THRESHOLD = 0.6;
+const MAX_GAPS_PER_RUN = 5;
 
-// wood-database.com slugs for common species. Covers the cases most likely
-// to show up in listings — add more as needed.
+// wood-database.com slugs for common species
 const WOOD_DB_SLUGS: Record<string, string> = {
   oak: 'white-oak', white_oak: 'white-oak', red_oak: 'red-oak',
   walnut: 'black-walnut', black_walnut: 'black-walnut',
@@ -47,11 +47,26 @@ function woodDbUrl(species: string): string | null {
   return slug ? `https://www.wood-database.com/${slug}/` : null;
 }
 
-interface BraveResult {
-  title: string;
-  url: string;
-  description?: string;
+// Domains known to be scrapable and relevant
+const ALLOWED_DOMAINS = [
+  'familyhandyman.com', 'thisoldhouse.com', 'thespruce.com',
+  'thesprucecrafts.com', 'wood-database.com', 'popularwoodworking.com',
+  'woodcraft.com', 'wikihow.com', 'wikipedia.org',
+  'generalfinishes.com', 'bobvila.com', 'lowes.com', 'homedepot.com',
+  'doityourself.com', 'hunker.com', 'instructables.com',
+  'minwax.com', 'rustoleum.com', 'citristrip.com',
+];
+
+function isAllowedUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    return ALLOWED_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
+  } catch {
+    return false;
+  }
 }
+
+interface BraveResult { title: string; url: string }
 
 async function braveSearch(query: string): Promise<BraveResult[]> {
   const apiKey = process.env.BRAVE_API_KEY;
@@ -67,7 +82,7 @@ async function braveSearch(query: string): Promise<BraveResult[]> {
       logger.warn({ status: res.status }, 'Brave Search returned error');
       return [];
     }
-    const data = await res.json() as { web?: { results?: Array<{ title: string; url: string; description?: string }> } };
+    const data = await res.json() as { web?: { results?: BraveResult[] } };
     return data.web?.results ?? [];
   } catch (err) {
     logger.warn({ err: (err as Error).message }, 'Brave Search failed');
@@ -75,36 +90,15 @@ async function braveSearch(query: string): Promise<BraveResult[]> {
   }
 }
 
-// Domains known to be scrapable and relevant for furniture refinishing knowledge.
-// Blocklisted domains get filtered out so we don't queue pages that will 404/403.
-const ALLOWED_DOMAINS = [
-  'familyhandyman.com', 'thisoldhouse.com', 'thespruce.com',
-  'thesprucecrafts.com', 'wood-database.com', 'popularwoodworking.com',
-  'woodcraft.com', 'finewoodworking.com', 'wikihow.com', 'wikipedia.org',
-  'generalfinishes.com', 'bobvila.com', 'lowes.com', 'homedepot.com',
-  'doityourself.com', 'hunker.com', 'instructables.com',
-];
-
-function isAllowedUrl(url: string): boolean {
-  try {
-    const host = new URL(url).hostname.replace(/^www\./, '');
-    return ALLOWED_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`));
-  } catch {
-    return false;
-  }
-}
-
-interface KnowledgeGap {
-  furnitureType: string;
-  woodSpecies: string | null;
-  style: string | null;
-  query: string;
-}
-
-async function queueUrl(url: string, title: string, meta: Record<string, unknown>): Promise<boolean> {
+async function queueUrl(
+  url: string,
+  title: string,
+  type: 'guide' | 'product',
+  meta: Record<string, unknown>,
+): Promise<boolean> {
   try {
     const result = await db.insert(knowledgeSources).values({
-      type: 'guide',
+      type,
       url,
       title,
       metadata: JSON.stringify({ autoDiscoveredFrom: 'knowledge-gap-detection', ...meta }),
@@ -116,6 +110,13 @@ async function queueUrl(url: string, title: string, meta: Record<string, unknown
   }
 }
 
+async function hasGap(query: string, type: 'guide' | 'product'): Promise<boolean> {
+  const embedding = await embed(query);
+  const results = await search(embedding, 3, type);
+  const bestDistance = results.length > 0 ? Math.min(...results.map((r) => r.distance)) : 1.0;
+  return bestDistance > GAP_DISTANCE_THRESHOLD;
+}
+
 export async function discoverKnowledge(state: AgentState): Promise<Partial<AgentState>> {
   if (state.qualifiedListings.length === 0) return {};
 
@@ -125,68 +126,66 @@ export async function discoverKnowledge(state: AgentState): Promise<Partial<Agen
     return {};
   }
 
-  const gaps: KnowledgeGap[] = [];
+  let queued = 0;
+  let gapsFound = 0;
 
-  for (const listing of state.qualifiedListings) {
+  // Deduplicate by type + species across listings
+  const seen = new Set<string>();
+
+  for (const listing of state.qualifiedListings.slice(0, MAX_GAPS_PER_RUN)) {
     const { furnitureType, furnitureStyle, woodSpecies } = listing.evaluation;
-    const queryParts = [furnitureType];
-    if (woodSpecies) queryParts.push(woodSpecies);
-    queryParts.push('refinishing');
-    const query = queryParts.join(' ');
+    const dedupeKey = `${furnitureType}:${woodSpecies ?? ''}`;
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
 
+    const meta = { gap: { furnitureType, woodSpecies } };
+
+    // --- Guide gap ---
+    const guideQuery = [furnitureType, woodSpecies, 'refinishing'].filter(Boolean).join(' ');
     try {
-      const embedding = await embed(query);
-      const results = await search(embedding, 3, 'guide');
-      const bestDistance = results.length > 0 ? Math.min(...results.map((r) => r.distance)) : 1.0;
-      if (bestDistance > GAP_DISTANCE_THRESHOLD) {
-        gaps.push({ furnitureType, woodSpecies: woodSpecies ?? null, style: furnitureStyle ?? null, query });
+      if (await hasGap(guideQuery, 'guide')) {
+        gapsFound++;
+
+        // 1. Deterministic: wood species → wood-database.com
+        if (woodSpecies) {
+          const url = woodDbUrl(woodSpecies);
+          if (url && await queueUrl(url, `${woodSpecies} — Wood Species Profile`, 'guide', meta)) queued++;
+        }
+
+        // 2. Brave Search for broader guide
+        const braveResults = await braveSearch(`${guideQuery} furniture refinishing guide`);
+        for (const result of braveResults) {
+          if (!isAllowedUrl(result.url)) continue;
+          if (await queueUrl(result.url, result.title, 'guide', meta)) { queued++; break; }
+        }
       }
     } catch (err) {
-      logger.warn({ query, err: String(err) }, 'Knowledge gap check failed');
+      logger.warn({ query: guideQuery, err: String(err) }, 'Guide gap check failed');
+    }
+
+    // --- Product gap ---
+    const productQuery = [woodSpecies, furnitureType, 'finish stain product'].filter(Boolean).join(' ');
+    try {
+      if (await hasGap(productQuery, 'product')) {
+        gapsFound++;
+
+        // Brave Search for product page
+        const braveResults = await braveSearch(`${woodSpecies ?? furnitureType} wood finish product refinishing`);
+        for (const result of braveResults) {
+          if (!isAllowedUrl(result.url)) continue;
+          if (await queueUrl(result.url, result.title, 'product', meta)) { queued++; break; }
+        }
+      }
+    } catch (err) {
+      logger.warn({ query: productQuery, err: String(err) }, 'Product gap check failed');
     }
   }
 
-  if (gaps.length === 0) {
+  if (gapsFound > 0) {
+    logger.info({ gapsFound, sourcesQueued: queued }, 'Knowledge gap detection complete');
+  } else {
     logger.info('No knowledge gaps detected');
-    return {};
   }
 
-  // Deduplicate by type + species
-  const seen = new Set<string>();
-  const uniqueGaps = gaps.filter((g) => {
-    const key = `${g.furnitureType}:${g.woodSpecies ?? ''}`;
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, MAX_SOURCES_PER_RUN);
-
-  logger.info({ gaps: uniqueGaps.length }, 'Knowledge gaps detected — queuing sources');
-
-  let queued = 0;
-
-  for (const gap of uniqueGaps) {
-    const meta = { gap: { furnitureType: gap.furnitureType, woodSpecies: gap.woodSpecies } };
-
-    // 1. Deterministic: wood species → wood-database.com
-    if (gap.woodSpecies) {
-      const url = woodDbUrl(gap.woodSpecies);
-      if (url) {
-        const title = `${gap.woodSpecies} — Wood Species Profile`;
-        if (await queueUrl(url, title, meta)) queued++;
-      }
-    }
-
-    // 2. Brave Search for the broader gap query (type + species + refinishing)
-    const braveResults = await braveSearch(`${gap.query} furniture guide`);
-    for (const result of braveResults) {
-      if (!isAllowedUrl(result.url)) continue;
-      if (await queueUrl(result.url, result.title, meta)) {
-        queued++;
-        break; // one Brave result per gap is enough
-      }
-    }
-  }
-
-  logger.info({ gapsFound: uniqueGaps.length, sourcesQueued: queued }, 'Knowledge gap detection complete');
   return {};
 }
