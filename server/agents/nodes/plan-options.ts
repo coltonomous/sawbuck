@@ -7,6 +7,7 @@ import { conceptRenders, refinishingPlans } from '../../db/schema.js';
 import { eq, and } from 'drizzle-orm';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
+import { isAvailable, getGuideContext, getProductContext } from '../../rag/retrieval.js';
 import { generateRefinishingPlan } from '../../analysis/refinishing.js';
 import { generateMaterialsFromPlanSync } from '../../analysis/sourcing.js';
 import type { AgentState, FinishConcept, ListingWithOptions, ConceptRenderResult } from '../state.js';
@@ -48,7 +49,10 @@ const CONCEPTS_JSON_SCHEMA = {
   required: ['concepts'] as const,
 };
 
-function buildConceptsPrompt(listing: AgentState['qualifiedListings'][0]): string {
+function buildConceptsPrompt(
+  listing: AgentState['qualifiedListings'][0],
+  ragContext: string,
+): string {
   const e = listing.evaluation;
   const parts = [
     `Furniture: ${e.furnitureType}`,
@@ -58,7 +62,11 @@ function buildConceptsPrompt(listing: AgentState['qualifiedListings'][0]): strin
     `Asking price: $${listing.askingPrice ?? 'unknown'}`,
   ];
   if (e.profitVerdict) parts.push(`Assessment: ${e.profitVerdict}`);
-  return `Suggest 3 different finish concepts for this piece. Each should be a different surface treatment (stain, paint, oil, varnish, etc.) that would look good on this specific piece and appeal to buyers. Include a mix of natural/stain options and painted options where appropriate for the wood and style:\n\n${parts.join('\n')}`;
+  const pieceInfo = parts.join('\n');
+  const knowledgeSection = ragContext
+    ? `\n\n${ragContext}\n\nUse the above technique and product knowledge to ground your suggestions in what actually works for this wood species and style.`
+    : '';
+  return `Suggest 3 different finish concepts for this piece. Each should be a different surface treatment (stain, paint, oil, varnish, etc.) that would look good on this specific piece and appeal to buyers. Include a mix of natural/stain options and painted options where appropriate for the wood and style:\n\n${pieceInfo}${knowledgeSection}`;
 }
 
 export async function generatePlanOptions(state: AgentState): Promise<Partial<AgentState>> {
@@ -71,10 +79,30 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
   const renders: ConceptRenderResult[] = [];
   const errors: AgentState['errors'] = [];
 
+  const ragAvailable = await isAvailable().catch(() => false);
+
   for (const listing of listings) {
     try {
-      // 1. Generate finish concepts (what surface treatments to show)
-      const conceptsPrompt = buildConceptsPrompt(listing);
+      // 1. Fetch RAG context (guide + product) for this listing's species/type
+      let ragContext = '';
+      if (ragAvailable) {
+        try {
+          const e = listing.evaluation;
+          const [guides, products] = await Promise.all([
+            getGuideContext(e.furnitureType, e.woodSpecies, 'finishing staining painting'),
+            getProductContext(e.furnitureType, e.woodSpecies),
+          ]);
+          const sections: string[] = [];
+          if (guides.chunkCount > 0) sections.push(`## Refinishing Techniques\n${guides.text}`);
+          if (products.chunkCount > 0) sections.push(`## Relevant Products\n${products.text}`);
+          ragContext = sections.join('\n\n');
+        } catch (err) {
+          logger.warn({ listingId: listing.listingId, error: String(err) }, 'Plan options: RAG context fetch failed');
+        }
+      }
+
+      // 2. Generate finish concepts (what surface treatments to show)
+      const conceptsPrompt = buildConceptsPrompt(listing, ragContext);
       const conceptResult = await analyzeWithVisionStructured(
         [],
         conceptsPrompt,

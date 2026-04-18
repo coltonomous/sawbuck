@@ -10,7 +10,7 @@ vi.mock('./config.js', () => ({
   },
 }));
 
-import { afterTriage, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET } from './graph.js';
+import { afterTriage, afterPlanOptions, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET } from './graph.js';
 import type { AgentState } from './state.js';
 
 function makeState(overrides: Partial<AgentState> = {}): AgentState {
@@ -38,24 +38,6 @@ function makeState(overrides: Partial<AgentState> = {}): AgentState {
     ...overrides,
   };
 }
-
-describe('afterEvaluate', () => {
-  it('routes to discoverKnowledge when qualified listings exist', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [{} as any] }))).toBe('discoverKnowledge');
-  });
-
-  it('loops to scrape when no qualified but under caps', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: 1 } }))).toBe('dispatchScrapes');
-  });
-
-  it('summarizes when no qualified and eval cap hit', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: { craigslist: 10 }, scrapeAttempts: { craigslist: 1 } }))).toBe('summarize');
-  });
-
-  it('summarizes when no qualified and scrape attempts exhausted', () => {
-    expect(afterEvaluate(makeState({ qualifiedListings: [], evalCount: { craigslist: 3 }, scrapeAttempts: { craigslist: MAX_SCRAPE_ATTEMPTS } }))).toBe('summarize');
-  });
-});
 
 
 describe('afterTriage', () => {

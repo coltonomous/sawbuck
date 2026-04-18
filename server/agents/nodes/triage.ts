@@ -4,6 +4,9 @@ import { isAvailable, getProjectContext } from '../../rag/retrieval.js';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import type { AgentState, TriagedCandidate, ScrapedCandidate } from '../state.js';
+import { db } from '../../db/index.js';
+import { listings } from '../../db/schema.js';
+import { inArray } from 'drizzle-orm';
 import logger from '../../lib/logger.js';
 
 const BATCH_SIZE = 15;
@@ -129,12 +132,17 @@ const VISUAL_CHECK_JSON_SCHEMA = {
 
 // ─── Main triage function ─────────────────────────────────────────
 
-async function buildSystemPrompt(): Promise<string> {
+async function buildSystemPrompt(candidates: ScrapedCandidate[]): Promise<string> {
   let prompt = TRIAGE_SYSTEM_PROMPT;
 
   if (await isAvailable()) {
     try {
-      const ctx = await getProjectContext('furniture flip woodworking');
+      // Build query from the actual batch content — types and titles present in this run
+      const sampleTitles = candidates.slice(0, 20).map((c) => c.title).filter(Boolean);
+      const query = sampleTitles.length > 0
+        ? sampleTitles.slice(0, 5).join(' ') + ' furniture flip'
+        : 'furniture flip woodworking';
+      const ctx = await getProjectContext(query);
       if (ctx.chunkCount > 0) {
         prompt += `\n\n## KNOWLEDGE BASE CONTEXT\nUse this data about past flips to inform your assessment of what types/species flip well:\n\n${ctx.text}`;
       }
@@ -209,6 +217,29 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
     return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
   }
 
+  // Cross-run dedup: skip listings already in the DB (any status)
+  try {
+    const externalIds = toProcess.map((c) => c.externalId);
+    const existing = await db
+      .select({ externalId: listings.externalId })
+      .from(listings)
+      .where(inArray(listings.externalId, externalIds));
+    const existingSet = new Set(existing.map((r) => r.externalId));
+    const dedupedCount = toProcess.length;
+    toProcess.splice(0, toProcess.length, ...toProcess.filter((c) => !existingSet.has(c.externalId)));
+    const skipped = dedupedCount - toProcess.length;
+    if (skipped > 0) {
+      logger.info({ skipped }, 'Triage: skipped already-processed listings from prior runs');
+    }
+  } catch (err) {
+    logger.warn({ error: String(err) }, 'Triage: DB dedup check failed, proceeding without dedup');
+  }
+
+  if (toProcess.length === 0) {
+    logger.info('Triage: all candidates already in DB');
+    return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
+  }
+
   // Rule-based pre-filter: reject obvious non-furniture before hitting the LLM
   const { passed: filteredCandidates, rejected: preFilterRejected } = preFilterCandidates(toProcess);
   if (preFilterRejected > 0) {
@@ -220,7 +251,7 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
     return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
   }
 
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt(filteredCandidates);
   const triaged: TriagedCandidate[] = [];
   const textPassed: Array<{ candidate: ScrapedCandidate; triage: TriagedCandidate }> = [];
   const errors: AgentState['errors'] = [];
