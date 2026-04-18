@@ -4,7 +4,6 @@ export const config = {
     maxEdge: 1500,
     webpQuality: 85,
     downloadTimeoutMs: 15_000,
-    retentionDays: 30,
   },
   ai: {
     maxRetries: 3,

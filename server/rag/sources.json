@@ -12,25 +12,25 @@
     {
       "name": "Gel Stain",
       "brand": "General Finishes",
-      "url": "https://generalfinishes.com/wood-finishes-702/gel-stains",
+      "url": "https://generalfinishes.com/wood-finishes-retail/oil-based-wood-stains-sealers/gel-stains",
       "category": "stain"
     },
     {
       "name": "High Performance Topcoat",
       "brand": "General Finishes",
-      "url": "https://generalfinishes.com/wood-finishes-702/water-based-topcoats/high-performance-polyurethane-topcoat",
+      "url": "https://generalfinishes.com/wood-finishes-retail/water-based-topcoats-and-sanding-sealer/high-performance-polyurethane-water",
       "category": "finish"
     },
     {
       "name": "Wood Finish Penetrating Stain",
       "brand": "Minwax",
-      "url": "https://www.minwax.com/en/products/stains/wood-finish-penetrating-stain",
+      "url": "https://www.minwax.com/en/products/stains/wood-finish",
       "category": "stain"
     },
     {
       "name": "Polycrylic Protective Finish",
       "brand": "Minwax",
-      "url": "https://www.minwax.com/en/products/clear-protective-finishes/polycrylic-protective-finish",
+      "url": "https://www.minwax.com/en/products/protective-finishes/polycrylic-protective-finish",
       "category": "finish"
     },
     {
@@ -54,7 +54,7 @@
     {
       "name": "Bondo Wood Filler",
       "brand": "3M",
-      "url": "https://www.bondo.com/products/wood-fillers",
+      "url": "https://www.3m.com/3M/en_US/p/c/adhesives/fillers/wood/b/bondo/",
       "category": "repair"
     },
     {
@@ -92,52 +92,52 @@
   "guides": [
     {
       "title": "How to Strip Furniture",
-      "url": "https://www.minwax.com/en/how-to-guides/furniture/how-to-strip-furniture",
+      "url": "https://www.familyhandyman.com/list/tips-and-techniques-for-stripping-wood-furniture/",
       "tags": ["stripping", "prep", "beginner"]
     },
     {
       "title": "How to Stain Wood",
-      "url": "https://www.minwax.com/en/how-to-guides/wood-staining-101/how-to-stain-wood",
+      "url": "https://www.familyhandyman.com/project/how-to-stain-furniture/",
       "tags": ["staining", "technique", "beginner"]
     },
     {
-      "title": "How to Apply Polyurethane",
-      "url": "https://www.minwax.com/en/how-to-guides/clear-protective-finishes/how-to-apply-polyurethane",
-      "tags": ["finishing", "topcoat", "technique"]
+      "title": "How to Get a Smooth Polyurethane Finish",
+      "url": "https://www.familyhandyman.com/project/how-to-get-a-smooth-polyurethane-finish/",
+      "tags": ["finishing", "topcoat", "water-based", "technique"]
     },
     {
       "title": "How to Refinish Furniture Without Stripping",
-      "url": "https://www.minwax.com/en/how-to-guides/furniture/how-to-refinish-furniture-without-stripping",
+      "url": "https://www.familyhandyman.com/list/how-to-refinish-furniture/",
       "tags": ["refinishing", "shortcut", "beginner"]
     },
     {
       "title": "Sanding Basics for Furniture",
-      "url": "https://www.minwax.com/en/how-to-guides/wood-staining-101/how-to-sand-wood",
+      "url": "https://www.familyhandyman.com/list/genius-sanding-tips/",
       "tags": ["sanding", "prep", "technique"]
     },
     {
       "title": "General Finishes Application Guide",
-      "url": "https://generalfinishes.com/faq/application-tips",
+      "url": "https://generalfinishes.com/instructions/how-apply-oil-based-stains",
       "tags": ["finishing", "technique", "product-specific"]
     },
     {
       "title": "How to Paint Furniture with Chalk Paint",
-      "url": "https://www.rustoleum.com/en/the-project-center/furniture-and-decor/how-to-chalk-paint-furniture",
+      "url": "https://www.anniesloan.com/techniques/how-to-use-chalk-paint-by-annie-sloan-a-beginners-guide/",
       "tags": ["painting", "chalk-paint", "technique"]
     },
     {
       "title": "How to Fix Furniture Veneer",
-      "url": "https://www.bobvila.com/articles/how-to-repair-veneer/",
+      "url": "https://www.thisoldhouse.com/furniture/fast-fix-for-blistered-veneer",
       "tags": ["repair", "veneer", "technique"]
     },
     {
       "title": "Wood Identification Guide",
-      "url": "https://www.wood-database.com/wood-articles/hardwood-anatomy/",
+      "url": "https://www.wood-database.com/wood-identification-guide/",
       "tags": ["wood-id", "species", "reference"]
     },
     {
       "title": "How to Paint Furniture Like a Pro",
-      "url": "https://www.bobvila.com/articles/how-to-paint-furniture-for-beginners/",
+      "url": "https://www.familyhandyman.com/project/painting-wood-furniture/",
       "tags": ["painting", "priming", "prep", "technique"]
     },
     {
@@ -188,7 +188,7 @@
     },
     {
       "title": "Genuine Mahogany — Wood Species Profile",
-      "url": "https://www.wood-database.com/genuine-mahogany/",
+      "url": "https://www.wood-database.com/honduran-mahogany/",
       "tags": ["wood-id", "species", "mahogany", "hardwood", "reference"]
     },
     {
@@ -198,7 +198,7 @@
     },
     {
       "title": "Southern Yellow Pine — Wood Species Profile",
-      "url": "https://www.wood-database.com/southern-yellow-pine/",
+      "url": "https://www.wood-database.com/loblolly-pine/",
       "tags": ["wood-id", "species", "pine", "softwood", "reference"]
     },
     {
@@ -208,7 +208,7 @@
     },
     {
       "title": "Tulip Poplar — Wood Species Profile",
-      "url": "https://www.wood-database.com/tulipwood/",
+      "url": "https://www.wood-database.com/yellow-poplar/",
       "tags": ["wood-id", "species", "poplar", "hardwood", "reference"]
     },
     {
@@ -247,8 +247,8 @@
       "tags": ["wood-id", "species", "rosewood", "hardwood", "reference"]
     },
     {
-      "title": "White Oak Identification — Wood Database",
-      "url": "https://www.wood-database.com/wood-articles/wood-identification-guide/",
+      "title": "How to Identify Wood Species",
+      "url": "https://www.wood-database.com/wood-identification-guide/",
       "tags": ["wood-id", "identification", "technique", "reference"]
     },
 
@@ -264,7 +264,7 @@
     },
     {
       "title": "7 Approaches to Wood Joint Repair",
-      "url": "https://www.journeymanhq.com/85718/7-approaches-to-wood-joint-repair/",
+      "url": "https://www.familyhandyman.com/project/repairing-wood-strong-glue-joints-in-wood/",
       "tags": ["repair", "joints", "dowel", "tenon", "technique"]
     },
     {
@@ -296,12 +296,12 @@
 
     {
       "title": "Upholstery 101: Beginner's Guide to Reupholstering a Chair",
-      "url": "https://blog.spoonflower.com/2025/08/25/upholstery-101/",
+      "url": "https://www.thesprucecrafts.com/how-to-reupholster-a-chair-4770039",
       "tags": ["upholstery", "reupholster", "chair", "beginner"]
     },
     {
       "title": "How to Reupholster a Chair for Total Beginners",
-      "url": "https://www.apartmenttherapy.com/how-to-reupholster-chair-37388958",
+      "url": "https://www.familyhandyman.com/project/how-to-reupholster-a-chair/",
       "tags": ["upholstery", "reupholster", "chair", "beginner"]
     },
     {
@@ -354,17 +354,17 @@
 
     {
       "title": "Japanese Tansu: History, Types, and Collecting Guide",
-      "url": "https://www.invaluable.com/blog/japanese-tansu/",
+      "url": "https://www.thespruce.com/japanese-tansu-chests-1391104",
       "tags": ["style-id", "japanese", "tansu", "asian", "antique", "reference"]
     },
     {
       "title": "Guide to Japanese Furniture and Design",
-      "url": "https://japanobjects.com/features/japanese-furniture",
+      "url": "https://www.invaluable.com/blog/japanese-furniture/",
       "tags": ["style-id", "japanese", "asian", "design", "reference"]
     },
     {
       "title": "Chinese Antique Furniture Guide",
-      "url": "https://www.chinafurnitureonline.com/pages/chinese-furniture-guide",
+      "url": "https://www.invaluable.com/blog/chinese-antique-furniture/",
       "tags": ["style-id", "chinese", "asian", "antique", "reference"]
     },
     {
@@ -374,33 +374,33 @@
     },
     {
       "title": "Mission and Craftsman Furniture Style Guide",
-      "url": "https://www.veranda.com/decorating-ideas/a43093633/craftsman-style-furniture/",
+      "url": "https://www.thespruce.com/craftsman-furniture-overview-4691870",
       "tags": ["style-id", "mission", "craftsman", "arts-and-crafts", "reference"]
     },
     {
       "title": "Shaker Furniture: Simple, Functional, Beautiful",
-      "url": "https://www.finewoodworking.com/project-guides/furniture-design/shaker-furniture",
+      "url": "https://www.thespruce.com/shaker-style-furniture-4772580",
       "tags": ["style-id", "shaker", "design", "reference"]
     },
     {
       "title": "Tung Oil — Traditional Asian Wood Finish",
-      "url": "https://www.wood-database.com/wood-articles/tung-oil/",
+      "url": "https://www.familyhandyman.com/project/how-to-apply-tung-oil/",
       "tags": ["finishing", "tung-oil", "asian", "traditional", "technique"]
     },
     {
       "title": "Japanese Lacquer (Urushi) — Wood Finishing Technique",
-      "url": "https://www.japanhouse.jp/articles/the-lustrous-depth-of-beauty-an-urushi-primer.html",
+      "url": "https://en.wikipedia.org/wiki/Urushi",
       "tags": ["finishing", "lacquer", "urushi", "japanese", "technique", "reference"]
     },
 
     {
-      "title": "Milk Paint 101: Surface Prep",
-      "url": "https://missmustardseed.com/milk-paint-101-surface-prep/",
+      "title": "Milk Paint 101: Surface Prep and Application",
+      "url": "https://www.generalfinishes.com/instructions/milk-paint",
       "tags": ["painting", "milk-paint", "prep", "technique"]
     },
     {
-      "title": "Milk Paint 101: Mixing Milk Paint",
-      "url": "https://missmustardseed.com/milk-paint-101-mixing-milk-paint/",
+      "title": "How to Use Milk Paint on Furniture",
+      "url": "https://www.thesprucecrafts.com/milk-paint-furniture-4774143",
       "tags": ["painting", "milk-paint", "technique", "beginner"]
     },
     {
@@ -421,7 +421,7 @@
     },
     {
       "title": "How to Spray Water-Based Finishes",
-      "url": "https://generalfinishes.com/faq/how-do-i-spray-water-based-finishes",
+      "url": "https://generalfinishes.com/instructions/water-base-finishing-tips-hand-application",
       "tags": ["finishing", "spray", "water-based", "technique", "product-specific"]
     },
     {

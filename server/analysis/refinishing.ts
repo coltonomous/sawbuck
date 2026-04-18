@@ -77,9 +77,9 @@ function buildPrompt(listing: typeof listings.$inferSelect): string {
     `      "tips": ["helpful tips for this step"]`,
     `    }`,
     `  ],`,
-    `  "estimated_total_hours": 8.5,`,
-    `  "estimated_material_cost": 65.00,`,
-    `  "estimated_resale_price": 350.00`,
+    `  "estimated_total_hours": <decimal hours for a hobbyist, including drying/curing time — compute from step durations>,`,
+    `  "estimated_material_cost": <realistic total USD cost of all listed products for this specific piece — sum the product prices>,`,
+    `  "estimated_resale_price": <realistic USD resale price for this specific piece, style, and market — do NOT default to a round number>`,
     `}`,
     ``,
     `Requirements:`,
@@ -89,7 +89,8 @@ function buildPrompt(listing: typeof listings.$inferSelect): string {
     `- Include primer if painting, or wood conditioner if staining softwood`,
     `- Specify finish type: oil-based polyurethane, water-based poly, wax, chalk paint, milk paint, etc.`,
     `- Be realistic about time — include drying time between coats`,
-    `- Estimated resale price should be realistic for the style and market`,
+    `- estimated_material_cost MUST equal the sum of (quantity × estimated_price) across every product in every step — do not invent a separate round figure`,
+    `- estimated_resale_price MUST be calibrated to this specific piece's type, style, wood, and condition — vary it piece by piece, don't default to generic round numbers`,
   ];
 
   return parts.filter(Boolean).join('\n');
@@ -156,6 +157,22 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
   // header always show the same number.
   const stepDerivedHours = Math.round(plan.steps.reduce((sum, s) => sum + s.duration_minutes, 0) / 60 * 10) / 10;
 
+  // Derive material cost from step products — deduplicate by brand:name first,
+  // matching the dedup logic in sourcing.ts so the header total equals the sum
+  // of the displayed line items.
+  const seenProducts = new Set<string>();
+  const stepDerivedMaterialCost = Math.round(
+    plan.steps.reduce((sum, s) =>
+      sum + s.products.reduce((ps, p) => {
+        const key = `${p.brand.toLowerCase()}:${p.name.toLowerCase()}`;
+        if (seenProducts.has(key)) return ps;
+        seenProducts.add(key);
+        return ps + p.quantity * p.estimated_price;
+      }, 0),
+      0,
+    ) * 100,
+  ) / 100;
+
   // Store in DB — step-derived values are the source of truth
   const [stored] = await db.insert(refinishingPlans).values({
     listingId,
@@ -164,7 +181,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     description: plan.description,
     steps: JSON.stringify(plan.steps),
     estimatedHours: stepDerivedHours,
-    estimatedMaterialCost: plan.estimated_material_cost,
+    estimatedMaterialCost: stepDerivedMaterialCost,
     estimatedResalePrice: plan.estimated_resale_price,
     difficultyLevel: plan.difficulty_level,
     beforeDescription: plan.before_description,
@@ -179,7 +196,7 @@ export async function generateRefinishingPlan(listingId: number, projectId?: num
     planId: stored.id,
     style: plan.style_recommendation,
     difficulty: plan.difficulty_level,
-    materialCost: plan.estimated_material_cost,
+    materialCost: stepDerivedMaterialCost,
     hours: stepDerivedHours,
   }, 'Refinishing plan created');
 

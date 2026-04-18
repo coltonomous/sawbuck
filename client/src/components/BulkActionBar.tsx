@@ -47,7 +47,7 @@ export default function BulkActionBar({ selected, isAdmin, onClear, onDone }: Pr
   };
 
   return (
-    <div className="fixed bottom-0 left-56 right-0 bg-gray-900 text-white px-6 py-3 flex items-center justify-between z-50 shadow-lg">
+    <div className="fixed bottom-0 left-0 sm:left-56 right-0 bg-gray-900 text-white px-4 sm:px-6 py-3 flex items-center justify-between z-50 shadow-lg">
       <span className="text-sm font-medium">{count} item{count !== 1 ? 's' : ''} selected</span>
       <div className="flex items-center gap-2">
         <button

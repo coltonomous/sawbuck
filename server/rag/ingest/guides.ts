@@ -51,7 +51,7 @@ async function fetchPageText(url: string): Promise<string | null> {
  * first (lines starting with "Step", numbered lines, short all-caps lines),
  * falling back to word-count-based splitting.
  */
-function chunkGuide(text: string, maxWords = 400): string[] {
+export function chunkGuide(text: string, maxWords = 400): string[] {
   const lines = text.split('\n').filter((l) => l.trim().length > 0);
 
   // Try to detect section boundaries

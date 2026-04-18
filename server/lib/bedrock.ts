@@ -51,7 +51,7 @@ export function extractJson(raw: string): string {
 
   // Try markdown code fence
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) return fenceMatch[1].trim();
+  if (fenceMatch) return sanitizeJson(fenceMatch[1].trim());
 
   // Try to find a JSON object or array by matching balanced braces/brackets
   const jsonStart = text.search(/[{\[]/);
@@ -72,12 +72,17 @@ export function extractJson(raw: string): string {
     if (ch === opener) depth++;
     else if (ch === closer) {
       depth--;
-      if (depth === 0) return text.slice(jsonStart, i + 1);
+      if (depth === 0) return sanitizeJson(text.slice(jsonStart, i + 1));
     }
   }
 
   // Couldn't find balanced braces — return from first brace to end (may be truncated)
-  return text.slice(jsonStart);
+  return sanitizeJson(text.slice(jsonStart));
+}
+
+function sanitizeJson(json: string): string {
+  // Fix bare decimals like .1 → 0.1 (valid JS but not valid JSON)
+  return json.replace(/([^.\d]|^)(\.\d+)/g, '$10$2');
 }
 
 /**

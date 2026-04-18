@@ -12,7 +12,7 @@ import { discoverKnowledge } from './nodes/discover-knowledge.js';
 import { summarizeRun } from './nodes/summarize.js';
 
 const MAX_SCRAPE_ATTEMPTS = 3;
-const MIN_QUALIFIED_TARGET = 1;
+const MIN_QUALIFIED_TARGET = 3;
 
 /** True if at least one platform still has retry budget. */
 function hasScrapeBudget(state: AgentState): boolean {
@@ -35,12 +35,9 @@ function afterTriage(state: AgentState): 'enrich' | 'dispatchScrapes' | 'summari
   return 'summarize';
 }
 
-function afterEvaluate(state: AgentState): 'discoverKnowledge' | 'dispatchScrapes' | 'summarize' {
-  if (state.qualifiedListings.length > 0) return 'discoverKnowledge';
-  if (hasEvalBudget(state) && hasScrapeBudget(state)) {
-    return 'dispatchScrapes';
-  }
-  return 'summarize';
+function afterEvaluate(_state: AgentState): 'discoverKnowledge' {
+  // Always run gap detection — even a run with no qualifiers should seed the KB
+  return 'discoverKnowledge';
 }
 
 function afterPlanOptions(state: AgentState): 'dispatchScrapes' | 'summarize' {
@@ -57,7 +54,7 @@ function shouldLoop(state: AgentState): boolean {
 }
 
 // Graph flow:
-// dispatchScrapes → [Send → scrapeOne × N] → mergeScrapes → triage → [retry?] → enrich → evaluate → discoverKnowledge → planOptions (plans + renders) → summarize
+// dispatchScrapes → [Send → scrapeOne × N] → mergeScrapes → triage → [retry?] → enrich → evaluate → discoverKnowledge → planOptions (plans + renders) → [loop?] → summarize
 const graph = new StateGraph(AgentAnnotation)
   .addNode('dispatchScrapes', dispatchScrapes, { ends: ['scrapeOne'] })
   .addNode('scrapeOne', scrapeOne)
@@ -77,11 +74,7 @@ const graph = new StateGraph(AgentAnnotation)
     summarize: 'summarize',
   })
   .addEdge('enrich', 'evaluate')
-  .addConditionalEdges('evaluate', afterEvaluate, {
-    discoverKnowledge: 'discoverKnowledge',
-    dispatchScrapes: 'dispatchScrapes',
-    summarize: 'summarize',
-  })
+  .addEdge('evaluate', 'discoverKnowledge')
   .addEdge('discoverKnowledge', 'planOptions')
   .addConditionalEdges('planOptions', afterPlanOptions, {
     dispatchScrapes: 'dispatchScrapes',
@@ -104,4 +97,4 @@ export function initCheckpointer(): Promise<void> {
 
 export const agentPipeline = graph.compile({ checkpointer });
 
-export { afterTriage, afterEvaluate, afterPlanOptions, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };
+export { afterTriage, afterPlanOptions, MAX_SCRAPE_ATTEMPTS, MIN_QUALIFIED_TARGET };

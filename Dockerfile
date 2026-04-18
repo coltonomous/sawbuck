@@ -7,6 +7,8 @@ COPY client/public/ ./client/public/
 COPY client/src/ ./client/src/
 COPY shared/ ./shared/
 RUN npm ci --ignore-scripts
+ARG VITE_CDN_DOMAIN
+ENV VITE_CDN_DOMAIN=$VITE_CDN_DOMAIN
 RUN cd client && npx vite build
 
 # Stage 2: Production server
@@ -36,8 +38,8 @@ COPY scripts/ ./scripts/
 COPY --from=client-build /app/client/dist/ ./client/dist/
 COPY shared/ ./shared/
 
-# Create data directory (will be overridden by volume mount)
-RUN mkdir -p /app/data/images/originals /app/data/images/resized /app/data/images/concepts
+# Create data directory for HuggingFace model cache
+RUN mkdir -p /app/data
 
 EXPOSE 3001
 

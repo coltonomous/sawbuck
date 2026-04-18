@@ -6,12 +6,14 @@ import { agentRuns } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
 import logger from '../lib/logger.js';
 import { recordJobRun } from '../lib/metrics.js';
+import { msUntilNext } from '../lib/cron.js';
+import { processSourceQueue } from '../rag/ingest/worker.js';
 
 let running = false;
 let runStartedAt: number | null = null;
 let currentRunId: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
-let schedulerStarted = false;
+let started = false;
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
@@ -19,7 +21,6 @@ async function runOnce(): Promise<void> {
   if (running) {
     if (runStartedAt && Date.now() - runStartedAt > RUN_TIMEOUT_MS) {
       logger.error({ runStartedAt: new Date(runStartedAt).toISOString() }, 'Agent scheduler: previous run exceeded timeout, resetting');
-      // Mark the timed-out run as failed in the DB
       if (currentRunId) {
         db.update(agentRuns)
           .set({ status: 'failed', completedAt: new Date(), errorsCount: 1, errorDetails: JSON.stringify([{ node: 'scheduler', message: 'Run exceeded 1 hour timeout', timestamp: new Date().toISOString() }]) })
@@ -36,7 +37,6 @@ async function runOnce(): Promise<void> {
   running = true;
   runStartedAt = Date.now();
 
-  // Refresh config from DB before each run (picks up admin UI changes)
   await refreshAgentConfig();
 
   const runId = crypto.randomUUID();
@@ -45,7 +45,6 @@ async function runOnce(): Promise<void> {
 
   logger.info({ runId }, 'Agent scheduler: starting pipeline run');
 
-  // Create the run record upfront so the UI can see it's running
   try {
     await db.insert(agentRuns).values({
       runId,
@@ -67,6 +66,10 @@ async function runOnce(): Promise<void> {
     if (result.summary) {
       logger.info({ runId, summary: result.summary }, 'Agent scheduler: run complete');
     }
+    // Drain any knowledge gaps queued by discoverKnowledge during this run
+    processSourceQueue().catch((err) =>
+      logger.warn({ err: String(err) }, 'Agent scheduler: knowledge source queue drain failed (non-fatal)'),
+    );
   } catch (err) {
     const durationMs = runStartedAt ? Date.now() - runStartedAt : 0;
     recordJobRun('agent-pipeline', 'failure', durationMs);
@@ -75,13 +78,25 @@ async function runOnce(): Promise<void> {
     running = false;
     runStartedAt = null;
     currentRunId = null;
+    scheduleNext();
   }
 }
 
-/**
- * Mark any agent_runs stuck in 'running' status as 'failed'.
- * These are orphans from a previous process that crashed or was restarted.
- */
+function scheduleNext(): void {
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
+
+  const cron = agentConfig.cronSchedule;
+  const delayMs = msUntilNext(cron);
+  const nextAt = new Date(Date.now() + delayMs);
+  logger.info({ cron, nextAt: nextAt.toISOString(), delayMs }, 'Agent scheduler: next run scheduled');
+
+  timer = setTimeout(runOnce, delayMs);
+  timer.unref();
+}
+
 async function cleanupStaleRuns(): Promise<void> {
   try {
     const result = await db.update(agentRuns)
@@ -101,40 +116,30 @@ async function cleanupStaleRuns(): Promise<void> {
   }
 }
 
-function scheduleNext(): void {
-  // Re-read the interval on each tick so DB/env changes take effect
-  // without needing to restart the scheduler.
-  const intervalMs = agentConfig.runIntervalMs;
-  timer = setTimeout(async () => {
-    try {
-      await runOnce();
-    } finally {
-      if (schedulerStarted) scheduleNext();
-    }
-  }, intervalMs);
-  timer.unref();
-}
-
 export async function startScheduler(): Promise<void> {
-  if (schedulerStarted) {
+  if (started) {
     logger.warn('Agent scheduler already started');
     return;
   }
-  schedulerStarted = true;
+  started = true;
 
-  logger.info({ intervalMs: agentConfig.runIntervalMs }, 'Agent scheduler: starting');
+  logger.info({ cron: agentConfig.cronSchedule }, 'Agent scheduler: starting');
 
-  // Ensure checkpoint tables exist before first run
   try {
     await initCheckpointer();
   } catch (err) {
     logger.error({ error: String(err) }, 'Agent scheduler: failed to initialize checkpointer');
   }
 
-  // Clean up orphaned 'running' rows from previous process crashes
   await cleanupStaleRuns();
 
-  // Don't run immediately on startup/deploy — wait for the first interval
+  scheduleNext();
+}
+
+/** Restart the scheduler with the current cron schedule (called when config changes). */
+export function restartScheduler(): void {
+  if (!started) return;
+  logger.info('Agent scheduler: restarting with updated schedule');
   scheduleNext();
 }
 
@@ -146,10 +151,10 @@ export function triggerRun(): boolean {
 }
 
 export function stopScheduler(): void {
-  schedulerStarted = false;
   if (timer) {
     clearTimeout(timer);
     timer = null;
-    logger.info('Agent scheduler: stopped');
   }
+  started = false;
+  logger.info('Agent scheduler: stopped');
 }

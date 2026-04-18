@@ -6,6 +6,13 @@ import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
 import PipelineGraph from '../components/PipelineGraph';
 
+interface NominatimResult {
+  place_id: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+}
+
 interface Preferences {
   preferredLatitude: number | null;
   preferredLongitude: number | null;
@@ -51,6 +58,10 @@ export default function Settings() {
   const [knowledgeSources, setKnowledgeSources] = useState<KnowledgeSourceSummary[]>([]);
   const [knowledgeFilter, setKnowledgeFilter] = useState<'all' | 'project' | 'product' | 'guide'>('all');
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [cityQuery, setCityQuery] = useState('');
+  const [cityResults, setCityResults] = useState<NominatimResult[]>([]);
+  const [cityLoading, setCityLoading] = useState(false);
+  const [cityFocused, setCityFocused] = useState(false);
   const { toast } = useToast();
 
   const isAdmin = session?.user?.role === 'admin';
@@ -79,6 +90,37 @@ export default function Settings() {
     loadAdmin();
   }, []);
 
+  // Debounced Nominatim city search
+  useEffect(() => {
+    const query = cityQuery.trim();
+    if (query.length < 3) {
+      setCityResults([]);
+      return;
+    }
+    const handle = setTimeout(async () => {
+      setCityLoading(true);
+      try {
+        const res = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`,
+          { headers: { 'Accept-Language': 'en' } },
+        );
+        const data: NominatimResult[] = await res.json();
+        setCityResults(data);
+      } catch {
+        setCityResults([]);
+      } finally {
+        setCityLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [cityQuery]);
+
+  const selectCity = (r: NominatimResult) => {
+    setPrefs((prev) => prev ? { ...prev, preferredLatitude: parseFloat(r.lat), preferredLongitude: parseFloat(r.lon) } : prev);
+    setCityQuery(r.display_name);
+    setCityResults([]);
+  };
+
   // Poll agent runs every 5s while a run is in progress and the runs tab is active
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -105,6 +147,7 @@ export default function Settings() {
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition((pos) => {
       setPrefs((prev) => prev ? { ...prev, preferredLatitude: pos.coords.latitude, preferredLongitude: pos.coords.longitude } : prev);
+      setCityQuery('');
     });
   };
 
@@ -191,6 +234,31 @@ export default function Settings() {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+              <div className="relative mb-2">
+                <input
+                  type="text"
+                  placeholder="Search a city to autofill coordinates"
+                  value={cityQuery}
+                  onChange={(e) => setCityQuery(e.target.value)}
+                  onFocus={() => setCityFocused(true)}
+                  onBlur={() => setCityFocused(false)}
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                />
+                {cityFocused && cityQuery.trim().length >= 3 && (cityLoading || cityResults.length > 0) && (
+                  <ul className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-auto">
+                    {cityLoading && <li className="px-3 py-2 text-sm text-gray-400">Searching...</li>}
+                    {!cityLoading && cityResults.map((r) => (
+                      <li
+                        key={r.place_id}
+                        onMouseDown={(e) => { e.preventDefault(); selectCity(r); }}
+                        className="px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer"
+                      >
+                        {r.display_name}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <div className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="number"
@@ -537,8 +605,10 @@ export default function Settings() {
             if (Object.keys(changed).length === 0) return;
             setSavingAgent(true);
             try {
-              const { resolved } = await api.updateAgentSettings(changed);
+              await api.updateAgentSettings(changed);
+              const { resolved, overrides } = await api.getAgentSettings();
               setAgentConfig(resolved);
+              setAgentOverrides(overrides);
               setAgentDraft({});
               toast('success', 'Agent settings saved');
             } catch (err) {
@@ -712,7 +782,7 @@ export default function Settings() {
                         <span className="text-sm font-medium text-gray-900 truncate">{s.title}</span>
                       </div>
                       {!s.source.startsWith('project:') && (
-                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{s.source}</p>
+                        <a href={s.source} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-400 hover:text-blue-300 truncate mt-0.5 block">{s.source}</a>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-0.5 shrink-0">
@@ -745,17 +815,17 @@ interface ConfigField {
 const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.triage_model', configKey: 'triageModel', label: 'Triage model', type: 'text', group: 'Models' },
   { key: 'agent.eval_model', configKey: 'evaluationModel', label: 'Evaluation model (vision)', type: 'text', group: 'Models' },
-  { key: 'agent.concept_edit_model', configKey: 'conceptEditModel', label: 'Concept edit model (Kontext)', type: 'text', group: 'Models' },
+  { key: 'agent.concept_edit_model', configKey: 'conceptEditModel', label: 'Concept edit model', type: 'text', group: 'Models' },
   { key: 'agent.max_triages', configKey: 'maxTriages', label: 'Max triages per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.max_evals', configKey: 'maxEvals', label: 'Max evaluations per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
-  { key: 'agent.run_interval_ms', configKey: 'runIntervalMs', label: 'Run interval (ms)', type: 'number', group: 'Scheduling' },
+  { key: 'agent.cron_schedule', configKey: 'cronSchedule', label: 'Run schedule (cron)', type: 'text', group: 'Scheduling' },
+  { key: 'agent.listing_max_age_days', configKey: 'listingMaxAgeDays', label: 'Listing max age (days)', type: 'number', group: 'Scheduling' },
   { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.concept_size', configKey: 'conceptRenderSize', label: 'Concept render size (px)', type: 'number', group: 'Images' },
-  { key: 'agent.image_retention_days', configKey: 'agentImageRetentionDays', label: 'Image retention (days)', type: 'number', group: 'Images' },
 ];
 
 function AgentConfigCard({

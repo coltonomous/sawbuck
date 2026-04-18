@@ -102,7 +102,17 @@ app.get('/health', async (c) => {
 
 // ── Auth routes (handled by better-auth, no requireAuth) ────────────
 app.use('/api/auth/*', rateLimit(RATE_LIMIT_AUTH));
-app.all('/api/auth/*', (c) => auth.handler(c.req.raw));
+app.all('/api/auth/*', (c) => {
+  // Caddy terminates TLS and forwards HTTP internally. Rewrite the URL
+  // scheme so better-auth constructs correct https:// callback URLs.
+  const proto = c.req.header('x-forwarded-proto');
+  if (proto === 'https') {
+    const url = new URL(c.req.url);
+    url.protocol = 'https:';
+    return auth.handler(new Request(url.toString(), c.req.raw));
+  }
+  return auth.handler(c.req.raw);
+});
 
 // ── Require auth for all other API routes ───────────────────────────
 app.use('/api/*', requireAuth);
@@ -119,14 +129,7 @@ app.route('/api/stats', statsRouter);
 app.route('/api/admin', adminRouter);
 app.route('/api/user/preferences', preferencesRouter);
 
-// ── Serve listing images with cache headers ─────────────────────────
-app.use('/images/*', async (c, next) => {
-  await next();
-  if (c.res.status === 200) {
-    c.res.headers.set('Cache-Control', 'public, max-age=86400, immutable');
-  }
-});
-app.use('/images/*', serveStatic({ root: './data/' }));
+// Images are served via S3 + CloudFront CDN — no local static serving needed.
 
 // ── SPA serving in production ───────────────────────────────────────
 if (isProd) {

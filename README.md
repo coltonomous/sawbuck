@@ -81,6 +81,8 @@ npm run dev
 | `AWS_REGION` | Yes | AWS region for Bedrock (e.g. `us-west-2`) |
 | `AWS_ACCESS_KEY_ID` | If not using IAM role | Bedrock credentials |
 | `AWS_SECRET_ACCESS_KEY` | If not using IAM role | Bedrock credentials |
+| `S3_BUCKET` | Yes | S3 bucket for image storage |
+| `VITE_CDN_DOMAIN` | Yes | CloudFront distribution domain for serving images |
 | `BETTER_AUTH_SECRET` | Yes | Auth encryption key (32+ chars) |
 | `FAL_KEY` | Optional | fal.ai API key for concept renders |
 | `EBAY_CLIENT_ID` | Optional | eBay Browse API credentials |
@@ -103,7 +105,7 @@ All pipeline parameters are stored in the database and editable from the admin S
 | `agent.max_triages` | `50` | Max listings to triage per run |
 | `agent.max_evals` | `10` | Max listings to evaluate per run |
 | `agent.max_renders` | `5` | Max listings to render concepts for |
-| `agent.run_interval_ms` | `14400000` | Run interval (4 hours) |
+| `agent.cron_schedule` | `0 */4 * * *` | Cron schedule for pipeline runs |
 | `agent.target_city` | `seattle` | Legacy CL city (use regions instead) |
 | `agent.triage_threshold` | `0.75` | Min confidence to pass triage |
 | `agent.deal_score_threshold` | `1.3` | Min deal score to qualify |
@@ -122,7 +124,6 @@ Settings can also be set via `AGENT_*` env vars as initial defaults before the D
 | `npm run db:push` | Push schema to database |
 | `npm run db:studio` | Open Drizzle Studio |
 | `npm run ingest` | Populate RAG knowledge base |
-| `npm run cleanup:images` | Run image retention cleanup |
 
 ## Agent Pipeline
 

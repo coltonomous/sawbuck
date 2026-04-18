@@ -4,9 +4,54 @@ import { isAvailable, getProjectContext } from '../../rag/retrieval.js';
 import { agentConfig } from '../config.js';
 import { reportProgress } from '../progress.js';
 import type { AgentState, TriagedCandidate, ScrapedCandidate } from '../state.js';
+import { db } from '../../db/index.js';
+import { listings } from '../../db/schema.js';
+import { inArray } from 'drizzle-orm';
 import logger from '../../lib/logger.js';
 
-const BATCH_SIZE = 5;
+const BATCH_SIZE = 15;
+
+// ─── Rule-based pre-filter (eliminates obvious non-furniture before LLM) ──
+
+const REJECT_TITLE_PATTERNS = [
+  // Appliances & electronics
+  /\b(refrigerator|fridge|freezer|washer|dryer|dishwasher|microwave|oven|stove|range|air\s*conditioner|a\/?c\s*unit|water\s*heater|furnace)\b/i,
+  /\b(tv|television|monitor|computer|laptop|printer|speaker|stereo|receiver|amplifier|projector|console|playstation|xbox|nintendo)\b/i,
+  /\b(phone|iphone|ipad|tablet|kindle|camera|gopro|drone|router|modem)\b/i,
+  // Non-furniture items
+  /\b(lawn\s*mower|snow\s*blower|leaf\s*blower|chainsaw|generator|compressor|welder|power\s*tool|drill\s*press)\b/i,
+  /\b(bicycle|bike|kayak|canoe|surfboard|ski|snowboard|golf|treadmill|elliptical|exercise\s*bike|weight\s*bench)\b/i,
+  /\b(car\s*parts?|tires?|rims?|wheels?|bumper|fender|hood|engine|motor(?:cycle)?|atv|trailer)\b/i,
+  /\b(clothing|shoes|boots|jacket|coat|purse|handbag|jewelry|watch(?:es)?)\b/i,
+  /\b(mattress(?:es)?|box\s*spring)\b/i,
+  /\b(hot\s*tub|spa|pool\s*table|ping\s*pong|foosball|trampoline|swing\s*set|play\s*set)\b/i,
+  /\b(guitar|piano|keyboard|drum|violin|saxophone|trumpet|ukulele)\b/i,
+  /\b(rug|carpet|curtain|blinds?|window\s*treatment)\b/i,
+  /\b(grill|bbq|smoker|fire\s*pit)\b/i,
+  /\b(baby\s*stroller|car\s*seat|crib\s*mattress|pack\s*n\s*play|playpen)\b/i,
+  // Materials / junk
+  /\b(scrap\s*metal|firewood|lumber|pallets?|bricks?|pavers?|gravel|mulch|topsoil)\b/i,
+  // Explicit non-wood
+  /\b(plastic\s*(shelv|bin|tote|container|drawer))/i,
+  /\b(metal\s*(shelv|rack|cabinet|locker|cart))/i,
+  /\b(wire\s*(shelv|rack))/i,
+];
+
+function preFilterCandidates(candidates: ScrapedCandidate[]): { passed: ScrapedCandidate[]; rejected: number } {
+  const passed: ScrapedCandidate[] = [];
+  let rejected = 0;
+
+  for (const c of candidates) {
+    const text = c.title ?? '';
+    if (REJECT_TITLE_PATTERNS.some((re) => re.test(text))) {
+      rejected++;
+    } else {
+      passed.push(c);
+    }
+  }
+
+  return { passed, rejected };
+}
 
 // ─── Pass 1: Text-only batch triage (cheap model) ─────────────────
 
@@ -87,12 +132,17 @@ const VISUAL_CHECK_JSON_SCHEMA = {
 
 // ─── Main triage function ─────────────────────────────────────────
 
-async function buildSystemPrompt(): Promise<string> {
+async function buildSystemPrompt(candidates: ScrapedCandidate[]): Promise<string> {
   let prompt = TRIAGE_SYSTEM_PROMPT;
 
   if (await isAvailable()) {
     try {
-      const ctx = await getProjectContext('furniture flip woodworking');
+      // Build query from the actual batch content — types and titles present in this run
+      const sampleTitles = candidates.slice(0, 20).map((c) => c.title).filter(Boolean);
+      const query = sampleTitles.length > 0
+        ? sampleTitles.slice(0, 5).join(' ') + ' furniture flip'
+        : 'furniture flip woodworking';
+      const ctx = await getProjectContext(query);
       if (ctx.chunkCount > 0) {
         prompt += `\n\n## KNOWLEDGE BASE CONTEXT\nUse this data about past flips to inform your assessment of what types/species flip well:\n\n${ctx.text}`;
       }
@@ -167,15 +217,49 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
     return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
   }
 
-  const systemPrompt = await buildSystemPrompt();
+  // Cross-run dedup: skip listings already in the DB (any status)
+  try {
+    const externalIds = toProcess.map((c) => c.externalId);
+    const existing = await db
+      .select({ externalId: listings.externalId })
+      .from(listings)
+      .where(inArray(listings.externalId, externalIds));
+    const existingSet = new Set(existing.map((r) => r.externalId));
+    const dedupedCount = toProcess.length;
+    toProcess.splice(0, toProcess.length, ...toProcess.filter((c) => !existingSet.has(c.externalId)));
+    const skipped = dedupedCount - toProcess.length;
+    if (skipped > 0) {
+      logger.info({ skipped }, 'Triage: skipped already-processed listings from prior runs');
+    }
+  } catch (err) {
+    logger.warn({ error: String(err) }, 'Triage: DB dedup check failed, proceeding without dedup');
+  }
+
+  if (toProcess.length === 0) {
+    logger.info('Triage: all candidates already in DB');
+    return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
+  }
+
+  // Rule-based pre-filter: reject obvious non-furniture before hitting the LLM
+  const { passed: filteredCandidates, rejected: preFilterRejected } = preFilterCandidates(toProcess);
+  if (preFilterRejected > 0) {
+    logger.info({ rejected: preFilterRejected, remaining: filteredCandidates.length }, 'Triage: pre-filter removed non-furniture listings');
+  }
+
+  if (filteredCandidates.length === 0) {
+    logger.info('Triage: all candidates rejected by pre-filter');
+    return { triagedCandidates: [], passedTriage: [], triageCount: triageCounts };
+  }
+
+  const systemPrompt = await buildSystemPrompt(filteredCandidates);
   const triaged: TriagedCandidate[] = [];
   const textPassed: Array<{ candidate: ScrapedCandidate; triage: TriagedCandidate }> = [];
   const errors: AgentState['errors'] = [];
   let count = 0;
 
   // ── Pass 1: Text-only batch classification ──────────────────────
-  for (let i = 0; i < toProcess.length; i += BATCH_SIZE) {
-    const batch = toProcess.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < filteredCandidates.length; i += BATCH_SIZE) {
+    const batch = filteredCandidates.slice(i, i + BATCH_SIZE);
 
     try {
       const prompt = buildBatchPrompt(batch);
@@ -236,7 +320,8 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
   logger.info({
     triaged: count,
     passed: passed.length,
-    apiCalls: Math.ceil(toProcess.length / BATCH_SIZE),
+    preFilterRejected,
+    apiCalls: Math.ceil(filteredCandidates.length / BATCH_SIZE),
   }, 'Triage node complete');
 
   reportProgress(state.runId, { triaged: triaged.length, passedTriage: passed.length });

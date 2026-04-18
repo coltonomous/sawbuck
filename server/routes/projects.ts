@@ -1,5 +1,3 @@
-import fs from 'fs/promises';
-import path from 'path';
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
 import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
@@ -9,7 +7,7 @@ import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { generateMaterialsFromPlanSync, getMaterialsForProject, getMaterialsForListing } from '../analysis/sourcing.js';
 import { generateText } from '../lib/bedrock.js';
-import { IMAGES_DIR, PROJECT_PHOTOS_DIR } from '../lib/paths.js';
+import { uploadToS3, deleteFromS3, mimeFromExt } from '../lib/s3.js';
 import { getPrimaryImagePath } from '../lib/images.js';
 import { createProjectSchema, updateProjectSchema, updateCostsSchema, updateMaterialSchema, generateListingTextSchema } from '../lib/validation.js';
 import { tryIngestProject } from '../rag/ingest/projects.js';
@@ -252,11 +250,9 @@ projectsRouter.delete('/:id', async (c) => {
     }
   });
 
-  // Clean up photo files after DB commit — orphaned files are harmless and will
-  // be caught by the scheduled image cleanup if these deletes fail
+  // Clean up photo files from S3 after DB commit
   for (const photo of photos) {
-    const filePath = path.join(IMAGES_DIR, photo.localPath);
-    await fs.unlink(filePath).catch(() => {});
+    await deleteFromS3(photo.localPath);
   }
 
   return c.json({ ok: true });
@@ -525,20 +521,16 @@ projectsRouter.post('/:id/photos', async (c) => {
     throw err;
   }
 
-  const projectDir = path.join(PROJECT_PHOTOS_DIR, String(id));
-  await fs.mkdir(projectDir, { recursive: true });
-
   const timestamp = Date.now();
   const filename = `${photoType}-${timestamp}${validated.ext}`;
-  const filePath = path.join(projectDir, filename);
-  const relativePath = path.join('projects', String(id), filename);
+  const s3Key = `projects/${id}/${filename}`;
 
-  await fs.writeFile(filePath, validated.buffer);
+  await uploadToS3(s3Key, validated.buffer, mimeFromExt(validated.ext));
 
   const [photo] = await db.insert(projectPhotos).values({
     projectId: id,
     photoType: photoType as 'before' | 'during' | 'after',
-    localPath: relativePath,
+    localPath: s3Key,
     caption: caption || null,
   }).returning();
 
@@ -558,8 +550,7 @@ projectsRouter.delete('/:id/photos/:photoId', async (c) => {
   const photo = await db.select().from(projectPhotos).where(eq(projectPhotos.id, photoId)).then(r => r[0]);
 
   if (photo) {
-    const filePath = path.join(IMAGES_DIR, photo.localPath);
-    await fs.unlink(filePath).catch(() => {});
+    await deleteFromS3(photo.localPath);
     await db.delete(projectPhotos).where(eq(projectPhotos.id, photoId));
   }
 

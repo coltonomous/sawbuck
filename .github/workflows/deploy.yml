@@ -79,13 +79,15 @@ jobs:
 
           # Ensure required env vars are in .env (won't overwrite existing values)
           grep -q '^BETTER_AUTH_SECRET=' .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
-          grep -q '^BETTER_AUTH_URL=' .env 2>/dev/null || echo 'BETTER_AUTH_URL=${{ secrets.BETTER_AUTH_URL }}' >> .env
           grep -q '^AWS_REGION=' .env 2>/dev/null || echo 'AWS_REGION=${{ secrets.AWS_REGION }}' >> .env
           grep -q '^AWS_ACCESS_KEY_ID=' .env 2>/dev/null || echo 'AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}' >> .env
           grep -q '^AWS_SECRET_ACCESS_KEY=' .env 2>/dev/null || echo 'AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}' >> .env
           grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
           grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
           grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
+          grep -q '^S3_BUCKET=' .env 2>/dev/null || echo 'S3_BUCKET=${{ secrets.S3_BUCKET }}' >> .env
+          grep -q '^VITE_CDN_DOMAIN=' .env 2>/dev/null || echo 'VITE_CDN_DOMAIN=${{ secrets.VITE_CDN_DOMAIN }}' >> .env
+          grep -q '^BRAVE_API_KEY=' .env 2>/dev/null || echo 'BRAVE_API_KEY=${{ secrets.BRAVE_API_KEY }}' >> .env
           grep -q '^BACKUP_S3_BUCKET=' .env 2>/dev/null || echo 'BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}' >> .env
 
           # Inject AWS credentials into Docker daemon for awslogs driver

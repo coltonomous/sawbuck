@@ -1,4 +1,13 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
+
+vi.mock('../lib/s3.js', () => ({
+  uploadToS3: vi.fn().mockResolvedValue(undefined),
+  deleteFromS3: vi.fn().mockResolvedValue(undefined),
+  downloadFromS3: vi.fn().mockResolvedValue(Buffer.alloc(0)),
+  mimeFromExt: (ext: string) => ext === '.png' ? 'image/png' : 'image/jpeg',
+  isS3Configured: () => true,
+}));
+
 import app from '../app.js';
 import { createTestUser, authHeaders, type TestUser } from './helpers.js';
 import { db } from '../db/index.js';

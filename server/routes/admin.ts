@@ -1,12 +1,14 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings, projects, listingClicks, platformSettings, regions } from '../db/schema.js';
+import { users, listings, listingImages, projects, listingClicks, platformSettings, regions } from '../db/schema.js';
 import { eq, and, count, inArray } from 'drizzle-orm';
-import { getAllSettings, updateSetting, deleteSetting, getAgentConfig } from '../agents/config.js';
-import { triggerRun } from '../agents/scheduler.js';
+import { deleteFromS3 } from '../lib/s3.js';
+import { getAllSettings, updateSetting, deleteSetting, getAgentConfig, refreshAgentConfig } from '../agents/config.js';
+import { triggerRun, restartScheduler } from '../agents/scheduler.js';
 import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
 import { chunkCount, listSources } from '../rag/store.js';
+import { isValidCron } from '../lib/cron.js';
 
 // Derived from the DB key names used in agents/config.ts resolve*() calls.
 // Adding a new config option there automatically makes it settable here.
@@ -14,9 +16,8 @@ const VALID_SETTINGS = new Set([
   'agent.max_triages', 'agent.max_evals',
   'agent.triage_threshold', 'agent.deal_score_threshold',
   'agent.min_delay_ms', 'agent.max_delay_ms', 'agent.daily_request_cap',
-  'agent.run_interval_ms', 'agent.triage_model',
-  'agent.eval_model', 'agent.concept_edit_model', 'agent.concept_size',
-  'agent.image_retention_days',
+  'agent.cron_schedule', 'agent.triage_model',
+  'agent.eval_model', 'agent.fal_model', 'agent.concept_edit_model', 'agent.concept_size',
   'rag.max_chunks_per_type',
 ]);
 
@@ -102,6 +103,7 @@ adminRouter.delete('/users/:id', async (c) => {
 
 // GET /settings — get all agent config (current resolved values + DB overrides)
 adminRouter.get('/settings', async (c) => {
+  await refreshAgentConfig();
   const dbSettings = await getAllSettings();
   const resolved = getAgentConfig();
   return c.json({ resolved, overrides: dbSettings });
@@ -115,13 +117,23 @@ adminRouter.patch('/settings', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
+  let cronChanged = false;
   for (const [key, value] of Object.entries(parsed.data)) {
+    if (key === 'agent.cron_schedule' && value !== '') {
+      if (!isValidCron(value)) {
+        return c.json({ error: `Invalid cron expression: "${value}". Use 5-field format (minute hour day month weekday), e.g. "0 */4 * * *"` }, 400);
+      }
+      cronChanged = true;
+    }
     if (value === '') {
       await deleteSetting(key);
+      if (key === 'agent.cron_schedule') cronChanged = true;
     } else {
       await updateSetting(key, value);
     }
   }
+
+  if (cronChanged) restartScheduler();
 
   return c.json({ ok: true, resolved: getAgentConfig() });
 });
@@ -135,24 +147,29 @@ adminRouter.post('/agent/run', async (c) => {
   return c.json({ ok: true, message: 'Agent pipeline run started' });
 });
 
-// DELETE /listings — bulk delete agent-discovered listings by IDs
+// DELETE /listings — bulk delete listings by IDs (admin only)
 adminRouter.delete('/listings', async (c) => {
   const { ids } = await c.req.json<{ ids: number[] }>();
   if (!Array.isArray(ids) || ids.length === 0) {
     return c.json({ error: 'ids array is required' }, 400);
   }
 
-  // Only allow deleting agent-discovered listings (userId IS NULL)
-  const agentListings = await db.select({ id: listings.id })
+  const matched = await db.select({ id: listings.id })
     .from(listings)
     .where(inArray(listings.id, ids));
 
-  const validIds = agentListings.map(l => l.id);
+  const validIds = matched.map(l => l.id);
   if (validIds.length === 0) {
-    return c.json({ error: 'No matching agent listings found' }, 404);
+    return c.json({ error: 'No matching listings found' }, 404);
   }
 
-  // FK cascades handle listingImages and conceptRenders
+  // Clean up S3 files before deleting DB records
+  const images = await db.select().from(listingImages).where(inArray(listingImages.listingId, validIds));
+  for (const img of images) {
+    if (img.localPathOriginal) await deleteFromS3(img.localPathOriginal);
+    if (img.localPathResized) await deleteFromS3(img.localPathResized);
+  }
+
   await db.delete(listings).where(inArray(listings.id, validIds));
 
   return c.json({ ok: true, deleted: validIds.length });
@@ -234,8 +251,7 @@ adminRouter.delete('/regions/:id', async (c) => {
 });
 
 // ── Metrics / observability ────────────────────────────────────────
-const RECONCILE_OVERDUE_MS = 12 * 60 * 60 * 1000; // 12 hours
-const IMAGE_CLEANUP_OVERDUE_MS = 48 * 60 * 60 * 1000; // 48 hours
+const CLEANUP_OVERDUE_MS = 36 * 60 * 60 * 1000; // 36 hours
 
 adminRouter.get('/metrics', async (c) => {
   const [projectChunks, productChunks, guideChunks] = await Promise.all([
@@ -248,8 +264,7 @@ adminRouter.get('/metrics', async (c) => {
   const jobHealth = getAllJobHealth();
   const overdueJobs: string[] = [];
 
-  if (isJobOverdue('reconcile', RECONCILE_OVERDUE_MS)) overdueJobs.push('reconcile');
-  if (isJobOverdue('image-cleanup', IMAGE_CLEANUP_OVERDUE_MS)) overdueJobs.push('image-cleanup');
+  if (isJobOverdue('listing_cleanup', CLEANUP_OVERDUE_MS)) overdueJobs.push('listing_cleanup');
 
   return c.json({
     rag: {

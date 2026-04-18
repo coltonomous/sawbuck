@@ -7,11 +7,11 @@
  * refinishing plans in real outcomes.
  */
 
-import { db } from '../../db/index.js';
+import { db, pool } from '../../db/index.js';
 import { projects, listings, materials } from '../../db/schema.js';
 import { eq, and, isNotNull } from 'drizzle-orm';
 import { embed, embedBatch } from '../embeddings.js';
-import { upsertChunk, upsertChunks, clearChunks } from '../store.js';
+import { upsertChunk, upsertChunks } from '../store.js';
 import type { KnowledgeChunk } from '../store.js';
 import logger from '../../lib/logger.js';
 
@@ -200,13 +200,12 @@ export async function ingestProjects(): Promise<{ ingested: number; skipped: num
   const flips = await getCompletedFlips();
   if (flips.length === 0) {
     logger.info('No completed flips to ingest');
+    // Clean up any stale project chunks (projects that were deleted/un-sold)
+    await pool.query(`DELETE FROM knowledge_chunks WHERE type = 'project'`);
     return { ingested: 0, skipped: 0 };
   }
 
   logger.info({ count: flips.length }, 'Ingesting completed flips');
-
-  // Clear stale project chunks and re-ingest
-  await clearChunks('project');
 
   const chunks = [];
   for (const flip of flips) {
@@ -214,9 +213,20 @@ export async function ingestProjects(): Promise<{ ingested: number; skipped: num
     chunks.push(flipToChunk(flip, mats));
   }
 
+  // Upsert — content hash check means unchanged flips don't get re-embedded
   const texts = chunks.map((c) => c.content);
   const embeddings = await embedBatch(texts);
   const inserted = await upsertChunks(chunks, embeddings);
+
+  // Remove chunks for projects no longer in the sold set
+  const activeSources = chunks.map((c) => c.source);
+  if (activeSources.length > 0) {
+    const placeholders = activeSources.map((_, i) => `$${i + 1}`).join(', ');
+    await pool.query(
+      `DELETE FROM knowledge_chunks WHERE type = 'project' AND source NOT IN (${placeholders})`,
+      activeSources,
+    );
+  }
 
   logger.info({ inserted, total: flips.length }, 'Project ingestion complete');
   return { ingested: inserted, skipped: flips.length - inserted };
