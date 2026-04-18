@@ -1,7 +1,12 @@
+const CDN_DOMAIN = (import.meta as any).env?.VITE_CDN_DOMAIN || '';
+
 export function resolveImageUrl(path: string): string {
   if (path.startsWith('http')) return path;
-  // Strip data/images/ prefix from legacy DB paths
   const cleaned = path.replace(/^data\/images\//, '');
+  if (CDN_DOMAIN) {
+    const base = CDN_DOMAIN.startsWith('http') ? CDN_DOMAIN : `https://${CDN_DOMAIN}`;
+    return `${base.replace(/\/$/, '')}/${cleaned}`;
+  }
   return `/images/${cleaned}`;
 }
 

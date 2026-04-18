@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import { fal } from '@fal-ai/client';
 import sharp from 'sharp';
-import fs from 'fs/promises';
-import path from 'path';
 import { analyzeWithVisionStructured } from '../../lib/bedrock.js';
 import { db } from '../../db/index.js';
 import { conceptRenders, refinishingPlans } from '../../db/schema.js';
@@ -13,8 +11,7 @@ import { generateRefinishingPlan } from '../../analysis/refinishing.js';
 import { generateMaterialsFromPlanSync } from '../../analysis/sourcing.js';
 import type { AgentState, FinishConcept, ListingWithOptions, ConceptRenderResult } from '../state.js';
 import logger from '../../lib/logger.js';
-
-const CONCEPTS_DIR = 'data/images/concepts';
+import { uploadToS3 } from '../../lib/s3.js';
 
 import type { RefinishingPlan } from '../../analysis/refinishing.js';
 
@@ -124,7 +121,6 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
 
       // 3. Generate concept renders + persist concept_renders rows
       const hasFal = !!process.env.FAL_KEY;
-      if (hasFal) await fs.mkdir(CONCEPTS_DIR, { recursive: true }).catch(() => {});
 
       let referenceImageUrl: string | null = null;
       if (hasFal) {
@@ -163,12 +159,12 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             const imageUrl = renderResult.data?.images?.[0]?.url;
             if (imageUrl) {
               renderedImageUrl = imageUrl;
-              const filename = `${listing.listingId}_${concept.finishType}.webp`;
-              const filePath = path.join(CONCEPTS_DIR, filename);
-              localPath = path.join('concepts', filename);
+              const s3Key = `concepts/${listing.listingId}_${concept.finishType}.webp`;
+              localPath = s3Key;
               const response = await fetch(imageUrl);
               const buffer = Buffer.from(await response.arrayBuffer());
-              await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
+              const webpBuffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
+              await uploadToS3(s3Key, webpBuffer, 'image/webp');
 
               renders.push({
                 listingId: listing.listingId,

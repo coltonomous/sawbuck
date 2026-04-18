@@ -1,9 +1,8 @@
 import { db } from '../db/index.js';
 import { listingImages } from '../db/schema.js';
 import { eq, inArray, sql } from 'drizzle-orm';
-import { IMAGES_DIR } from './paths.js';
 import path from 'path';
-import fs from 'fs/promises';
+import { downloadFromS3 } from './s3.js';
 
 /** Returns the best available path for a listing's primary image, or null. */
 export async function getPrimaryImagePath(listingId: number): Promise<string | null> {
@@ -27,21 +26,20 @@ export async function getListingImageUrlForFal(listingId: number): Promise<strin
     .then(r => r[0]);
   if (!img) return null;
 
-  // Prefer local file (upload to fal storage), fall back to sourceUrl
-  const localRelPath = img.localPathResized || img.localPathOriginal;
-  if (localRelPath) {
-    const absPath = path.join(IMAGES_DIR, localRelPath);
+  // Prefer S3 file (upload to fal storage), fall back to sourceUrl
+  const s3Key = img.localPathResized || img.localPathOriginal;
+  if (s3Key) {
     try {
-      const buffer = await fs.readFile(absPath);
-      const ext = path.extname(localRelPath).toLowerCase();
+      const buffer = await downloadFromS3(s3Key);
+      const ext = path.extname(s3Key).toLowerCase();
       const mimeMap: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp', '.gif': 'image/gif' };
       const mime = mimeMap[ext] || 'image/jpeg';
       const { fal } = await import('@fal-ai/client');
-      const file = new File([buffer], `listing_${listingId}${ext}`, { type: mime });
+      const file = new File([new Uint8Array(buffer)], `listing_${listingId}${ext}`, { type: mime });
       const url = await fal.storage.upload(file);
       return url;
     } catch {
-      // Local file missing or upload failed — try sourceUrl
+      // S3 fetch or upload failed — try sourceUrl
     }
   }
 

@@ -813,17 +813,17 @@ interface ConfigField {
 const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.triage_model', configKey: 'triageModel', label: 'Triage model', type: 'text', group: 'Models' },
   { key: 'agent.eval_model', configKey: 'evaluationModel', label: 'Evaluation model (vision)', type: 'text', group: 'Models' },
-  { key: 'agent.concept_edit_model', configKey: 'conceptEditModel', label: 'Concept edit model (Kontext)', type: 'text', group: 'Models' },
+  { key: 'agent.fal_model', configKey: 'falModel', label: 'fal.ai model (text-to-image)', type: 'text', group: 'Models' },
+  { key: 'agent.concept_edit_model', configKey: 'conceptEditModel', label: 'Concept edit model', type: 'text', group: 'Models' },
   { key: 'agent.max_triages', configKey: 'maxTriages', label: 'Max triages per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.max_evals', configKey: 'maxEvals', label: 'Max evaluations per run', type: 'number', group: 'Per-Run Caps' },
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
-  { key: 'agent.run_interval_ms', configKey: 'runIntervalMs', label: 'Run interval (ms)', type: 'number', group: 'Scheduling' },
+  { key: 'agent.cron_schedule', configKey: 'cronSchedule', label: 'Run schedule (cron)', type: 'text', group: 'Scheduling' },
   { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.concept_size', configKey: 'conceptRenderSize', label: 'Concept render size (px)', type: 'number', group: 'Images' },
-  { key: 'agent.image_retention_days', configKey: 'agentImageRetentionDays', label: 'Image retention (days)', type: 'number', group: 'Images' },
 ];
 
 function AgentConfigCard({

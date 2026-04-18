@@ -13,9 +13,7 @@ import { fingerprint } from '../lib/fingerprint.js';
 import { backgroundJobs } from '../db/schema.js';
 import logger from '../lib/logger.js';
 import crypto from 'crypto';
-import path from 'path';
-import fs from 'fs/promises';
-import { ORIGINALS_DIR, IMAGES_DIR } from '../lib/paths.js';
+import { uploadToS3, deleteFromS3, mimeFromExt } from '../lib/s3.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { inArray } from 'drizzle-orm';
 import type { Platform } from '../../shared/constants.js';
@@ -404,22 +402,18 @@ listingsRouter.post('/create', async (c) => {
     userId: user.id,
   }).returning();
 
-  // Save photos to disk and create listingImages rows
-  const imageDir = path.join(ORIGINALS_DIR, 'sawbuck', String(inserted.id));
-  await fs.mkdir(imageDir, { recursive: true });
-
+  // Upload photos to S3 and create listingImages rows
   for (let i = 0; i < validated.length; i++) {
     const { buffer, ext } = validated[i];
     const filename = `${i}${ext}`;
-    const filePath = path.join(imageDir, filename);
-    const relativePath = path.join('originals', 'sawbuck', String(inserted.id), filename);
+    const s3Key = `originals/sawbuck/${inserted.id}/${filename}`;
 
-    await fs.writeFile(filePath, buffer);
+    await uploadToS3(s3Key, buffer, mimeFromExt(ext));
 
     await db.insert(listingImages).values({
       listingId: inserted.id,
       sourceUrl: '',
-      localPathOriginal: relativePath,
+      localPathOriginal: s3Key,
       downloadStatus: 'downloaded',
       isPrimary: i === 0,
     });
@@ -666,11 +660,11 @@ listingsRouter.delete('/:id', async (c) => {
   const existing = await getOwnedListing(id, user.id);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
-  // Delete image files from disk before removing DB records
+  // Delete image files from S3 before removing DB records
   const images = await db.select().from(listingImages).where(eq(listingImages.listingId, id));
   for (const img of images) {
-    if (img.localPathOriginal) await fs.unlink(path.join(IMAGES_DIR, img.localPathOriginal)).catch(() => {});
-    if (img.localPathResized) await fs.unlink(path.join(IMAGES_DIR, img.localPathResized)).catch(() => {});
+    if (img.localPathOriginal) await deleteFromS3(img.localPathOriginal);
+    if (img.localPathResized) await deleteFromS3(img.localPathResized);
   }
 
   await db.delete(listingImages).where(eq(listingImages.listingId, id));
@@ -760,11 +754,7 @@ listingsRouter.post('/:id/render', async (c) => {
     const { fal } = await import('@fal-ai/client');
     const { agentConfig } = await import('../agents/config.js');
     const sharp = (await import('sharp')).default;
-    const fs = (await import('fs/promises'));
-    const path = (await import('path'));
-
-    const CONCEPTS_DIR = 'data/images/concepts';
-    await fs.mkdir(CONCEPTS_DIR, { recursive: true });
+    const { uploadToS3: uploadConceptToS3 } = await import('../lib/s3.js');
 
     const type = listing.furnitureType;
 
@@ -801,17 +791,16 @@ listingsRouter.post('/:id/render', async (c) => {
       return c.json({ error: 'Image generation returned no results' }, 502);
     }
 
-    const filename = `${id}_${finishType}.webp`;
-    const filePath = path.join(CONCEPTS_DIR, filename);
-    const relativePath = path.join('concepts', filename);
+    const s3Key = `concepts/${id}_${finishType}.webp`;
     const response = await fetch(imageUrl);
     const buffer = Buffer.from(await response.arrayBuffer());
-    await sharp(buffer).webp({ quality: 85 }).toFile(filePath);
+    const webpBuffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
+    await uploadConceptToS3(s3Key, webpBuffer, 'image/webp');
 
     // Upsert concept render row
     if (existing) {
       await db.update(conceptRenders)
-        .set({ prompt, renderedImageUrl: imageUrl, localPath: relativePath })
+        .set({ prompt, renderedImageUrl: imageUrl, localPath: s3Key })
         .where(eq(conceptRenders.id, existing.id));
     } else {
       await db.insert(conceptRenders).values({
@@ -821,7 +810,7 @@ listingsRouter.post('/:id/render', async (c) => {
         summary: summary || label,
         prompt,
         renderedImageUrl: imageUrl,
-        localPath: relativePath,
+        localPath: s3Key,
       });
     }
 
@@ -835,6 +824,9 @@ listingsRouter.post('/:id/render', async (c) => {
     return c.json({ error: 'Failed to generate concept render' }, 500);
   }
 });
+
+// Guard against concurrent plan/render generation for the same listing
+const generatingPlans = new Set<number>();
 
 // POST /:id/generate-concepts — generate refinishing concept options for a listing
 listingsRouter.post('/:id/generate-concepts', async (c) => {
@@ -853,6 +845,11 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
   if (existing.length > 0) {
     return c.json({ concepts: existing });
   }
+
+  if (generatingPlans.has(id)) {
+    return c.json({ error: 'Plan generation already in progress for this listing' }, 409);
+  }
+  generatingPlans.add(id);
 
   try {
     const { generatePlanOptions } = await import('../agents/nodes/plan-options.js');
@@ -896,6 +893,8 @@ listingsRouter.post('/:id/generate-concepts', async (c) => {
   } catch (err) {
     logger.error({ listingId: id, error: String(err) }, 'On-demand concept generation failed');
     return c.json({ error: 'Failed to generate concepts' }, 500);
+  } finally {
+    generatingPlans.delete(id);
   }
 });
 

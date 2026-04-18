@@ -1,10 +1,8 @@
-import fs from 'fs/promises';
-import path from 'path';
 import { db } from '../db/index.js';
 import { listingImages, listings } from '../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { IMAGES_DIR } from '../lib/paths.js';
 import { config } from '../lib/config.js';
+import { uploadToS3, mimeFromExt } from '../lib/s3.js';
 import logger from '../lib/logger.js';
 
 const REFERERS: Record<string, string> = {
@@ -36,10 +34,6 @@ export async function downloadListingImages(listingId: number): Promise<number> 
 
   const pendingImages = images.filter((img) => img.downloadStatus === 'pending');
   if (pendingImages.length === 0) return 0;
-
-  // Create directory for this listing
-  const originalDir = path.join(IMAGES_DIR, 'originals', listing.platform, String(listingId));
-  await fs.mkdir(originalDir, { recursive: true });
 
   let downloaded = 0;
   for (let i = 0; i < pendingImages.length; i++) {
@@ -84,13 +78,12 @@ export async function downloadListingImages(listingId: number): Promise<number> 
       }
       const ext = getExtFromUrl(img.sourceUrl);
       const filename = `${i}.${ext}`;
-      const filePath = path.join(originalDir, filename);
-      const relativePath = path.join('originals', listing.platform, String(listingId), filename);
+      const s3Key = `originals/${listing.platform}/${listingId}/${filename}`;
 
-      await fs.writeFile(filePath, buffer);
+      await uploadToS3(s3Key, buffer, mimeFromExt(`.${ext}`));
 
       await db.update(listingImages).set({
-        localPathOriginal: relativePath,
+        localPathOriginal: s3Key,
         downloadStatus: 'downloaded',
         fileSizeBytes: buffer.length,
       }).where(eq(listingImages.id, img.id));

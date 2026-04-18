@@ -75,12 +75,11 @@ vi.mock('../config.js', () => ({
     minDelayBetweenRequestsMs: 0,
     maxDelayBetweenRequestsMs: 0,
     dailyRequestCap: 1000,
-    runIntervalMs: 14400000,
+    cronSchedule: '0 */4 * * *',
     targetCity: 'seattle',
     triageModel: 'test-model',
     evaluationModel: 'test-model',
     conceptRenderSize: 768,
-    agentImageRetentionDays: 14,
   },
   refreshAgentConfig: () => Promise.resolve(),
 }));

@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 
-# Ensure data directories exist and are writable by the app user.
-mkdir -p /app/data/images/originals /app/data/images/resized /app/data/images/concepts
+# Ensure data directory exists and is writable by the app user.
+mkdir -p /app/data
 chown -R app:app /app/data
 
 # Run pre-push migrations (CREATE IF NOT EXISTS — safe to re-run) to avoid

@@ -61,7 +61,7 @@ export function getAgentConfig() {
     dailyRequestCap: resolveInt('agent.daily_request_cap', 'AGENT_DAILY_REQUEST_CAP', 200),
 
     // Scheduling
-    runIntervalMs: resolveInt('agent.run_interval_ms', 'AGENT_RUN_INTERVAL_MS', 4 * 60 * 60 * 1000),
+    cronSchedule: resolve('agent.cron_schedule', 'AGENT_CRON_SCHEDULE', '0 */4 * * *'),
 
     // Target
     targetCity: resolve('agent.target_city', 'AGENT_TARGET_CITY', 'seattle'),
@@ -73,9 +73,6 @@ export function getAgentConfig() {
     // fal.ai
     conceptEditModel: resolve('agent.concept_edit_model', 'AGENT_CONCEPT_EDIT_MODEL', 'fal-ai/flux-kontext/dev'),
     conceptRenderSize: resolveInt('agent.concept_size', 'AGENT_CONCEPT_SIZE', 768),
-
-    // Image retention
-    agentImageRetentionDays: resolveInt('agent.image_retention_days', 'AGENT_IMAGE_RETENTION_DAYS', 14),
 
     // RAG knowledge base bounds (per-type chunk limit)
     ragMaxChunksPerType: resolveInt('rag.max_chunks_per_type', 'RAG_MAX_CHUNKS_PER_TYPE', 500),
