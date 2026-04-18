@@ -20,7 +20,6 @@ async function runOnce(): Promise<void> {
   if (running) {
     if (runStartedAt && Date.now() - runStartedAt > RUN_TIMEOUT_MS) {
       logger.error({ runStartedAt: new Date(runStartedAt).toISOString() }, 'Agent scheduler: previous run exceeded timeout, resetting');
-      // Mark the timed-out run as failed in the DB
       if (currentRunId) {
         db.update(agentRuns)
           .set({ status: 'failed', completedAt: new Date(), errorsCount: 1, errorDetails: JSON.stringify([{ node: 'scheduler', message: 'Run exceeded 1 hour timeout', timestamp: new Date().toISOString() }]) })
@@ -37,7 +36,6 @@ async function runOnce(): Promise<void> {
   running = true;
   runStartedAt = Date.now();
 
-  // Refresh config from DB before each run (picks up admin UI changes)
   await refreshAgentConfig();
 
   const runId = crypto.randomUUID();
@@ -46,7 +44,6 @@ async function runOnce(): Promise<void> {
 
   logger.info({ runId }, 'Agent scheduler: starting pipeline run');
 
-  // Create the run record upfront so the UI can see it's running
   try {
     await db.insert(agentRuns).values({
       runId,
@@ -95,10 +92,6 @@ function scheduleNext(): void {
   timer.unref();
 }
 
-/**
- * Mark any agent_runs stuck in 'running' status as 'failed'.
- * These are orphans from a previous process that crashed or was restarted.
- */
 async function cleanupStaleRuns(): Promise<void> {
   try {
     const result = await db.update(agentRuns)
@@ -127,14 +120,12 @@ export async function startScheduler(): Promise<void> {
 
   logger.info({ cron: agentConfig.cronSchedule }, 'Agent scheduler: starting');
 
-  // Ensure checkpoint tables exist before first run
   try {
     await initCheckpointer();
   } catch (err) {
     logger.error({ error: String(err) }, 'Agent scheduler: failed to initialize checkpointer');
   }
 
-  // Clean up orphaned 'running' rows from previous process crashes
   await cleanupStaleRuns();
 
   scheduleNext();

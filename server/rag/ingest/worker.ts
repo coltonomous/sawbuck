@@ -71,7 +71,14 @@ function chunkText(text: string, maxWords = 350): string[] {
   return chunks;
 }
 
-export async function processSourceQueue(): Promise<{ ingested: number; failed: number }> {
+export interface IngestedSource {
+  title: string;
+  url: string;
+  type: string;
+  chunks: number;
+}
+
+export async function processSourceQueue(): Promise<{ ingested: number; failed: number; sources: IngestedSource[] }> {
   await initStore();
 
   // Fetch sources that haven't been ingested yet
@@ -82,13 +89,14 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
     .limit(MAX_SOURCES_PER_RUN);
 
   if (pending.length === 0) {
-    return { ingested: 0, failed: 0 };
+    return { ingested: 0, failed: 0, sources: [] };
   }
 
   logger.info({ count: pending.length }, 'Worker: processing pending knowledge sources');
 
   let ingested = 0;
   let failed = 0;
+  const ingestedSources: IngestedSource[] = [];
 
   for (const source of pending) {
     const text = await fetchPageText(source.url);
@@ -130,7 +138,8 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
       .where(eq(knowledgeSources.id, source.id));
 
     ingested += inserted;
-    logger.debug({ source: source.title, chunks: inserted }, 'Worker: source ingested');
+    ingestedSources.push({ title: source.title, url: source.url, type: source.type, chunks: inserted });
+    logger.info({ source: source.title, url: source.url, type: source.type, chunks: inserted }, 'Worker: source ingested');
   }
 
   // Enforce chunk limits after ingesting new sources
@@ -140,6 +149,6 @@ export async function processSourceQueue(): Promise<{ ingested: number; failed: 
     await evictExcess('guide', maxPerType);
   }
 
-  logger.info({ ingested, failed }, 'Worker: source queue processing complete');
-  return { ingested, failed };
+  logger.info({ ingested, failed, sources: ingestedSources.map((s) => s.title) }, 'Worker: source queue processing complete');
+  return { ingested, failed, sources: ingestedSources };
 }

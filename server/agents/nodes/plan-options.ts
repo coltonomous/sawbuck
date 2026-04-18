@@ -138,17 +138,13 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         let localPath: string | null = null;
         let renderedImageUrl: string | null = null;
 
-        if (hasFal) {
+        if (hasFal && referenceImageUrl) {
           try {
             const { model: falModel, input: falInput } = buildConceptRenderRequest({
               concept,
               furnitureType: listing.evaluation.furnitureType,
               referenceImageUrl,
               conceptEditModel: agentConfig.conceptEditModel,
-              textToImageModel: agentConfig.falModel,
-              imageSize: agentConfig.conceptRenderSize,
-              afterDescription: generatedPlan?.after_description,
-              styleRecommendation: generatedPlan?.style_recommendation,
             });
             renderPrompt = falInput.prompt as string;
 
