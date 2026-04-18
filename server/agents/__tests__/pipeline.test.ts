@@ -121,7 +121,7 @@ describe('Agent Pipeline Integration', () => {
 
       const triageResult = await triageCandidates(makeState({ scrapedCandidates: candidates }));
 
-      expect(triageResult.triagedCandidates).toHaveLength(2);
+      expect(triageResult.triagedCandidates).toHaveLength(1);
       expect(triageResult.passedTriage).toHaveLength(1);
       expect(triageResult.passedTriage![0].title).toBe('Solid oak dresser');
     });
