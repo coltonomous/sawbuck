@@ -1,8 +1,9 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/index.js';
-import { users, listings, projects, listingClicks, platformSettings, regions } from '../db/schema.js';
+import { users, listings, listingImages, projects, listingClicks, platformSettings, regions } from '../db/schema.js';
 import { eq, and, count, inArray } from 'drizzle-orm';
+import { deleteFromS3 } from '../lib/s3.js';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig, refreshAgentConfig } from '../agents/config.js';
 import { triggerRun, restartScheduler } from '../agents/scheduler.js';
 import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
@@ -146,24 +147,29 @@ adminRouter.post('/agent/run', async (c) => {
   return c.json({ ok: true, message: 'Agent pipeline run started' });
 });
 
-// DELETE /listings — bulk delete agent-discovered listings by IDs
+// DELETE /listings — bulk delete listings by IDs (admin only)
 adminRouter.delete('/listings', async (c) => {
   const { ids } = await c.req.json<{ ids: number[] }>();
   if (!Array.isArray(ids) || ids.length === 0) {
     return c.json({ error: 'ids array is required' }, 400);
   }
 
-  // Only allow deleting agent-discovered listings (userId IS NULL)
-  const agentListings = await db.select({ id: listings.id })
+  const matched = await db.select({ id: listings.id })
     .from(listings)
     .where(inArray(listings.id, ids));
 
-  const validIds = agentListings.map(l => l.id);
+  const validIds = matched.map(l => l.id);
   if (validIds.length === 0) {
-    return c.json({ error: 'No matching agent listings found' }, 404);
+    return c.json({ error: 'No matching listings found' }, 404);
   }
 
-  // FK cascades handle listingImages and conceptRenders
+  // Clean up S3 files before deleting DB records
+  const images = await db.select().from(listingImages).where(inArray(listingImages.listingId, validIds));
+  for (const img of images) {
+    if (img.localPathOriginal) await deleteFromS3(img.localPathOriginal);
+    if (img.localPathResized) await deleteFromS3(img.localPathResized);
+  }
+
   await db.delete(listings).where(inArray(listings.id, validIds));
 
   return c.json({ ok: true, deleted: validIds.length });

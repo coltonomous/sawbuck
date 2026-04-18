@@ -651,13 +651,16 @@ listingsRouter.delete('/:id/dismiss', async (c) => {
   return c.json({ ok: true });
 });
 
-// DELETE /:id — delete a listing (owner only)
+// DELETE /:id — delete a listing (owner or admin)
 listingsRouter.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = parseId(c);
   if (isNaN(id)) return c.json({ error: 'Invalid ID' }, 400);
 
-  const existing = await getOwnedListing(id, user.id);
+  const isAdmin = user.role === 'admin';
+  const existing = isAdmin
+    ? await db.select().from(listings).where(eq(listings.id, id)).then(r => r[0] ?? null)
+    : await getOwnedListing(id, user.id);
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   // Delete image files from S3 before removing DB records
@@ -668,7 +671,7 @@ listingsRouter.delete('/:id', async (c) => {
   }
 
   await db.delete(listingImages).where(eq(listingImages.listingId, id));
-  await db.delete(listings).where(and(eq(listings.id, id), eq(listings.userId, user.id)));
+  await db.delete(listings).where(eq(listings.id, id));
 
   return c.json({ ok: true });
 });
