@@ -190,7 +190,7 @@ Your analysis and profit verdict must account for the COMPLETE listing, not just
       woodConfidence: analysis.wood_confidence,
       analysisRaw: JSON.stringify({
         ...analysis,
-        rag_sources_used: ragChunksUsed,
+        rag_sources_used: ragSources.length,
         rag_source_titles: ragSourceTitles,
         rag_sources: ragSources,
       }),
