@@ -782,7 +782,7 @@ export default function Settings() {
                         <span className="text-sm font-medium text-gray-900 truncate">{s.title}</span>
                       </div>
                       {!s.source.startsWith('project:') && (
-                        <p className="text-[11px] text-gray-400 truncate mt-0.5">{s.source}</p>
+                        <a href={s.source} target="_blank" rel="noopener noreferrer" className="text-[11px] text-blue-400 hover:text-blue-300 truncate mt-0.5 block">{s.source}</a>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-0.5 shrink-0">
@@ -821,6 +821,7 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.cron_schedule', configKey: 'cronSchedule', label: 'Run schedule (cron)', type: 'text', group: 'Scheduling' },
+  { key: 'agent.listing_max_age_days', configKey: 'listingMaxAgeDays', label: 'Listing max age (days)', type: 'number', group: 'Scheduling' },
   { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },

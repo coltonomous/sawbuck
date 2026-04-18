@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 import logger from '../lib/logger.js';
 import { recordJobRun } from '../lib/metrics.js';
 import { msUntilNext } from '../lib/cron.js';
+import { processSourceQueue } from '../rag/ingest/worker.js';
 
 let running = false;
 let runStartedAt: number | null = null;
@@ -65,6 +66,10 @@ async function runOnce(): Promise<void> {
     if (result.summary) {
       logger.info({ runId, summary: result.summary }, 'Agent scheduler: run complete');
     }
+    // Drain any knowledge gaps queued by discoverKnowledge during this run
+    processSourceQueue().catch((err) =>
+      logger.warn({ err: String(err) }, 'Agent scheduler: knowledge source queue drain failed (non-fatal)'),
+    );
   } catch (err) {
     const durationMs = runStartedAt ? Date.now() - runStartedAt : 0;
     recordJobRun('agent-pipeline', 'failure', durationMs);

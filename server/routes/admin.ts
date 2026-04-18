@@ -251,7 +251,7 @@ adminRouter.delete('/regions/:id', async (c) => {
 });
 
 // ── Metrics / observability ────────────────────────────────────────
-const RECONCILE_OVERDUE_MS = 12 * 60 * 60 * 1000; // 12 hours
+const CLEANUP_OVERDUE_MS = 36 * 60 * 60 * 1000; // 36 hours
 
 adminRouter.get('/metrics', async (c) => {
   const [projectChunks, productChunks, guideChunks] = await Promise.all([
@@ -264,7 +264,7 @@ adminRouter.get('/metrics', async (c) => {
   const jobHealth = getAllJobHealth();
   const overdueJobs: string[] = [];
 
-  if (isJobOverdue('reconcile', RECONCILE_OVERDUE_MS)) overdueJobs.push('reconcile');
+  if (isJobOverdue('listing_cleanup', CLEANUP_OVERDUE_MS)) overdueJobs.push('listing_cleanup');
 
   return c.json({
     rag: {

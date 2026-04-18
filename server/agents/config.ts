@@ -76,6 +76,9 @@ export function getAgentConfig() {
 
     // RAG knowledge base bounds (per-type chunk limit)
     ragMaxChunksPerType: resolveInt('rag.max_chunks_per_type', 'RAG_MAX_CHUNKS_PER_TYPE', 500),
+
+    // Listing cleanup — agent-discovered listings older than this are deleted
+    listingMaxAgeDays: resolveInt('agent.listing_max_age_days', 'AGENT_LISTING_MAX_AGE_DAYS', 30),
   };
 }
 
