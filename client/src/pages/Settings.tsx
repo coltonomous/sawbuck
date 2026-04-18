@@ -821,6 +821,7 @@ const CONFIG_FIELDS: ConfigField[] = [
   { key: 'agent.triage_threshold', configKey: 'triageConfidenceThreshold', label: 'Triage confidence threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.deal_score_threshold', configKey: 'dealScoreThreshold', label: 'Deal score threshold', type: 'number', group: 'Quality Gates' },
   { key: 'agent.cron_schedule', configKey: 'cronSchedule', label: 'Run schedule (cron)', type: 'text', group: 'Scheduling' },
+  { key: 'agent.listing_max_age_days', configKey: 'listingMaxAgeDays', label: 'Listing max age (days)', type: 'number', group: 'Scheduling' },
   { key: 'agent.min_delay_ms', configKey: 'minDelayBetweenRequestsMs', label: 'Min delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.max_delay_ms', configKey: 'maxDelayBetweenRequestsMs', label: 'Max delay between requests (ms)', type: 'number', group: 'Anti-Blocking' },
   { key: 'agent.daily_request_cap', configKey: 'dailyRequestCap', label: 'Daily request cap', type: 'number', group: 'Anti-Blocking' },
