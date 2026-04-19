@@ -2,7 +2,6 @@ import { serve } from '@hono/node-server';
 import app from './app.js';
 import { bootstrapKnowledgeBase } from './rag/bootstrap.js';
 import { startScheduler, stopScheduler } from './agents/scheduler.js';
-import { promoteAdmin } from './lib/seed-admin.js';
 import { seedPlatformDefaults } from './integrations/registry.js';
 import { db, pool } from './db/index.js';
 import { sessions } from './db/schema.js';
@@ -15,8 +14,11 @@ logger.info(`Server running on http://localhost:${port}`);
 
 const server = serve({ fetch: app.fetch, port });
 
-// Promote ADMIN_EMAIL user to admin role (idempotent)
-promoteAdmin();
+if (process.env.ADMIN_EMAIL) {
+  logger.warn(
+    'ADMIN_EMAIL is set but auto-promotion is disabled — promote admins manually via `npx tsx scripts/promote-admin.ts <email>`',
+  );
+}
 
 // Seed platform settings and initial region if tables are empty
 seedPlatformDefaults();
@@ -103,5 +105,13 @@ async function shutdown() {
 
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
+
+process.on('unhandledRejection', (reason) => {
+  logger.error({ err: reason }, 'Unhandled promise rejection');
+});
+
+process.on('uncaughtException', (err) => {
+  logger.fatal({ err }, 'Uncaught exception');
+});
 
 export default app;

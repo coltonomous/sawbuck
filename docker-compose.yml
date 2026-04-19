@@ -38,5 +38,33 @@ services:
         awslogs-group: /sawbuck/app
         awslogs-create-group: "true"
 
+  backup:
+    image: postgres:16-alpine
+    depends_on:
+      - postgres
+    environment:
+      - BACKUP_S3_BUCKET=${BACKUP_S3_BUCKET:-}
+      - BACKUP_S3_PREFIX=${BACKUP_S3_PREFIX:-sawbuck/db}
+      - BACKUP_INTERVAL_HOURS=${BACKUP_INTERVAL_HOURS:-24}
+      - BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-14}
+      - PGHOST=postgres
+      - PGUSER=postgres
+      - PGDATABASE=sawbuck
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sawbuck}
+      - AWS_REGION=${AWS_REGION:-us-west-2}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+    volumes:
+      - ./scripts/backup-db.sh:/usr/local/bin/backup-db.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/backup-db.sh"]
+    # on-failure so an unset BACKUP_S3_BUCKET (script exits 0) won't thrash
+    restart: on-failure:5
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ${AWS_REGION:-us-west-2}
+        awslogs-group: /sawbuck/backup
+        awslogs-create-group: "true"
+
 volumes:
   postgres_data:
