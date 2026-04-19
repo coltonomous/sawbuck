@@ -12,7 +12,7 @@ vi.mock('../../../agents/anti-blocking.js', () => ({
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
 
-import { enrich } from '../ingest.js';
+import { enrich, stripOfferUpBoilerplate } from '../ingest.js';
 import type { ScrapedCandidate } from '../../common/types.js';
 
 function mockResponse(opts: { ok: boolean; status: number; text?: () => Promise<string> }) {
@@ -249,6 +249,29 @@ describe('OfferUp enrich', () => {
     expect(enriched[0].longitude).toBeUndefined();
   });
 
+  it('strips trailing semicolons from descriptions', async () => {
+    const nextData = {
+      props: {
+        pageProps: {
+          listing: {
+            description: 'Solid maple dining table with four chairs;',
+            photos: [],
+          },
+        },
+      },
+    };
+
+    mockFetch.mockResolvedValueOnce(mockResponse({
+      ok: true,
+      status: 200,
+      text: () => Promise.resolve(`<html><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(nextData)}</script></html>`),
+    }));
+
+    const { enriched } = await enrich([makeCandidate()]);
+
+    expect(enriched[0].description).toBe('Solid maple dining table with four chairs');
+  });
+
   it('returns undefined coordinates when location data is missing', async () => {
     const nextData = {
       props: {
@@ -271,5 +294,56 @@ describe('OfferUp enrich', () => {
 
     expect(enriched[0].latitude).toBeUndefined();
     expect(enriched[0].longitude).toBeUndefined();
+  });
+});
+
+describe('stripOfferUpBoilerplate', () => {
+  it('removes leading "Make an offer on ..." sentence', () => {
+    const input = 'Make an offer on this vintage oak chair. Needs refinishing.';
+    expect(stripOfferUpBoilerplate(input)).toBe('Needs refinishing.');
+  });
+
+  it('removes leading "Make an Offer" with uppercase O', () => {
+    const input = 'Make an Offer on mid-century credenza! Priced to sell.';
+    expect(stripOfferUpBoilerplate(input)).toBe('Priced to sell.');
+  });
+
+  it('removes bare "Make an offer." call-to-action anywhere in text', () => {
+    const input = 'Real walnut dresser. Make an offer. Pickup only.';
+    expect(stripOfferUpBoilerplate(input)).toBe('Real walnut dresser. Pickup only.');
+  });
+
+  it('strips a single trailing semicolon', () => {
+    expect(stripOfferUpBoilerplate('Oak bench;')).toBe('Oak bench');
+  });
+
+  it('strips multiple trailing semicolons', () => {
+    expect(stripOfferUpBoilerplate('Oak bench;;;')).toBe('Oak bench');
+  });
+
+  it('strips trailing semicolon with surrounding whitespace', () => {
+    expect(stripOfferUpBoilerplate('Oak bench ;  ')).toBe('Oak bench');
+  });
+
+  it('preserves internal semicolons', () => {
+    expect(stripOfferUpBoilerplate('Oak bench; sturdy and clean')).toBe('Oak bench; sturdy and clean');
+  });
+
+  it('combines boilerplate removal with trailing semicolon strip', () => {
+    const input = 'Make an offer on this dresser. Solid cherry, excellent condition;';
+    expect(stripOfferUpBoilerplate(input)).toBe('Solid cherry, excellent condition');
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(stripOfferUpBoilerplate('')).toBe('');
+  });
+
+  it('returns empty string for whitespace-only input', () => {
+    expect(stripOfferUpBoilerplate('   \n  ')).toBe('');
+  });
+
+  it('leaves plain descriptions unchanged', () => {
+    const input = 'Gorgeous antique armoire, circa 1920s.';
+    expect(stripOfferUpBoilerplate(input)).toBe(input);
   });
 });

@@ -204,6 +204,25 @@ const importHits = new Map<string, { count: number; resetAt: number }>();
 const IMPORT_LIMIT = 5;
 const IMPORT_WINDOW_MS = 10 * 60 * 1000;
 
+// Per-(user, listing) cooldown for expensive LLM / render operations — prevents
+// a user from burning through the AI budget by hammering a single listing.
+// Keys are `${userId}:${listingId}:${op}`; values are the epoch ms of the last
+// successful request. A new call within the window returns 429.
+const costCooldowns = new Map<string, number>();
+const ANALYZE_COOLDOWN_MS = 60 * 1000; // 1 min between re-analyses of same listing
+const RENDER_COOLDOWN_MS = 30 * 1000; // 30s between re-renders of same listing
+
+function checkCostCooldown(userId: string, listingId: number, op: string, windowMs: number): number | null {
+  const key = `${userId}:${listingId}:${op}`;
+  const now = Date.now();
+  const last = costCooldowns.get(key);
+  if (last !== undefined && now - last < windowMs) {
+    return Math.ceil((windowMs - (now - last)) / 1000);
+  }
+  costCooldowns.set(key, now);
+  return null;
+}
+
 // POST /import — import a listing by pasting its URL
 listingsRouter.post('/import', async (c) => {
   const user = c.get('user');
@@ -687,6 +706,12 @@ listingsRouter.post('/:id/analyze', async (c) => {
   const listing = await getVisibleListing(id, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
+  const retryAfter = checkCostCooldown(user.id, id, 'analyze', ANALYZE_COOLDOWN_MS);
+  if (retryAfter !== null) {
+    c.header('Retry-After', String(retryAfter));
+    return c.json({ error: `Recently analyzed — try again in ${retryAfter}s.` }, 429);
+  }
+
   // Track the analysis job in backgroundJobs so clients can poll status
   const jobId = crypto.randomUUID();
   await db.insert(backgroundJobs).values({
@@ -738,6 +763,12 @@ listingsRouter.post('/:id/render', async (c) => {
 
   if (!process.env.FAL_KEY) {
     return c.json({ error: 'Concept rendering is not configured (FAL_KEY not set)' }, 503);
+  }
+
+  const retryAfter = checkCostCooldown(user.id, id, 'render', RENDER_COOLDOWN_MS);
+  if (retryAfter !== null) {
+    c.header('Retry-After', String(retryAfter));
+    return c.json({ error: `Recently rendered — try again in ${retryAfter}s.` }, 429);
   }
 
   const body = await c.req.json().catch(() => ({}));

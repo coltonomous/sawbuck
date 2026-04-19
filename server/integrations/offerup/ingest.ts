@@ -254,12 +254,12 @@ type DetailResult = {
 
 // OfferUp's rendered pages and meta tags prefix descriptions with a
 // "Make an offer on ..." call-to-action that isn't part of the seller's text.
-function stripOfferUpBoilerplate(description: string): string {
+export function stripOfferUpBoilerplate(description: string): string {
   let cleaned = description
     .replace(/^\s*Make an? (?:Offer|offer)\s+on\b[^.!\n]*[.!\n]?\s*/g, '')
     .replace(/\bMake an? (?:Offer|offer)\b[.!]?\s*/g, '')
-    .trim()
-    .replace(/;+\s*$/, '');
+    .replace(/[\s;]+$/, '')
+    .trim();
   return cleaned;
 }
 

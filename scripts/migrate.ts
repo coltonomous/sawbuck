@@ -9,7 +9,7 @@ import path from 'node:path';
 // before the migrator was wired into the deploy. On the first migrator run
 // against such a DB we seed __drizzle_migrations with their journal timestamps
 // so migrate() doesn't re-run their CREATE TABLE statements.
-const HISTORICAL_TAGS = new Set([
+export const HISTORICAL_TAGS = new Set([
   '0000_pale_vertigo',
   '0001_normal_revanche',
   '0002_simplify_finish_concepts',
@@ -18,7 +18,15 @@ const HISTORICAL_TAGS = new Set([
 
 const MIGRATIONS_FOLDER = path.resolve('./drizzle');
 
-async function seedHistoricalIfNeeded(pool: Pool): Promise<void> {
+// Minimal query interface so tests can pass a stub.
+export interface Queryable {
+  query(sql: string, params?: unknown[]): Promise<{ rows: any[] }>;
+}
+
+export async function seedHistoricalIfNeeded(
+  pool: Queryable,
+  migrationsFolder: string = MIGRATIONS_FOLDER,
+): Promise<void> {
   const { rows: tableCheck } = await pool.query(
     `SELECT to_regclass('public.listings') AS t`,
   );
@@ -38,11 +46,11 @@ async function seedHistoricalIfNeeded(pool: Pool): Promise<void> {
   );
   if (countRows[0].c > 0) return;
 
-  const journalPath = path.join(MIGRATIONS_FOLDER, 'meta', '_journal.json');
+  const journalPath = path.join(migrationsFolder, 'meta', '_journal.json');
   const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
   for (const entry of journal.entries) {
     if (!HISTORICAL_TAGS.has(entry.tag)) continue;
-    const sqlPath = path.join(MIGRATIONS_FOLDER, `${entry.tag}.sql`);
+    const sqlPath = path.join(migrationsFolder, `${entry.tag}.sql`);
     const sql = fs.readFileSync(sqlPath, 'utf8');
     const hash = crypto.createHash('sha256').update(sql).digest('hex');
     await pool.query(
@@ -68,7 +76,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err) => {
-  console.error('Migration failed:', err);
-  process.exit(1);
-});
+// Only run as a script when invoked directly (not when imported by tests).
+const invokedAsScript = import.meta.url === `file://${process.argv[1]}`;
+if (invokedAsScript) {
+  main().catch((err) => {
+    console.error('Migration failed:', err);
+    process.exit(1);
+  });
+}

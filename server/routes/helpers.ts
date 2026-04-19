@@ -5,7 +5,7 @@ import { eq, and, or, isNull } from 'drizzle-orm';
 
 /** Parse and validate a positive integer route parameter. Returns NaN if invalid. */
 export function parseId(c: Context, name = 'id'): number {
-  const val = parseInt(c.req.param(name));
+  const val = parseInt(c.req.param(name) ?? '', 10);
   return Number.isFinite(val) && val > 0 ? val : NaN;
 }
 
