@@ -82,7 +82,77 @@ export function extractJson(raw: string): string {
 
 function sanitizeJson(json: string): string {
   // Fix bare decimals like .1 → 0.1 (valid JS but not valid JSON)
-  return json.replace(/([^.\d]|^)(\.\d+)/g, '$10$2');
+  let out = json.replace(/([^.\d]|^)(\.\d+)/g, '$10$2');
+  // Escape unescaped quotes and literal control chars inside string values
+  out = fixStringContents(out);
+  // Remove trailing commas before } or ]
+  out = out.replace(/,(\s*[}\]])/g, '$1');
+  return out;
+}
+
+/**
+ * Walk the JSON and repair common LLM mistakes inside string literals:
+ *   - unescaped double quotes (the model wrote `"he said "hi""` instead of `"he said \"hi\""`)
+ *   - literal control characters (raw newlines, tabs) inside a string
+ *
+ * Heuristic for deciding whether a `"` inside a string is the real closing
+ * quote or an unescaped inner one: look ahead past whitespace. If the next
+ * non-whitespace character is one of `,`, `}`, `]`, `:`, or end-of-input,
+ * it's the closing quote. Otherwise escape it and keep scanning.
+ */
+function fixStringContents(json: string): string {
+  let result = '';
+  let inString = false;
+  let escape = false;
+
+  for (let i = 0; i < json.length; i++) {
+    const ch = json[i];
+
+    if (!inString) {
+      result += ch;
+      if (ch === '"') inString = true;
+      continue;
+    }
+
+    if (escape) {
+      result += ch;
+      escape = false;
+      continue;
+    }
+
+    if (ch === '\\') {
+      result += ch;
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      let j = i + 1;
+      while (j < json.length && (json[j] === ' ' || json[j] === '\t' || json[j] === '\n' || json[j] === '\r')) j++;
+      const next = j < json.length ? json[j] : '';
+      if (next === '' || next === ',' || next === '}' || next === ']' || next === ':') {
+        result += ch;
+        inString = false;
+      } else {
+        result += '\\"';
+      }
+      continue;
+    }
+
+    // Escape raw control characters that are illegal inside a JSON string
+    if (ch === '\n') { result += '\\n'; continue; }
+    if (ch === '\r') { result += '\\r'; continue; }
+    if (ch === '\t') { result += '\\t'; continue; }
+    const code = ch.charCodeAt(0);
+    if (code < 0x20) {
+      result += '\\u' + code.toString(16).padStart(4, '0');
+      continue;
+    }
+
+    result += ch;
+  }
+
+  return result;
 }
 
 /**
@@ -175,8 +245,18 @@ export async function analyzeWithVisionStructured<T>(
       const parsed = JSON.parse(jsonStr);
       return zodSchema.parse(parsed);
     } catch (err) {
-      logger.error({ model: model ?? config.ai.model, rawText: rawText.slice(0, 500), extracted: jsonStr.slice(0, 500) }, 'Failed to parse structured response');
-      throw new Error(`Failed to parse model response as JSON: ${(err as Error).message}`);
+      const message = (err as Error).message;
+      const posMatch = message.match(/position (\d+)/);
+      const context = posMatch
+        ? jsonStr.slice(Math.max(0, Number(posMatch[1]) - 80), Number(posMatch[1]) + 80)
+        : undefined;
+      logger.error({
+        model: model ?? config.ai.model,
+        rawText: rawText.slice(0, 500),
+        extracted: jsonStr.slice(0, 500),
+        failureContext: context,
+      }, 'Failed to parse structured response');
+      throw new Error(`Failed to parse model response as JSON: ${message}`);
     }
   });
 }

@@ -78,4 +78,44 @@ describe('extractJson', () => {
     const result = JSON.parse(extractJson(raw));
     expect(result).toHaveLength(2);
   });
+
+  it('repairs unescaped inner quotes in a string value', () => {
+    const raw = '{"reasoning": "The listing says "like new" condition"}';
+    const result = JSON.parse(extractJson(raw));
+    expect(result.reasoning).toBe('The listing says \"like new\" condition');
+  });
+
+  it('repairs unescaped quotes across multiple properties', () => {
+    const raw = '{"a": "has "quoted" word", "b": "plain", "c": "another "quote" here"}';
+    const result = JSON.parse(extractJson(raw));
+    expect(result.a).toBe('has \"quoted\" word');
+    expect(result.b).toBe('plain');
+    expect(result.c).toBe('another \"quote\" here');
+  });
+
+  it('repairs unescaped quote in a batched assessments response', () => {
+    const raw = '{"assessments": [{"id": "a1", "reasoning": "A "mid-century" dresser", "confidence_score": 0.8}]}';
+    const result = JSON.parse(extractJson(raw));
+    expect(result.assessments[0].reasoning).toBe('A \"mid-century\" dresser');
+    expect(result.assessments[0].confidence_score).toBe(0.8);
+  });
+
+  it('strips trailing commas before closing braces and brackets', () => {
+    const raw = '{"items": [1, 2, 3,], "done": true,}';
+    const result = JSON.parse(extractJson(raw));
+    expect(result.items).toEqual([1, 2, 3]);
+    expect(result.done).toBe(true);
+  });
+
+  it('escapes literal newlines inside string values', () => {
+    const raw = '{"note": "line one\nline two"}';
+    const result = JSON.parse(extractJson(raw));
+    expect(result.note).toBe('line one\nline two');
+  });
+
+  it('preserves already-escaped quotes without double-escaping', () => {
+    const raw = '{"text": "already \\"escaped\\" here"}';
+    const result = JSON.parse(extractJson(raw));
+    expect(result.text).toBe('already \"escaped\" here');
+  });
 });
