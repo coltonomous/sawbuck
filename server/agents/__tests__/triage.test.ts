@@ -133,8 +133,8 @@ describe('triageCandidates', () => {
   });
 
   it('batches listings to reduce API calls', async () => {
-    // 15 candidates = 1 batch of 15 (BATCH_SIZE=15)
-    const candidates = Array.from({ length: 15 }, (_, i) =>
+    // 10 candidates = 1 batch of 10 (BATCH_SIZE=10)
+    const candidates = Array.from({ length: 10 }, (_, i) =>
       makeCandidate({ externalId: `batch-${i}`, title: `Item ${i}` }),
     );
 
@@ -145,9 +145,9 @@ describe('triageCandidates', () => {
 
     const result = await triageCandidates(makeState(candidates));
 
-    expect(mockAnalyze).toHaveBeenCalledTimes(1); // 1 batch of 15
-    expect(result.triagedCandidates).toHaveLength(15);
-    expect(result.passedTriage).toHaveLength(15);
+    expect(mockAnalyze).toHaveBeenCalledTimes(1); // 1 batch of 10
+    expect(result.triagedCandidates).toHaveLength(10);
+    expect(result.passedTriage).toHaveLength(10);
   });
 
   it('respects the max cap', async () => {
@@ -167,22 +167,22 @@ describe('triageCandidates', () => {
   });
 
   it('handles batch errors gracefully', async () => {
-    // 20 candidates = 2 batches of 15 + 5
+    // 20 candidates = 2 batches of 10 + 10
     const candidates = Array.from({ length: 20 }, (_, i) =>
       makeCandidate({ externalId: `err-${i}`, title: `Item ${i}` }),
     );
 
     mockAnalyze
       .mockResolvedValueOnce(makeBatchResponse(
-        candidates.slice(0, 15).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
+        candidates.slice(0, 10).map((c) => ({ id: c.externalId, wood: true, flip: true, confidence: 0.8 })),
       ))
       .mockRejectedValueOnce(new Error('API error'));
 
     const result = await triageCandidates(makeState(candidates));
 
-    expect(result.triagedCandidates).toHaveLength(15); // first batch succeeded
+    expect(result.triagedCandidates).toHaveLength(10); // first batch succeeded
     expect(result.errors).toHaveLength(1); // second batch failed
-    expect(result.triageCount).toEqual({ craigslist: 15 });
+    expect(result.triageCount).toEqual({ craigslist: 10 });
   });
 });
 
@@ -198,8 +198,12 @@ describe('TriageSchema', () => {
     expect(TriageSchema.parse(valid)).toEqual(valid);
   });
 
-  it('rejects missing fields', () => {
-    expect(() => TriageSchema.parse({ is_wood_furniture: true })).toThrow();
+  it('fills defaults for missing fields', () => {
+    const result = TriageSchema.parse({ is_wood_furniture: true });
+    expect(result.has_flip_potential).toBe(false);
+    expect(result.furniture_type).toBe('unknown');
+    expect(result.reasoning).toBe('');
+    expect(result.confidence_score).toBe(0);
   });
 
   it('rejects confidence out of range', () => {
