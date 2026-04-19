@@ -71,11 +71,11 @@ You will receive a batch of listings. Assess each one independently.`;
 
 export const TriageItemSchema = z.object({
   id: z.string(),
-  is_wood_furniture: z.boolean().nullable().transform((v) => v ?? false),
-  has_flip_potential: z.boolean().nullable().transform((v) => v ?? false),
-  furniture_type: z.string().nullable().transform((v) => v ?? 'unknown'),
-  reasoning: z.string().nullable().transform((v) => v ?? ''),
-  confidence_score: z.number().min(0).max(1).nullable().transform((v) => v ?? 0),
+  is_wood_furniture: z.boolean().nullish().transform((v) => v ?? false),
+  has_flip_potential: z.boolean().nullish().transform((v) => v ?? false),
+  furniture_type: z.string().nullish().transform((v) => v ?? 'unknown'),
+  reasoning: z.string().nullish().transform((v) => v ?? ''),
+  confidence_score: z.number().min(0).max(1).nullish().transform((v) => v ?? 0),
 });
 
 export const TriageBatchSchema = z.object({
@@ -117,7 +117,7 @@ Your job: look at the photo and confirm or reject. Is this ACTUALLY wood furnitu
 Answer with a JSON object. Be strict — if you can see it's not wood, or not furniture, or clearly not worth refinishing, reject it.`;
 
 const VisualCheckSchema = z.object({
-  confirmed: z.boolean().nullable().transform((v) => v ?? false),
+  confirmed: z.boolean().nullish().transform((v) => v ?? false),
   reasoning: z.string().default(''),
 });
 
