@@ -172,7 +172,7 @@ listingsRouter.get('/', async (c) => {
       })
         .from(conceptRenders)
         .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
-        ;
+        .orderBy(conceptRenders.listingId, conceptRenders.conceptIndex);
       for (const r of renders) {
         if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
         conceptMap.get(r.listingId)!.push({
@@ -515,7 +515,9 @@ listingsRouter.get('/:id', async (c) => {
       label: conceptRenders.label,
       summary: conceptRenders.summary,
       localPath: conceptRenders.localPath,
-    }).from(conceptRenders).where(eq(conceptRenders.listingId, id));
+    }).from(conceptRenders)
+      .where(eq(conceptRenders.listingId, id))
+      .orderBy(conceptRenders.conceptIndex);
   } catch (err) {
     logger.warn({ listingId: id, error: String(err) }, 'Failed to load concept renders for listing detail — run db:push or apply migration 0002');
   }
@@ -742,15 +744,29 @@ listingsRouter.post('/:id/render', async (c) => {
   const finishType = (body.finishType as string) || 'stain';
   const label = (body.label as string) || finishType;
   const summary = (body.summary as string) || '';
+  const requestedIndex = typeof body.conceptIndex === 'number' ? body.conceptIndex as number : null;
 
-  // Check if a render already exists for this listing + finishType
-  const existing = await db.select().from(conceptRenders)
-    .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
-    .then(r => r[0]);
+  // Locate any existing render to update. Prefer the explicit conceptIndex;
+  // otherwise fall back to matching by finishType for backwards compat.
+  const existing = requestedIndex !== null
+    ? await db.select().from(conceptRenders)
+        .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.conceptIndex, requestedIndex)))
+        .then(r => r[0])
+    : await db.select().from(conceptRenders)
+        .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
+        .then(r => r[0]);
 
   if (existing?.localPath) {
     return c.json({ render: existing });
   }
+
+  // For a new row, pick the next free slot for this listing.
+  const nextIndex = existing
+    ? existing.conceptIndex
+    : await db.select({ idx: conceptRenders.conceptIndex })
+        .from(conceptRenders)
+        .where(eq(conceptRenders.listingId, id))
+        .then(rows => rows.reduce((m, r) => Math.max(m, r.idx + 1), 0));
 
   // Generate concept render
   try {
@@ -794,7 +810,7 @@ listingsRouter.post('/:id/render', async (c) => {
       return c.json({ error: 'Image generation returned no results' }, 502);
     }
 
-    const s3Key = `concepts/${id}_${finishType}.webp`;
+    const s3Key = `concepts/${id}_${nextIndex}_${finishType}.webp`;
     const response = await fetch(imageUrl);
     const buffer = Buffer.from(await response.arrayBuffer());
     const webpBuffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
@@ -808,6 +824,7 @@ listingsRouter.post('/:id/render', async (c) => {
     } else {
       await db.insert(conceptRenders).values({
         listingId: id,
+        conceptIndex: nextIndex,
         finishType,
         label,
         summary: summary || label,
@@ -818,7 +835,7 @@ listingsRouter.post('/:id/render', async (c) => {
     }
 
     const render = await db.select().from(conceptRenders)
-      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
+      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.conceptIndex, nextIndex)))
       .then(r => r[0]);
 
     return c.json({ render });

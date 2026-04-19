@@ -159,9 +159,11 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
         }
       }
 
-      // Render all concepts in parallel (with timeout) then persist rows
+      // Render all concepts in parallel (with timeout) then persist rows.
+      // conceptIndex is the slot (0..N-1) — used as the uniqueness key so two
+      // concepts with the same finishType for one listing don't collide.
       const FAL_TIMEOUT_MS = 120_000; // 2 min per render
-      const renderResults = await Promise.all(concepts.map(async (concept) => {
+      const renderResults = await Promise.all(concepts.map(async (concept, conceptIndex) => {
         let renderPrompt = '';
         let localPath: string | null = null;
         let renderedImageUrl: string | null = null;
@@ -187,7 +189,7 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
             const imageUrl = renderResult.data?.images?.[0]?.url;
             if (imageUrl) {
               renderedImageUrl = imageUrl;
-              const s3Key = `concepts/${listing.listingId}_${concept.finishType}.webp`;
+              const s3Key = `concepts/${listing.listingId}_${conceptIndex}_${concept.finishType}.webp`;
               localPath = s3Key;
               const response = await fetch(imageUrl);
               const buffer = Buffer.from(await response.arrayBuffer());
@@ -203,25 +205,26 @@ export async function generatePlanOptions(state: AgentState): Promise<Partial<Ag
               });
             }
           } catch (err) {
-            logger.warn({ listingId: listing.listingId, finishType: concept.finishType, error: String(err) }, 'Concept render failed (non-fatal)');
+            logger.warn({ listingId: listing.listingId, finishType: concept.finishType, conceptIndex, error: String(err) }, 'Concept render failed (non-fatal)');
           }
         }
 
-        return { concept, renderPrompt, renderedImageUrl, localPath };
+        return { concept, conceptIndex, renderPrompt, renderedImageUrl, localPath };
       }));
 
       // Persist concept_renders rows
-      for (const { concept, renderPrompt, renderedImageUrl, localPath } of renderResults) {
+      for (const { concept, conceptIndex, renderPrompt, renderedImageUrl, localPath } of renderResults) {
         await db.insert(conceptRenders).values({
           listingId: listing.listingId,
           agentRunId: state.runId,
+          conceptIndex,
           finishType: concept.finishType,
           label: concept.label,
           summary: concept.summary,
           prompt: renderPrompt,
           renderedImageUrl,
           localPath,
-        }).onConflictDoNothing({ target: [conceptRenders.listingId, conceptRenders.finishType] });
+        }).onConflictDoNothing({ target: [conceptRenders.listingId, conceptRenders.conceptIndex] });
       }
 
       logger.info({ listingId: listing.listingId, conceptCount: concepts.length }, 'Plan + finish concepts generated');

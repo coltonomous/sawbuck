@@ -323,6 +323,7 @@ export const conceptRenders = pgTable('concept_renders', {
   id: serial('id').primaryKey(),
   listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
   agentRunId: text('agent_run_id'),
+  conceptIndex: integer('concept_index').notNull(),
   finishType: text('finish_type').notNull(),
   label: text('label').notNull(),
   summary: text('summary').notNull(),
@@ -332,7 +333,7 @@ export const conceptRenders = pgTable('concept_renders', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
 }, (table) => [
   index('idx_concept_renders_listing_id').on(table.listingId),
-  uniqueIndex('idx_concept_renders_listing_finish').on(table.listingId, table.finishType),
+  uniqueIndex('idx_concept_renders_listing_index').on(table.listingId, table.conceptIndex),
 ]);
 
 // ============================================================
