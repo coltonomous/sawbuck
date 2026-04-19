@@ -13,7 +13,7 @@
 #   ./scripts/setup-cloudwatch-alarms.sh
 set -eu
 
-: "${AWS_REGION:=us-west-2}"
+: "${AWS_REGION:=us-east-1}"
 : "${SNS_ALERT_TOPIC_ARN:?set SNS_ALERT_TOPIC_ARN (subscribe your email/Slack to the topic first)}"
 
 NS=Sawbuck
