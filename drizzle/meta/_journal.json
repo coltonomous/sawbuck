@@ -36,6 +36,13 @@
       "when": 1776570000000,
       "tag": "0004_concept_renders_concept_index",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1776700000000,
+      "tag": "0005_add_missing_tables",
+      "breakpoints": true
     }
   ]
 }
