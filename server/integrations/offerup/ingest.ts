@@ -258,7 +258,8 @@ function stripOfferUpBoilerplate(description: string): string {
   let cleaned = description
     .replace(/^\s*Make an? (?:Offer|offer)\s+on\b[^.!\n]*[.!\n]?\s*/g, '')
     .replace(/\bMake an? (?:Offer|offer)\b[.!]?\s*/g, '')
-    .trim();
+    .trim()
+    .replace(/;+\s*$/, '');
   return cleaned;
 }
 

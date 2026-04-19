@@ -58,9 +58,8 @@ ALTER TABLE concept_renders DROP COLUMN IF EXISTS estimated_hours;
 ALTER TABLE concept_renders DROP COLUMN IF EXISTS estimated_material_cost;
 ALTER TABLE concept_renders DROP COLUMN IF EXISTS estimated_resale_price;
 
--- Unique index on (listing_id, finish_type) for onConflictDoNothing
-CREATE UNIQUE INDEX IF NOT EXISTS idx_concept_renders_listing_finish
-  ON concept_renders USING btree (listing_id, finish_type);
+-- (Old idx_concept_renders_listing_finish was superseded by migration 0004,
+-- which moves uniqueness to (listing_id, concept_index). Don't recreate it.)
 
 -- Consolidate knowledge_chunks: add embedding + content_hash columns
 -- so knowledge_vec is no longer needed as a separate table.
