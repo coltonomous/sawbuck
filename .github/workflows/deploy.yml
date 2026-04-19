@@ -89,8 +89,6 @@ jobs:
           grep -q '^VITE_CDN_DOMAIN=' .env 2>/dev/null || echo 'VITE_CDN_DOMAIN=${{ secrets.VITE_CDN_DOMAIN }}' >> .env
           grep -q '^BRAVE_API_KEY=' .env 2>/dev/null || echo 'BRAVE_API_KEY=${{ secrets.BRAVE_API_KEY }}' >> .env
           grep -q '^BACKUP_S3_BUCKET=' .env 2>/dev/null || echo 'BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}' >> .env
-          grep -q '^ADMIN_EMAIL=' .env 2>/dev/null || echo 'ADMIN_EMAIL=${{ secrets.ADMIN_EMAIL }}' >> .env
-          grep -q '^CORS_ORIGIN=' .env 2>/dev/null || echo 'CORS_ORIGIN=${{ secrets.CORS_ORIGIN }}' >> .env
 
           # Inject AWS credentials into Docker daemon for awslogs driver
           # (IMDS is unreachable from the daemon's log driver context)
