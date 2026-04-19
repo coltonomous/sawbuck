@@ -18,5 +18,11 @@ su -s /bin/sh app -c 'node -e "
     .catch(e => { console.warn(\"Pre-push migration warning:\", e.message); return pool.end(); });
 "'
 
-# Push schema to Postgres and start server as the unprivileged app user
+# Apply numbered migrations from drizzle/ (the source of truth for schema
+# changes that need ordered, hand-written SQL — e.g. backfills). Then
+# drizzle-kit push --force as a safety net catches any schema drift between
+# the live DB and the schema.ts definitions.
+echo "Applying drizzle migrations..."
+su -s /bin/sh app -c "npx tsx scripts/migrate.ts"
+
 exec su -s /bin/sh app -c "npx drizzle-kit push --force && NODE_ENV=production npx tsx server/index.ts"

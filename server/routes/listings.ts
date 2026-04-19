@@ -172,7 +172,7 @@ listingsRouter.get('/', async (c) => {
       })
         .from(conceptRenders)
         .where(sql`${conceptRenders.listingId} IN (${sql.join(agentListingIds.map(id => sql`${id}`), sql`, `)})`)
-        ;
+        .orderBy(conceptRenders.listingId, conceptRenders.conceptIndex);
       for (const r of renders) {
         if (!conceptMap.has(r.listingId)) conceptMap.set(r.listingId, []);
         conceptMap.get(r.listingId)!.push({
@@ -203,6 +203,25 @@ listingsRouter.get('/', async (c) => {
 const importHits = new Map<string, { count: number; resetAt: number }>();
 const IMPORT_LIMIT = 5;
 const IMPORT_WINDOW_MS = 10 * 60 * 1000;
+
+// Per-(user, listing) cooldown for expensive LLM / render operations — prevents
+// a user from burning through the AI budget by hammering a single listing.
+// Keys are `${userId}:${listingId}:${op}`; values are the epoch ms of the last
+// successful request. A new call within the window returns 429.
+const costCooldowns = new Map<string, number>();
+const ANALYZE_COOLDOWN_MS = 60 * 1000; // 1 min between re-analyses of same listing
+const RENDER_COOLDOWN_MS = 30 * 1000; // 30s between re-renders of same listing
+
+function checkCostCooldown(userId: string, listingId: number, op: string, windowMs: number): number | null {
+  const key = `${userId}:${listingId}:${op}`;
+  const now = Date.now();
+  const last = costCooldowns.get(key);
+  if (last !== undefined && now - last < windowMs) {
+    return Math.ceil((windowMs - (now - last)) / 1000);
+  }
+  costCooldowns.set(key, now);
+  return null;
+}
 
 // POST /import — import a listing by pasting its URL
 listingsRouter.post('/import', async (c) => {
@@ -515,7 +534,9 @@ listingsRouter.get('/:id', async (c) => {
       label: conceptRenders.label,
       summary: conceptRenders.summary,
       localPath: conceptRenders.localPath,
-    }).from(conceptRenders).where(eq(conceptRenders.listingId, id));
+    }).from(conceptRenders)
+      .where(eq(conceptRenders.listingId, id))
+      .orderBy(conceptRenders.conceptIndex);
   } catch (err) {
     logger.warn({ listingId: id, error: String(err) }, 'Failed to load concept renders for listing detail — run db:push or apply migration 0002');
   }
@@ -685,6 +706,12 @@ listingsRouter.post('/:id/analyze', async (c) => {
   const listing = await getVisibleListing(id, user.id);
   if (!listing) return c.json({ error: 'Not found' }, 404);
 
+  const retryAfter = checkCostCooldown(user.id, id, 'analyze', ANALYZE_COOLDOWN_MS);
+  if (retryAfter !== null) {
+    c.header('Retry-After', String(retryAfter));
+    return c.json({ error: `Recently analyzed — try again in ${retryAfter}s.` }, 429);
+  }
+
   // Track the analysis job in backgroundJobs so clients can poll status
   const jobId = crypto.randomUUID();
   await db.insert(backgroundJobs).values({
@@ -738,19 +765,39 @@ listingsRouter.post('/:id/render', async (c) => {
     return c.json({ error: 'Concept rendering is not configured (FAL_KEY not set)' }, 503);
   }
 
+  const retryAfter = checkCostCooldown(user.id, id, 'render', RENDER_COOLDOWN_MS);
+  if (retryAfter !== null) {
+    c.header('Retry-After', String(retryAfter));
+    return c.json({ error: `Recently rendered — try again in ${retryAfter}s.` }, 429);
+  }
+
   const body = await c.req.json().catch(() => ({}));
   const finishType = (body.finishType as string) || 'stain';
   const label = (body.label as string) || finishType;
   const summary = (body.summary as string) || '';
+  const requestedIndex = typeof body.conceptIndex === 'number' ? body.conceptIndex as number : null;
 
-  // Check if a render already exists for this listing + finishType
-  const existing = await db.select().from(conceptRenders)
-    .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
-    .then(r => r[0]);
+  // Locate any existing render to update. Prefer the explicit conceptIndex;
+  // otherwise fall back to matching by finishType for backwards compat.
+  const existing = requestedIndex !== null
+    ? await db.select().from(conceptRenders)
+        .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.conceptIndex, requestedIndex)))
+        .then(r => r[0])
+    : await db.select().from(conceptRenders)
+        .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
+        .then(r => r[0]);
 
   if (existing?.localPath) {
     return c.json({ render: existing });
   }
+
+  // For a new row, pick the next free slot for this listing.
+  const nextIndex = existing
+    ? existing.conceptIndex
+    : await db.select({ idx: conceptRenders.conceptIndex })
+        .from(conceptRenders)
+        .where(eq(conceptRenders.listingId, id))
+        .then(rows => rows.reduce((m, r) => Math.max(m, r.idx + 1), 0));
 
   // Generate concept render
   try {
@@ -794,7 +841,7 @@ listingsRouter.post('/:id/render', async (c) => {
       return c.json({ error: 'Image generation returned no results' }, 502);
     }
 
-    const s3Key = `concepts/${id}_${finishType}.webp`;
+    const s3Key = `concepts/${id}_${nextIndex}_${finishType}.webp`;
     const response = await fetch(imageUrl);
     const buffer = Buffer.from(await response.arrayBuffer());
     const webpBuffer = await sharp(buffer).webp({ quality: 85 }).toBuffer();
@@ -808,6 +855,7 @@ listingsRouter.post('/:id/render', async (c) => {
     } else {
       await db.insert(conceptRenders).values({
         listingId: id,
+        conceptIndex: nextIndex,
         finishType,
         label,
         summary: summary || label,
@@ -818,7 +866,7 @@ listingsRouter.post('/:id/render', async (c) => {
     }
 
     const render = await db.select().from(conceptRenders)
-      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.finishType, finishType)))
+      .where(and(eq(conceptRenders.listingId, id), eq(conceptRenders.conceptIndex, nextIndex)))
       .then(r => r[0]);
 
     return c.json({ render });

@@ -18,16 +18,6 @@ function getRecBadge(listing: Listing): { label: string; bg: string } | null {
   } catch { return null; }
 }
 
-function getCardHighlight(listing: Listing): string {
-  if (!listing.analysisRaw) return 'border-gray-200 shadow-sm';
-  try {
-    const rec = JSON.parse(listing.analysisRaw)?.flip_recommendation as FlipRecommendation | undefined;
-    if (rec === 'strong_buy') return 'border-2 border-green-400 shadow-md shadow-green-100/60';
-    if (rec === 'buy') return 'border-2 border-blue-400 shadow-md shadow-blue-100/60';
-  } catch { /* fall through */ }
-  return 'border border-gray-200 shadow-sm';
-}
-
 type SortOption = 'newest' | 'price_low' | 'price_high';
 
 const PAGE_SIZE = 24;
@@ -225,7 +215,7 @@ export default function Dashboard() {
               <Link
                 key={listing.id}
                 to={`/listings/${listing.id}`}
-                className={`group block bg-white rounded-lg overflow-hidden transition-all hover:shadow-lg ${getCardHighlight(listing)}`}
+                className="group block bg-white rounded-lg overflow-hidden transition-all hover:shadow-lg border border-gray-200 shadow-sm"
               >
                 <div className="aspect-[4/3] overflow-hidden bg-gray-100 relative">
                   {listing.primaryImage ? (

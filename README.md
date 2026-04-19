@@ -53,10 +53,11 @@ docker compose up --build -d
 ```
 
 Starts PostgreSQL (with pgvector) and the app. On first boot:
-- Schema is created automatically via `drizzle-kit push`
+- Numbered migrations in `drizzle/` are applied via `scripts/migrate.ts` (see `drizzle/README.md`), then `drizzle-kit push --force` runs as a drift safety-net
 - Default platform settings and region are seeded
 - RAG knowledge base bootstraps (downloads embedding model ~80MB)
 - Agent scheduler starts after 10s (if `AWS_REGION` is set)
+- Startup aborts (exit 1) if required env vars are missing — see the Secrets table below
 
 ### Local development
 
@@ -64,8 +65,9 @@ Starts PostgreSQL (with pgvector) and the app. On first boot:
 # Start Postgres
 docker compose up -d postgres
 
-# Install deps and push schema
+# Install deps and apply schema
 npm install
+DATABASE_URL=postgresql://postgres:sawbuck@localhost:5432/sawbuck npm run db:migrate
 DATABASE_URL=postgresql://postgres:sawbuck@localhost:5432/sawbuck npx drizzle-kit push --force
 
 # Start dev servers (API :3001 + Vite :5173)
@@ -78,13 +80,18 @@ npm run dev
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `AWS_REGION` | Yes | AWS region for Bedrock (e.g. `us-west-2`) |
+`DATABASE_URL`, `BETTER_AUTH_SECRET`, `AWS_REGION`, `S3_BUCKET`, and `FAL_KEY` are required in production — the server exits 1 at startup if any are missing (see `server/lib/env.ts`). In dev/test only `DATABASE_URL` + `BETTER_AUTH_SECRET` are required.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | Postgres connection string (also required in dev/test) |
+| `BETTER_AUTH_SECRET` | Yes | Auth encryption key (32+ chars) |
+| `AWS_REGION` | Yes (prod) | AWS region for Bedrock (e.g. `us-west-2`) |
 | `AWS_ACCESS_KEY_ID` | If not using IAM role | Bedrock credentials |
 | `AWS_SECRET_ACCESS_KEY` | If not using IAM role | Bedrock credentials |
-| `S3_BUCKET` | Yes | S3 bucket for image storage |
+| `S3_BUCKET` | Yes (prod) | S3 bucket for image storage |
+| `FAL_KEY` | Yes (prod) | fal.ai API key — required so `/render` does not 503 |
 | `VITE_CDN_DOMAIN` | Yes | CloudFront distribution domain for serving images |
-| `BETTER_AUTH_SECRET` | Yes | Auth encryption key (32+ chars) |
-| `FAL_KEY` | Optional | fal.ai API key for concept renders |
 | `EBAY_CLIENT_ID` | Optional | eBay Browse API credentials |
 | `EBAY_CLIENT_SECRET` | Optional | eBay Browse API credentials |
 | `GOOGLE_CLIENT_ID` | Optional | Google OAuth |
@@ -104,7 +111,6 @@ All pipeline parameters are stored in the database and editable from the admin S
 | `agent.eval_model` | `qwen.qwen3-vl-235b-a22b` | Bedrock model ID for vision eval |
 | `agent.max_triages` | `50` | Max listings to triage per run |
 | `agent.max_evals` | `10` | Max listings to evaluate per run |
-| `agent.max_renders` | `5` | Max listings to render concepts for |
 | `agent.cron_schedule` | `0 */4 * * *` | Cron schedule for pipeline runs |
 | `agent.target_city` | `seattle` | Legacy CL city (use regions instead) |
 | `agent.triage_threshold` | `0.75` | Min confidence to pass triage |
@@ -121,7 +127,8 @@ Settings can also be set via `AGENT_*` env vars as initial defaults before the D
 | `npm start` | Run production server |
 | `npm test` | Run test suite |
 | `npm run agent` | Run agent pipeline once (manual trigger) |
-| `npm run db:push` | Push schema to database |
+| `npm run db:migrate` | Apply numbered migrations from `drizzle/` (source of truth) |
+| `npm run db:push` | Push schema to database (drift safety-net after migrate) |
 | `npm run db:studio` | Open Drizzle Studio |
 | `npm run ingest` | Populate RAG knowledge base |
 

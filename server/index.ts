@@ -8,6 +8,12 @@ import { sessions } from './db/schema.js';
 import { lt } from 'drizzle-orm';
 import logger from './lib/logger.js';
 import { recordJobRun, isJobOverdue } from './lib/metrics.js';
+import { assertRequiredEnv } from './lib/env.js';
+
+// Fail fast in production if any mandatory env var is missing. Missing AWS or
+// auth credentials would otherwise surface as cryptic runtime errors buried in
+// per-request logs long after startup succeeded.
+assertRequiredEnv();
 
 const port = parseInt(process.env.PORT || '3001');
 logger.info(`Server running on http://localhost:${port}`);

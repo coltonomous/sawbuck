@@ -94,7 +94,9 @@ projectsRouter.get('/:id', async (c) => {
   let concepts: (typeof conceptRenders.$inferSelect)[] = [];
   if (listing) {
     try {
-      concepts = await db.select().from(conceptRenders).where(eq(conceptRenders.listingId, listing.id));
+      concepts = await db.select().from(conceptRenders)
+        .where(eq(conceptRenders.listingId, listing.id))
+        .orderBy(conceptRenders.conceptIndex);
     } catch (err) {
       logger.warn({ listingId: listing.id, error: String(err) }, 'Failed to load concept renders for project — run db:push or apply migration 0002');
     }

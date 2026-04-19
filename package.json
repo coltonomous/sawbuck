@@ -10,6 +10,7 @@
     "build": "cd client && npx vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "db:push": "drizzle-kit push",
+    "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "agent": "tsx --env-file=.env scripts/agent-runner.ts",
     "test": "vitest",

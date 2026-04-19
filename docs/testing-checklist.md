@@ -108,6 +108,7 @@ Covers all user-facing flows for both admin and regular user accounts.
 - [ ] Analysis results populate when complete
 - [ ] Analysis error shows if failed
 - [ ] RAG sources toggle shows/hides source references
+- [ ] Re-analyzing the same listing within 60s returns 429 with Retry-After (cost-runaway cooldown)
 
 **Finish Concepts:**
 - [ ] Finish concept cards display for qualified listings (3 cards showing different surface treatments)
@@ -128,6 +129,7 @@ Covers all user-facing flows for both admin and regular user accounts.
   - [ ] Cannot trigger twice
   - [ ] Button hidden once concepts exist
 - [ ] Pipeline-discovered listings (buy/strong buy) never show a generate button — data is pre-loaded
+- [ ] Re-rendering a concept within 30s of a previous render returns 429 with Retry-After (cost-runaway cooldown)
 
 **Actions:**
 - [ ] "View Original" opens source URL in new tab
