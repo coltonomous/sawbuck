@@ -139,6 +139,7 @@ export async function analyzeWithVisionStructured<T>(
   _toolDescription: string,
   systemPrompt?: string,
   model?: string,
+  maxTokens?: number,
 ): Promise<T> {
   const bedrock = getClient();
   return withRetry(async () => {
@@ -163,7 +164,7 @@ export async function analyzeWithVisionStructured<T>(
       modelId: model ?? config.ai.model,
       system,
       messages,
-      inferenceConfig: { maxTokens: config.ai.maxTokens },
+      inferenceConfig: { maxTokens: maxTokens ?? config.ai.maxTokens },
     }));
 
     const textBlock = response.output?.message?.content?.find((b) => 'text' in b);

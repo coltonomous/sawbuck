@@ -9,7 +9,7 @@ import { listings } from '../../db/schema.js';
 import { inArray } from 'drizzle-orm';
 import logger from '../../lib/logger.js';
 
-const BATCH_SIZE = 15;
+const BATCH_SIZE = 10;
 
 // ─── Rule-based pre-filter (eliminates obvious non-furniture before LLM) ──
 
@@ -272,6 +272,7 @@ export async function triageCandidates(state: AgentState): Promise<Partial<Agent
         'Assess whether each listing is wood furniture with flip potential',
         systemPrompt,
         agentConfig.triageModel,
+        8000, // thinking model: <think> block consumes budget before JSON output
       );
 
       const resultMap = new Map(result.assessments.map((a) => [a.id, a]));
