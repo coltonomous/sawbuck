@@ -263,7 +263,7 @@ export function stripOfferUpBoilerplate(description: string): string {
   return cleaned;
 }
 
-async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | null> {
+export async function fetchDetailPage(url: string): Promise<DetailResult | 'removed' | null> {
   try {
     const res = await offerUpFetch(url);
 
