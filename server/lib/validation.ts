@@ -105,6 +105,7 @@ export const togglePlatformSchema = z.object({
 const SUPPORTED_LISTING_HOSTS = [
   /^([a-z]+\.)?craigslist\.org$/,
   /^(www\.)?offerup\.com$/,
+  /^offerup\.co$/,
   /^(www\.)?ebay\.com$/,
 ];
 
