@@ -248,17 +248,7 @@ listingsRouter.post('/import', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  let { url } = parsed.data;
-
-  // Resolve offerup.co short URLs (e.g. from the mobile app) to canonical offerup.com URLs
-  if (new URL(url).hostname === 'offerup.co') {
-    try {
-      const redirected = await fetch(url, { redirect: 'follow' });
-      url = redirected.url;
-    } catch {
-      return c.json({ error: 'Could not resolve OfferUp short URL. Please try the full listing URL instead.' }, 400);
-    }
-  }
+  const { url } = parsed.data;
 
   // Detect platform from URL
   const platformPatterns: { pattern: RegExp; platform: Platform; extractId: (url: string) => string | null }[] = [
@@ -273,6 +263,12 @@ listingsRouter.post('/import', async (c) => {
       extractId: (u) => u.match(/\/item\/detail\/(\d+)/)?.[1] ?? u.match(/\/offer\/(\d+)/)?.[1] ?? null,
     },
     {
+      // Short URLs shared from the mobile app (e.g. https://offerup.co/5q2yTnIRu2b)
+      pattern: /offerup\.co/,
+      platform: 'offerup',
+      extractId: (u) => new URL(u).pathname.slice(1) || null,
+    },
+    {
       pattern: /ebay\.com/,
       platform: 'ebay',
       extractId: (u) => u.match(/\/itm\/(\d+)/)?.[1] ?? u.match(/\/itm\/[^/]+\/(\d+)/)?.[1] ?? null,
@@ -281,7 +277,7 @@ listingsRouter.post('/import', async (c) => {
 
   const match = platformPatterns.find((p) => p.pattern.test(url));
   if (!match) {
-    return c.json({ error: 'Unsupported platform. Supported: Craigslist, OfferUp, Mercari, eBay.' }, 400);
+    return c.json({ error: 'Unsupported platform. Supported: Craigslist, OfferUp, eBay.' }, 400);
   }
 
   const externalId = match.extractId(url);
@@ -336,6 +332,36 @@ listingsRouter.post('/import', async (c) => {
   const listingId = inserted.id;
   (async () => {
     try {
+      // For OfferUp listings (including offerup.co short URLs), fetch the detail
+      // page first so image URLs and description are available before downloading.
+      // offerUpFetch uses browser headers and follows redirects, resolving short URLs.
+      if (match.platform === 'offerup') {
+        try {
+          const { fetchDetailPage } = await import('../integrations/offerup/ingest.js');
+          const detail = await fetchDetailPage(url);
+          if (detail && detail !== 'removed') {
+            if (detail.imageUrls.length > 0) {
+              await db.insert(listingImages).values(
+                detail.imageUrls.slice(0, 5).map((imageUrl, i) => ({
+                  listingId,
+                  sourceUrl: imageUrl,
+                  isPrimary: i === 0,
+                })),
+              );
+            }
+            const updates: Record<string, unknown> = {};
+            if (detail.description) updates.description = detail.description;
+            if (detail.latitude != null) updates.latitude = detail.latitude;
+            if (detail.longitude != null) updates.longitude = detail.longitude;
+            if (Object.keys(updates).length > 0) {
+              await db.update(listings).set(updates).where(eq(listings.id, listingId));
+            }
+          }
+        } catch (err) {
+          logger.warn({ listingId, error: String(err) }, 'Could not fetch OfferUp detail page for imported listing (non-fatal)');
+        }
+      }
+
       await downloadListingImages(listingId);
       await processListingImages(listingId);
       await analyzeListing(listingId);

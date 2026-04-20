@@ -229,7 +229,7 @@ export default function Listings() {
             <p className="text-sm text-red-600 mt-2">{importError}</p>
           ) : (
             <p className="text-xs text-gray-400 mt-2">
-              Craigslist, OfferUp, Mercari, eBay, or Facebook Marketplace
+              Craigslist, OfferUp, or eBay
             </p>
           )}
         </div>
