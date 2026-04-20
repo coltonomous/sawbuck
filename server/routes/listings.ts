@@ -248,7 +248,17 @@ listingsRouter.post('/import', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  const { url } = parsed.data;
+  let { url } = parsed.data;
+
+  // Resolve offerup.co short URLs (e.g. from the mobile app) to canonical offerup.com URLs
+  if (new URL(url).hostname === 'offerup.co') {
+    try {
+      const redirected = await fetch(url, { redirect: 'follow' });
+      url = redirected.url;
+    } catch {
+      return c.json({ error: 'Could not resolve OfferUp short URL. Please try the full listing URL instead.' }, 400);
+    }
+  }
 
   // Detect platform from URL
   const platformPatterns: { pattern: RegExp; platform: Platform; extractId: (url: string) => string | null }[] = [
