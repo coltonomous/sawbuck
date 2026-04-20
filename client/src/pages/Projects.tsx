@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type PipelineProject } from '../api';
+import { resolveImageUrl } from '../utils';
 import { useToast } from '../components/Toast';
 import { SkeletonKanban } from '../components/Skeleton';
 import { PROJECT_PIPELINE_STATUSES, PROJECT_STATUS_META } from '@shared/constants';
@@ -113,7 +114,7 @@ export default function Projects() {
                       >
                         {project.primaryImagePath && (
                           <img
-                            src={`/images/${project.primaryImagePath}`}
+                            src={resolveImageUrl(project.primaryImagePath)}
                             alt={project.name}
                             className="w-full h-24 object-cover rounded-md mb-2.5"
                           />
