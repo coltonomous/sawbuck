@@ -350,6 +350,7 @@ listingsRouter.post('/import', async (c) => {
               );
             }
             const updates: Record<string, unknown> = {};
+            if (detail.title) updates.title = detail.title;
             if (detail.description) updates.description = detail.description;
             if (detail.latitude != null) updates.latitude = detail.latitude;
             if (detail.longitude != null) updates.longitude = detail.longitude;

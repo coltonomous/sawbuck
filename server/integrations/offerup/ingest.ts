@@ -246,6 +246,7 @@ export async function enrich(candidates: ScrapedCandidate[]): Promise<EnrichResu
 }
 
 type DetailResult = {
+  title?: string;
   description: string;
   imageUrls: string[];
   latitude?: number;
@@ -308,7 +309,9 @@ export async function fetchDetailPage(url: string): Promise<DetailResult | 'remo
             }
           }
 
+          const title = (listing.title ?? listing.name ?? '') as string;
           return {
+            title: title || undefined,
             description: stripOfferUpBoilerplate(listing.description ?? ''),
             imageUrls,
             latitude,
@@ -330,7 +333,12 @@ export async function fetchDetailPage(url: string): Promise<DetailResult | 'remo
       imageUrls.push(ogImageMatch[1]);
     }
 
-    return { description, imageUrls };
+    // og:title or <title> tag, stripping the " | OfferUp" / " - OfferUp" suffix
+    const ogTitleMatch = html.match(/<meta\s+property="og:title"\s+content="([^"]+)"/i)
+      ?? html.match(/<title>([^<]+)<\/title>/i);
+    const rawTitle = ogTitleMatch?.[1]?.replace(/\s*[|\-–]\s*OfferUp\s*$/i, '').trim();
+
+    return { title: rawTitle || undefined, description, imageUrls };
   } catch (err) {
     logger.warn({ url, error: String(err) }, 'OfferUp integration: detail page fetch failed');
     return null;
