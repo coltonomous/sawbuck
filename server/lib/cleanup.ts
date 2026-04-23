@@ -4,8 +4,8 @@
  */
 
 import { db } from '../db/index.js';
-import { listings } from '../db/schema.js';
-import { and, isNull, lt, sql } from 'drizzle-orm';
+import { listings, projects } from '../db/schema.js';
+import { and, isNull, lt, notExists, eq, sql } from 'drizzle-orm';
 import { agentConfig } from '../agents/config.js';
 import logger from './logger.js';
 
@@ -17,6 +17,9 @@ export async function cleanupOldListings(): Promise<{ deleted: number }> {
     and(
       isNull(listings.userId),
       lt(sql`COALESCE(${listings.postedAt}, ${listings.scrapedAt})`, cutoff),
+      notExists(
+        db.select({ id: projects.id }).from(projects).where(eq(projects.listingId, listings.id)),
+      ),
     ),
   ).returning({ id: listings.id });
 

@@ -96,7 +96,9 @@ export default function Dashboard() {
 
   useEffect(() => { loadListings(); }, [loadListings]);
 
-  // Infinite scroll — load next page when sentinel enters viewport
+  // Infinite scroll — load next page when sentinel enters viewport.
+  // `loading` is included so the observer is (re-)attached after the initial
+  // fetch completes and the sentinel div is actually rendered.
   useEffect(() => {
     const el = sentinelRef.current;
     if (!el) return;
@@ -106,7 +108,7 @@ export default function Dashboard() {
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [loadMore]);
+  }, [loadMore, loading]);
 
   const platforms = useMemo(() =>
     [...new Set(allListings.map(l => l.platform))].sort(),
