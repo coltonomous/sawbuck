@@ -408,7 +408,7 @@ export default function ListingDetail() {
       </div>
 
       {/* Admin actions (separated from user actions) */}
-      {listing.userId === null && session?.user?.role === 'admin' && (
+      {listing.platform !== 'sawbuck' && session?.user?.role === 'admin' && (
         <div className="flex items-center gap-2 mb-4 pt-2 border-t border-dashed border-gray-200">
           <span className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">Admin</span>
           <button
