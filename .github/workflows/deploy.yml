@@ -92,6 +92,12 @@ jobs:
           grep -q '^BRAVE_API_KEY=' .env 2>/dev/null || echo 'BRAVE_API_KEY=${{ secrets.BRAVE_API_KEY }}' >> .env
           grep -q '^BACKUP_S3_BUCKET=' .env 2>/dev/null || echo 'BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}' >> .env
 
+          # Stop containers before restarting Docker daemon to avoid restart: unless-stopped
+          # racing against docker compose down and leaving orphaned container names
+          echo "Stopping app container..."
+          docker compose stop -t 30 app 2>/dev/null || true
+          docker compose down --remove-orphans 2>/dev/null || true
+
           # Inject AWS credentials into Docker daemon for awslogs driver
           # (IMDS is unreachable from the daemon's log driver context)
           _ak=\$(grep '^AWS_ACCESS_KEY_ID=' .env | cut -d= -f2-)
@@ -102,12 +108,6 @@ jobs:
           sudo systemctl daemon-reload
           sudo systemctl restart docker
           sleep 3
-
-          # Stop app container gracefully (SIGTERM triggers shutdown handler
-          # which stops the scheduler, drains in-flight requests, and closes the pool)
-          echo "Stopping app container..."
-          docker compose stop -t 30 app 2>/dev/null || true
-          docker compose down --remove-orphans 2>/dev/null || true
 
           # Reclaim disk: remove all unused images and build cache (keeps volumes)
           docker image prune -af
