@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders } from '../db/schema.js';
+import { projects, listings, refinishingPlans, materials, projectPhotos, listingImages, conceptRenders, userDismissals } from '../db/schema.js';
 import { eq, and, desc, isNull } from 'drizzle-orm';
 
 import { generateRefinishingPlan, parsePlanSteps } from '../analysis/refinishing.js';
@@ -130,6 +130,7 @@ projectsRouter.post('/', async (c) => {
     }).returning();
 
     await tx.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId));
+    await tx.insert(userDismissals).values({ userId: user.id, listingId }).onConflictDoNothing();
 
     return created;
   });
@@ -168,8 +169,11 @@ projectsRouter.post('/from-concept', async (c) => {
         userId: user.id,
       }).returning();
       await tx.update(listings).set({ status: 'acquired' }).where(eq(listings.id, listingId));
+      await tx.insert(userDismissals).values({ userId: user.id, listingId }).onConflictDoNothing();
       return created;
     });
+  } else {
+    await db.insert(userDismissals).values({ userId: user.id, listingId }).onConflictDoNothing();
   }
 
   try {
