@@ -62,6 +62,8 @@ export function getAgentConfig() {
 
     // Scheduling
     cronSchedule: resolve('agent.cron_schedule', 'AGENT_CRON_SCHEDULE', '0 */4 * * *'),
+    // Master on/off for automated scheduled runs. Manual runs are unaffected.
+    schedulerEnabled: resolve('agent.scheduler_enabled', 'AGENT_SCHEDULER_ENABLED', 'true') === 'true',
 
     // Target
     targetCity: resolve('agent.target_city', 'AGENT_TARGET_CITY', 'seattle'),
