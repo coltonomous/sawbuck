@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region, type KnowledgeSourceSummary } from '../api';
+import { api, type AdminUser, type AgentRun, type PlatformSetting, type Region, type KnowledgeSourceSummary, type ScheduleStatus } from '../api';
 import { useSession } from '../lib/auth';
 import { useToast } from '../components/Toast';
 import { Card, CardHeader } from '../components/ui';
@@ -51,6 +51,8 @@ export default function Settings() {
   const [agentOverrides, setAgentOverrides] = useState<Record<string, string>>({});
   const [agentDraft, setAgentDraft] = useState<Record<string, string>>({});
   const [savingAgent, setSavingAgent] = useState(false);
+  const [schedule, setSchedule] = useState<ScheduleStatus | null>(null);
+  const [togglingSchedule, setTogglingSchedule] = useState(false);
   const [platforms, setPlatforms] = useState<PlatformSetting[]>([]);
   const [regionsData, setRegionsData] = useState<Region[]>([]);
   const [newRegion, setNewRegion] = useState({ name: '', latitude: '', longitude: '', radiusMiles: '30', clSubdomain: '' });
@@ -72,10 +74,11 @@ export default function Settings() {
     if (!isAdmin) return;
     api.getUsers().then(setAdminUsers).catch(() => {});
     api.getAgentRuns().then((data) => setAgentRuns(data.recentRuns)).catch(() => {});
-    api.getAgentSettings().then(({ resolved, overrides }) => {
+    api.getAgentSettings().then(({ resolved, overrides, schedule }) => {
       setAgentConfig(resolved);
       setAgentOverrides(overrides);
       setAgentDraft({});
+      setSchedule(schedule);
     }).catch(() => {});
     api.getPlatforms().then(setPlatforms).catch(() => {});
     api.getRegions().then(setRegionsData).catch(() => {});
@@ -592,6 +595,46 @@ export default function Settings() {
 
       {/* Agent Config tab (admin) */}
       {tab === 'agent' && isAdmin && agentConfig && (
+        <div className="space-y-6">
+        <Card>
+          <CardHeader>Automated Scraping</CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-900">Scheduled runs</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                {schedule?.enabled
+                  ? schedule.nextRunAt
+                    ? `On — next run ${new Date(schedule.nextRunAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} (${schedule.cron})`
+                    : `On (${schedule?.cron ?? ''})`
+                  : 'Paused — the agent will not scrape on a schedule. You can still trigger runs manually from the Agent Runs tab.'}
+              </p>
+            </div>
+            <button
+              disabled={togglingSchedule || !schedule}
+              onClick={async () => {
+                if (!schedule) return;
+                const next = !schedule.enabled;
+                setTogglingSchedule(true);
+                try {
+                  const res = await api.updateAgentSettings({ 'agent.scheduler_enabled': next ? 'true' : 'false' });
+                  setSchedule(res.schedule);
+                  toast('success', next ? 'Scheduled scraping enabled' : 'Scheduled scraping paused');
+                } catch (err) {
+                  toast('error', err instanceof Error ? err.message : 'Failed to update schedule');
+                } finally {
+                  setTogglingSchedule(false);
+                }
+              }}
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${
+                schedule?.enabled ? 'bg-blue-600' : 'bg-gray-200'
+              }`}
+            >
+              <span className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                schedule?.enabled ? 'translate-x-5' : 'translate-x-0'
+              }`} />
+            </button>
+          </div>
+        </Card>
         <AgentConfigCard
           config={agentConfig}
           overrides={agentOverrides}
@@ -606,10 +649,11 @@ export default function Settings() {
             setSavingAgent(true);
             try {
               await api.updateAgentSettings(changed);
-              const { resolved, overrides } = await api.getAgentSettings();
+              const { resolved, overrides, schedule } = await api.getAgentSettings();
               setAgentConfig(resolved);
               setAgentOverrides(overrides);
               setAgentDraft({});
+              setSchedule(schedule);
               toast('success', 'Agent settings saved');
             } catch (err) {
               toast('error', err instanceof Error ? err.message : 'Failed to save settings');
@@ -621,10 +665,11 @@ export default function Settings() {
             setSavingAgent(true);
             try {
               await api.updateAgentSettings({ [key]: '' });
-              const { resolved, overrides } = await api.getAgentSettings();
+              const { resolved, overrides, schedule } = await api.getAgentSettings();
               setAgentConfig(resolved);
               setAgentOverrides(overrides);
               setAgentDraft((prev) => { const next = { ...prev }; delete next[key]; return next; });
+              setSchedule(schedule);
               toast('success', 'Reset to default');
             } catch (err) {
               toast('error', err instanceof Error ? err.message : 'Failed');
@@ -633,6 +678,7 @@ export default function Settings() {
             }
           }}
         />
+        </div>
       )}
 
       {/* Agent Runs tab (admin) */}

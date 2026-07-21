@@ -14,6 +14,7 @@ let runStartedAt: number | null = null;
 let currentRunId: string | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let started = false;
+let nextRunAt: number | null = null;
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
 
@@ -88,13 +89,35 @@ function scheduleNext(): void {
     timer = null;
   }
 
+  if (!agentConfig.schedulerEnabled) {
+    nextRunAt = null;
+    logger.info('Agent scheduler: automated runs paused (scheduler disabled) — nothing scheduled');
+    return;
+  }
+
   const cron = agentConfig.cronSchedule;
   const delayMs = msUntilNext(cron);
   const nextAt = new Date(Date.now() + delayMs);
+  nextRunAt = nextAt.getTime();
   logger.info({ cron, nextAt: nextAt.toISOString(), delayMs }, 'Agent scheduler: next run scheduled');
 
   timer = setTimeout(runOnce, delayMs);
   timer.unref();
+}
+
+/** Current scheduler state, for admin display. */
+export function getScheduleStatus(): {
+  enabled: boolean;
+  cron: string;
+  nextRunAt: string | null;
+  running: boolean;
+} {
+  return {
+    enabled: agentConfig.schedulerEnabled,
+    cron: agentConfig.cronSchedule,
+    nextRunAt: nextRunAt ? new Date(nextRunAt).toISOString() : null,
+    running,
+  };
 }
 
 async function cleanupStaleRuns(): Promise<void> {

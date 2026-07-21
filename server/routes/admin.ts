@@ -5,7 +5,7 @@ import { users, listings, listingImages, projects, listingClicks, platformSettin
 import { eq, and, count, inArray } from 'drizzle-orm';
 import { deleteFromS3 } from '../lib/s3.js';
 import { getAllSettings, updateSetting, deleteSetting, getAgentConfig, refreshAgentConfig } from '../agents/config.js';
-import { triggerRun, restartScheduler } from '../agents/scheduler.js';
+import { triggerRun, restartScheduler, getScheduleStatus } from '../agents/scheduler.js';
 import { getAllJobHealth, isJobOverdue } from '../lib/metrics.js';
 import { chunkCount, listSources } from '../rag/store.js';
 import { isValidCron } from '../lib/cron.js';
@@ -16,7 +16,7 @@ const VALID_SETTINGS = new Set([
   'agent.max_triages', 'agent.max_evals',
   'agent.triage_threshold', 'agent.deal_score_threshold',
   'agent.min_delay_ms', 'agent.max_delay_ms', 'agent.daily_request_cap',
-  'agent.cron_schedule', 'agent.triage_model',
+  'agent.cron_schedule', 'agent.scheduler_enabled', 'agent.triage_model',
   'agent.eval_model', 'agent.fal_model', 'agent.concept_edit_model', 'agent.concept_size',
   'rag.max_chunks_per_type',
 ]);
@@ -106,7 +106,7 @@ adminRouter.get('/settings', async (c) => {
   await refreshAgentConfig();
   const dbSettings = await getAllSettings();
   const resolved = getAgentConfig();
-  return c.json({ resolved, overrides: dbSettings });
+  return c.json({ resolved, overrides: dbSettings, schedule: getScheduleStatus() });
 });
 
 // PATCH /settings — update agent config values
@@ -117,25 +117,28 @@ adminRouter.patch('/settings', async (c) => {
     return c.json({ error: parsed.error.issues[0].message }, 400);
   }
 
-  let cronChanged = false;
+  let scheduleChanged = false;
   for (const [key, value] of Object.entries(parsed.data)) {
     if (key === 'agent.cron_schedule' && value !== '') {
       if (!isValidCron(value)) {
         return c.json({ error: `Invalid cron expression: "${value}". Use 5-field format (minute hour day month weekday), e.g. "0 */4 * * *"` }, 400);
       }
-      cronChanged = true;
+    }
+    if (key === 'agent.scheduler_enabled' && value !== '' && value !== 'true' && value !== 'false') {
+      return c.json({ error: 'agent.scheduler_enabled must be "true" or "false"' }, 400);
     }
     if (value === '') {
       await deleteSetting(key);
-      if (key === 'agent.cron_schedule') cronChanged = true;
     } else {
       await updateSetting(key, value);
     }
+    if (key === 'agent.cron_schedule' || key === 'agent.scheduler_enabled') scheduleChanged = true;
   }
 
-  if (cronChanged) restartScheduler();
+  // Reschedule (or cancel) the next run so cron/enabled edits take effect immediately.
+  if (scheduleChanged) restartScheduler();
 
-  return c.json({ ok: true, resolved: getAgentConfig() });
+  return c.json({ ok: true, resolved: getAgentConfig(), schedule: getScheduleStatus() });
 });
 
 // POST /agent/run — manually trigger an agent pipeline run

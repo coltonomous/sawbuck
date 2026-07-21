@@ -316,6 +316,13 @@ export interface AgentRun {
   errorDetails: Array<{ node: string; message: string; timestamp: string }> | null;
 }
 
+export interface ScheduleStatus {
+  enabled: boolean;
+  cron: string;
+  nextRunAt: string | null;
+  running: boolean;
+}
+
 // API client
 
 
@@ -454,9 +461,9 @@ export const api = {
   deleteUser: (userId: string) =>
     request<{ ok: boolean }>(`/admin/users/${userId}`, { method: 'DELETE' }),
   triggerAgentRun: () => request<{ ok: boolean }>('/admin/agent/run', { method: 'POST' }),
-  getAgentSettings: () => request<{ resolved: Record<string, unknown>; overrides: Record<string, string> }>('/admin/settings'),
+  getAgentSettings: () => request<{ resolved: Record<string, unknown>; overrides: Record<string, string>; schedule: ScheduleStatus }>('/admin/settings'),
   updateAgentSettings: (settings: Record<string, string>) =>
-    request<{ ok: boolean; resolved: Record<string, unknown> }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
+    request<{ ok: boolean; resolved: Record<string, unknown>; schedule: ScheduleStatus }>('/admin/settings', { method: 'PATCH', body: JSON.stringify(settings) }),
   deleteAgentListings: (ids: number[]) =>
     request<{ ok: boolean; deleted: number }>('/admin/listings', { method: 'DELETE', body: JSON.stringify({ ids }) }),
 
