@@ -146,7 +146,13 @@ export async function startScheduler(): Promise<void> {
   }
   started = true;
 
-  logger.info({ cron: agentConfig.cronSchedule }, 'Agent scheduler: starting');
+  // Load DB settings before the first scheduling decision. Without this, a cold
+  // start reads an empty settings cache and falls back to defaults (scheduler
+  // enabled, default cron) — silently ignoring a saved pause toggle or custom
+  // cron until the next refresh.
+  await refreshAgentConfig();
+
+  logger.info({ cron: agentConfig.cronSchedule, enabled: agentConfig.schedulerEnabled }, 'Agent scheduler: starting');
 
   try {
     await initCheckpointer();
