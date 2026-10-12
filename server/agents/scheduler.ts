@@ -17,8 +17,20 @@ let started = false;
 let nextRunAt: number | null = null;
 
 const RUN_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour
+// setTimeout stores its delay as a signed 32-bit int (~24.8 days). Anything
+// larger fires after 1ms, so long cron intervals are reached in hops.
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+function runIsStale(): boolean {
+  return running && runStartedAt !== null && Date.now() - runStartedAt > RUN_TIMEOUT_MS;
+}
 
 async function runOnce(): Promise<void> {
+  // Keep the next cron tick armed while this run is in flight. If the run
+  // hangs, that tick is what notices the timeout below — otherwise nothing
+  // would ever fire again.
+  scheduleNext();
+
   if (running) {
     if (runStartedAt && Date.now() - runStartedAt > RUN_TIMEOUT_MS) {
       logger.error({ runStartedAt: new Date(runStartedAt).toISOString() }, 'Agent scheduler: previous run exceeded timeout, resetting');
@@ -37,12 +49,15 @@ async function runOnce(): Promise<void> {
 
   running = true;
   runStartedAt = Date.now();
-
-  await refreshAgentConfig();
-
   const runId = crypto.randomUUID();
   currentRunId = runId;
   const startedAt = new Date().toISOString();
+
+  try {
+    await refreshAgentConfig();
+  } catch (err) {
+    logger.warn({ runId, error: String(err) }, 'Agent scheduler: config refresh failed, using cached config');
+  }
 
   logger.info({ runId }, 'Agent scheduler: starting pipeline run');
 
@@ -76,9 +91,13 @@ async function runOnce(): Promise<void> {
     recordJobRun('agent-pipeline', 'failure', durationMs);
     logger.error({ runId, error: String(err) }, 'Agent scheduler: run failed');
   } finally {
-    running = false;
-    runStartedAt = null;
-    currentRunId = null;
+    // A run reset by the timeout can still settle later; by then a newer run
+    // owns this state, so leave it alone.
+    if (currentRunId === runId) {
+      running = false;
+      runStartedAt = null;
+      currentRunId = null;
+    }
     scheduleNext();
   }
 }
@@ -96,12 +115,21 @@ function scheduleNext(): void {
   }
 
   const cron = agentConfig.cronSchedule;
-  const delayMs = msUntilNext(cron);
+  let delayMs: number;
+  try {
+    delayMs = msUntilNext(cron);
+  } catch (err) {
+    nextRunAt = null;
+    logger.error({ cron, error: String(err) }, 'Agent scheduler: invalid cron schedule — nothing scheduled');
+    return;
+  }
   const nextAt = new Date(Date.now() + delayMs);
   nextRunAt = nextAt.getTime();
   logger.info({ cron, nextAt: nextAt.toISOString(), delayMs }, 'Agent scheduler: next run scheduled');
 
-  timer = setTimeout(runOnce, delayMs);
+  timer = delayMs > MAX_TIMER_MS
+    ? setTimeout(scheduleNext, MAX_TIMER_MS)
+    : setTimeout(runOnce, delayMs);
   timer.unref();
 }
 
@@ -174,8 +202,8 @@ export function restartScheduler(): void {
 
 /** Manually trigger a pipeline run. Returns false if one is already running. */
 export function triggerRun(): boolean {
-  if (running) return false;
-  runOnce();
+  if (running && !runIsStale()) return false;
+  void runOnce();
   return true;
 }
 
