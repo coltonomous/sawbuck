@@ -1,9 +1,11 @@
 # Drizzle migrations
 
 All schema changes go through hand-written SQL files in this folder, applied
-by `scripts/migrate.ts` on every deploy. Do **not** rely on `drizzle-kit push`
-to mutate schema in production — push is only used at container start as a
-belt-and-suspenders no-op against the already-migrated DB.
+by `scripts/migrate.ts` on every deploy. Do **not** run `drizzle-kit push`
+against production: it drops every table not declared in `schema.ts`, which
+includes the runtime-managed `knowledge_chunks` (RAG) and LangGraph
+`checkpoint*` tables. CI runs the test suite against a migrations-only schema,
+so a `schema.ts` change missing its migration fails any test that touches it.
 
 ## Adding a migration
 
@@ -20,11 +22,16 @@ belt-and-suspenders no-op against the already-migrated DB.
 **The migrator is forward-only.** There are no `down` migrations. If a deploy
 fails mid-migration, recovery is:
 
-1. **Immediate**: roll the EC2 container back to the previous image tag
-   (`docker compose` step in `deploy.yml` rebuilds every time, so
-   `docker image ls` on the host retains the prior image for a short window).
+1. **Immediate**: roll the EC2 container back to the previous image. Each
+   deploy tags the image it replaces as `sawbuck-app:previous`:
+   ```bash
+   cd /opt/sawbuck
+   docker tag sawbuck-app:previous sawbuck-app:latest
+   docker compose up -d --no-build app
+   ```
    The previous app version tolerates the partially-migrated schema for
-   additive-only migrations.
+   additive-only migrations. Only one previous image is kept; the next deploy
+   replaces it.
 2. **If the migration is destructive** (drops a column, changes a type, tightens
    a constraint), restore from the nightly S3 backup (`BACKUP_S3_BUCKET`) and
    re-deploy the prior image.

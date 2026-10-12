@@ -53,7 +53,7 @@ docker compose up --build -d
 ```
 
 Starts PostgreSQL (with pgvector) and the app. On first boot:
-- Numbered migrations in `drizzle/` are applied via `scripts/migrate.ts` (see `drizzle/README.md`), then `drizzle-kit push --force` runs as a drift safety-net
+- Numbered migrations in `drizzle/` are applied via `scripts/migrate.ts` (see `drizzle/README.md`)
 - Default platform settings and region are seeded
 - RAG knowledge base bootstraps (downloads embedding model ~80MB)
 - Agent scheduler starts after 10s (if `AWS_REGION` is set)
@@ -68,7 +68,6 @@ docker compose up -d postgres
 # Install deps and apply schema
 npm install
 DATABASE_URL=postgresql://postgres:sawbuck@localhost:5432/sawbuck npm run db:migrate
-DATABASE_URL=postgresql://postgres:sawbuck@localhost:5432/sawbuck npx drizzle-kit push --force
 
 # Start dev servers (API :3001 + Vite :5173)
 npm run dev
@@ -78,9 +77,9 @@ npm run dev
 
 ### Secrets (`.env` file or GitHub repo secrets)
 
-| Variable | Required | Description |
-|----------|----------|-------------|
 `DATABASE_URL`, `BETTER_AUTH_SECRET`, `AWS_REGION`, `S3_BUCKET`, and `FAL_KEY` are required in production — the server exits 1 at startup if any are missing (see `server/lib/env.ts`). In dev/test only `DATABASE_URL` + `BETTER_AUTH_SECRET` are required.
+
+On deploy, each of these that is set as a GitHub secret overwrites its line in the server's `.env` (so rotating a secret takes effect on the next deploy); unset ones leave the server's value alone.
 
 | Variable | Required | Description |
 |----------|----------|-------------|
@@ -128,7 +127,7 @@ Settings can also be set via `AGENT_*` env vars as initial defaults before the D
 | `npm test` | Run test suite |
 | `npm run agent` | Run agent pipeline once (manual trigger) |
 | `npm run db:migrate` | Apply numbered migrations from `drizzle/` (source of truth) |
-| `npm run db:push` | Push schema to database (drift safety-net after migrate) |
+| `npm run db:push` | Push `schema.ts` straight to a dev database. Drops tables not in `schema.ts` (RAG, checkpoints) — never run against production |
 | `npm run db:studio` | Open Drizzle Studio |
 | `npm run ingest` | Populate RAG knowledge base |
 

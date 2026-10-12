@@ -337,12 +337,13 @@ checkpoints --------- LangGraph state persistence (PostgresSaver)
 ```
 GitHub Push (main) --> GitHub Actions
   |
-  +-- Test job: pgvector service, `npm run db:migrate` (exercises scripts/migrate.ts on every PR), drizzle-kit push, vitest
+  +-- Test job: pgvector service, `npm run db:migrate` (migrations only, same as prod boot), vitest
   |
   +-- Deploy job:
         +-- rsync to EC2
-        +-- Write secrets to .env
-        +-- docker image prune + builder prune
+        +-- Merge GitHub secrets into .env (set secrets overwrite, so rotation works)
+        +-- Tag running image as sawbuck-app:previous (rollback)
+        +-- docker image prune (dangling only) + builder prune
         +-- docker compose build + up
         +-- Health check (curl /health, verifies DB connectivity)
 
@@ -357,9 +358,8 @@ EC2 Instance:
 
 1. `entrypoint.sh`:
    - Create data dirs
-   - Run idempotent pre-push SQL (`scripts/migrate-new-tables.sql`) so `drizzle-kit push` never prompts on tables it can't auto-resolve
-   - Apply numbered migrations via `npx tsx scripts/migrate.ts` (source of truth — see `drizzle/README.md` for the rollback story and historical-seeding behavior)
-   - Run `drizzle-kit push --force` as a drift safety-net, then start server
+   - Run idempotent legacy SQL (`scripts/migrate-new-tables.sql`)
+   - Apply numbered migrations via `npx tsx scripts/migrate.ts` (source of truth — see `drizzle/README.md` for the rollback story and historical-seeding behavior), then start server. No `drizzle-kit push`: it would drop the runtime-managed `knowledge_chunks` and checkpoint tables
 2. Server: `assertRequiredEnv()` fails fast if `DATABASE_URL`, `BETTER_AUTH_SECRET`, `AWS_REGION`, `S3_BUCKET`, or `FAL_KEY` is missing (prod only). Then seed platform settings + default region, bootstrap RAG (incremental sync), start image cleanup scheduler. Admins are promoted manually via `npx tsx scripts/promote-admin.ts <email>` (no auto-promotion to avoid email-squatting races)
 3. If `AWS_REGION` set: start agent scheduler (waits for first interval, use Run Now for immediate trigger). Reconcile runs independently every 6h.
 4. Docker HEALTHCHECK: `GET /health` every 30s (checks DB connectivity, returns 503 if unreachable)

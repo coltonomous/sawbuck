@@ -35,10 +35,8 @@ jobs:
       - run: npm ci
       - name: Enable pgvector
         run: PGPASSWORD=test psql -h localhost -U postgres -d sawbuck_test -c "CREATE EXTENSION IF NOT EXISTS vector;"
-      - name: Apply migrations (exercises scripts/migrate.ts on every PR)
+      - name: Apply migrations (same as production boot)
         run: npm run db:migrate
-      - name: Sync schema (safety net for any drift between schema.ts and migrations)
-        run: npx drizzle-kit push --force
       - name: Build client
         run: cd client && npx vite build
       - run: npx vitest run
@@ -66,9 +64,32 @@ jobs:
             --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.addr }}/32
 
       - name: Deploy to EC2
+        env:
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          AWS_REGION: ${{ secrets.AWS_REGION }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          FAL_KEY: ${{ secrets.FAL_KEY }}
+          S3_BUCKET: ${{ secrets.S3_BUCKET }}
+          VITE_CDN_DOMAIN: ${{ secrets.VITE_CDN_DOMAIN }}
+          BRAVE_API_KEY: ${{ secrets.BRAVE_API_KEY }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
         run: |
           echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
           chmod 400 key.pem
+
+          # GitHub secrets win over the server's .env so rotating one takes
+          # effect on the next deploy. Unset secrets leave the server's value
+          # alone. Values go through a file, not the heredoc below, so `$` and
+          # quotes in a secret survive intact.
+          (umask 077 && : > .env.deploy)
+          for key in BETTER_AUTH_SECRET AWS_REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY \
+                     GOOGLE_CLIENT_ID GOOGLE_CLIENT_SECRET FAL_KEY S3_BUCKET VITE_CDN_DOMAIN \
+                     BRAVE_API_KEY BACKUP_S3_BUCKET; do
+            if [ -n "${!key}" ]; then printf '%s=%s\n' "$key" "${!key}" >> .env.deploy; fi
+          done
 
           rsync -avz --exclude node_modules --exclude .git --exclude .env --exclude data \
             -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
@@ -79,18 +100,15 @@ jobs:
 
           cd /opt/sawbuck
 
-          # Ensure required env vars are in .env (won't overwrite existing values)
-          grep -q '^BETTER_AUTH_SECRET=' .env 2>/dev/null || echo 'BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}' >> .env
-          grep -q '^AWS_REGION=' .env 2>/dev/null || echo 'AWS_REGION=${{ secrets.AWS_REGION }}' >> .env
-          grep -q '^AWS_ACCESS_KEY_ID=' .env 2>/dev/null || echo 'AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}' >> .env
-          grep -q '^AWS_SECRET_ACCESS_KEY=' .env 2>/dev/null || echo 'AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}' >> .env
-          grep -q '^GOOGLE_CLIENT_ID=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}' >> .env
-          grep -q '^GOOGLE_CLIENT_SECRET=' .env 2>/dev/null || echo 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}' >> .env
-          grep -q '^FAL_KEY=' .env 2>/dev/null || echo 'FAL_KEY=${{ secrets.FAL_KEY }}' >> .env
-          grep -q '^S3_BUCKET=' .env 2>/dev/null || echo 'S3_BUCKET=${{ secrets.S3_BUCKET }}' >> .env
-          grep -q '^VITE_CDN_DOMAIN=' .env 2>/dev/null || echo 'VITE_CDN_DOMAIN=${{ secrets.VITE_CDN_DOMAIN }}' >> .env
-          grep -q '^BRAVE_API_KEY=' .env 2>/dev/null || echo 'BRAVE_API_KEY=${{ secrets.BRAVE_API_KEY }}' >> .env
-          grep -q '^BACKUP_S3_BUCKET=' .env 2>/dev/null || echo 'BACKUP_S3_BUCKET=${{ secrets.BACKUP_S3_BUCKET }}' >> .env
+          bash scripts/merge-env.sh .env .env.deploy
+          rm -f .env.deploy
+
+          # Keep the running image as sawbuck-app:previous for rollback (see
+          # drizzle/README.md). The prune below only removes dangling images, so
+          # this tag survives; the image it was moved off becomes dangling and
+          # is cleaned up.
+          prev_image=\$(docker compose images -q app 2>/dev/null | head -1)
+          if [ -n "\$prev_image" ]; then docker tag "\$prev_image" sawbuck-app:previous; fi
 
           # Stop containers before restarting Docker daemon to avoid restart: unless-stopped
           # racing against docker compose down and leaving orphaned container names
@@ -109,8 +127,9 @@ jobs:
           sudo systemctl restart docker
           sleep 3
 
-          # Reclaim disk: remove all unused images and build cache (keeps volumes)
-          docker image prune -af
+          # Reclaim disk: remove dangling images and build cache (keeps volumes
+          # and the :previous rollback image)
+          docker image prune -f
           docker builder prune -af 2>/dev/null || true
 
           docker compose build
@@ -138,7 +157,7 @@ jobs:
           echo "Deploy complete"
           EOF
 
-          rm -f key.pem
+          rm -f key.pem .env.deploy
 
       - name: Close SSH for runner
         if: always()
