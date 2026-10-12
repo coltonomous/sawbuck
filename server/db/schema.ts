@@ -168,6 +168,21 @@ export const userDismissals = pgTable('user_dismissals', {
   uniqueIndex('idx_user_dismissals_unique').on(table.userId, table.listingId),
 ]);
 
+// ============================================================
+// Listing Imports (per-user access to a listing someone else owns)
+// ============================================================
+
+// A listing is unique per (platform, externalId), so when a user imports a URL
+// another user or the agent already has, they get a row here instead of a copy.
+export const listingImports = pgTable('listing_imports', {
+  id: serial('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  listingId: integer('listing_id').notNull().references(() => listings.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex('idx_listing_imports_unique').on(table.userId, table.listingId),
+]);
+
 // scrapeRuns: removed — agent_runs replaced this for the LangGraph pipeline
 
 export const comparables = pgTable('comparables', {

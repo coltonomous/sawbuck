@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { db } from '../db/index.js';
-import { listings, listingImages, conceptRenders, refinishingPlans, materials, userDismissals, listingClicks, users } from '../db/schema.js';
+import { listings, listingImages, listingImports, conceptRenders, refinishingPlans, materials, userDismissals, listingClicks, users } from '../db/schema.js';
 import { eq, ne, desc, asc, and, or, gte, lte, count, sql, isNull, type Column } from 'drizzle-orm';
 import { analyzeListing } from '../analysis/vision.js';
 import { downloadListingImages } from '../images/downloader.js';
@@ -17,7 +17,7 @@ import { uploadToS3, deleteFromS3, mimeFromExt } from '../lib/s3.js';
 import { validateUpload, UploadError } from '../lib/upload.js';
 import { inArray } from 'drizzle-orm';
 import type { Platform } from '../../shared/constants.js';
-import { parseId, escapeLike, getVisibleListing, getEditableListing, getOwnedListing } from './helpers.js';
+import { parseId, escapeLike, getVisibleListing, getEditableListing, getOwnedListing, importedBy } from './helpers.js';
 
 export const listingsRouter = new Hono();
 
@@ -32,6 +32,8 @@ listingsRouter.get('/', async (c) => {
     : [or(
         // User's own scraped listings (non-sawbuck)
         and(eq(listings.userId, user.id), sql`${listings.platform} != 'sawbuck'`),
+        // Listings the user imported after another user (or the agent) had them
+        importedBy(user.id),
         // Community sawbuck listings from other users
         and(sql`${listings.platform} = 'sawbuck'`, sql`${listings.userId} != ${user.id}`),
         // Agent-discovered listings (userId IS NULL)
@@ -117,8 +119,9 @@ listingsRouter.get('/', async (c) => {
   if (status) {
     conditions.push(eq(listings.status, status as 'new' | 'analyzed' | 'watching' | 'acquired' | 'dismissed' | 'removed'));
   } else {
-    // Exclude removed/dismissed listings and user-dismissed listings from the default feed
-    conditions.push(sql`${listings.status} NOT IN ('removed', 'dismissed')`);
+    // Exclude removed/dismissed listings and user-dismissed listings from the default feed.
+    // A listing the user explicitly imported still shows for them.
+    conditions.push(or(sql`${listings.status} NOT IN ('removed', 'dismissed')`, importedBy(user.id))!);
     conditions.push(sql`${listings.id} NOT IN (SELECT listing_id FROM user_dismissals WHERE user_id = ${user.id})`);
   }
   if (search || pagination.search) {
@@ -296,18 +299,19 @@ listingsRouter.post('/import', async (c) => {
       and(eq(userDismissals.userId, user.id), eq(userDismissals.listingId, existing.id))
     );
 
-    // If the agent globally dismissed it, restore it so it appears in feeds
-    if (existing.status === 'dismissed' || existing.status === 'removed') {
-      await db.update(listings)
-        .set({ status: existing.furnitureType ? 'analyzed' : 'new' })
-        .where(eq(listings.id, existing.id));
-    }
-
-    // If another user owns it, promote to shared so both users can see it
-    if (existing.userId && existing.userId !== user.id) {
-      await db.update(listings)
-        .set({ userId: null })
-        .where(eq(listings.id, existing.id));
+    if (existing.userId === user.id) {
+      // Re-importing your own dismissed/removed listing restores it
+      if (existing.status === 'dismissed' || existing.status === 'removed') {
+        await db.update(listings)
+          .set({ status: existing.furnitureType ? 'analyzed' : 'new' })
+          .where(eq(listings.id, existing.id));
+      }
+    } else {
+      // Another user or the agent has it. Grant this user access without
+      // changing its owner or status, which would leak it into other feeds.
+      await db.insert(listingImports)
+        .values({ userId: user.id, listingId: existing.id })
+        .onConflictDoNothing();
     }
 
     return c.json({ listing: existing, alreadyExists: true });
@@ -639,13 +643,13 @@ listingsRouter.patch('/bulk', async (c) => {
   }
   const { ids, updates } = parsed.data;
 
-  // Allow updating own listings + agent-discovered listings (userId IS NULL)
+  // Allow updating own/imported listings + agent-discovered listings (userId IS NULL)
   const result = await db.transaction(async (tx) => {
     return tx.update(listings)
       .set(updates)
       .where(and(
         inArray(listings.id, ids),
-        or(eq(listings.userId, user.id), isNull(listings.userId)),
+        or(eq(listings.userId, user.id), isNull(listings.userId), importedBy(user.id)),
       ));
   });
 

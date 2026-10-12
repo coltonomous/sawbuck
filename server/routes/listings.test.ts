@@ -4,6 +4,7 @@ import app from '../app.js';
 import { createTestUser, authHeaders, type TestUser } from '../test/helpers.js';
 import { db } from '../db/index.js';
 import { listings } from '../db/schema.js';
+import { eq } from 'drizzle-orm';
 
 let userA: TestUser;
 let userB: TestUser;
@@ -145,5 +146,101 @@ describe('Listings CRUD with auth', () => {
       headers: authHeaders(userA),
     });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('Importing a listing someone else already has', () => {
+  let owner: TestUser;
+  let importer: TestUser;
+  let bystander: TestUser;
+  let ownedId: number;
+  let agentId: number;
+  let ownedUrl: string;
+  let agentUrl: string;
+  let tag: string;
+
+  const importAs = (user: TestUser, url: string) =>
+    app.request('/api/listings/import', {
+      method: 'POST',
+      headers: { ...authHeaders(user), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+
+  const feedIds = async (user: TestUser) => {
+    const res = await app.request(`/api/listings?limit=50&search=${tag}`, { headers: authHeaders(user) });
+    const body = await res.json();
+    return body.listings.map((l: any) => l.id);
+  };
+
+  beforeAll(async () => {
+    owner = await createTestUser('user');
+    importer = await createTestUser('user');
+    bystander = await createTestUser('user');
+    tag = `imp${crypto.randomUUID().slice(0, 6)}`;
+    const ownedExt = String(7_000_000_000 + Math.floor(Math.random() * 999_999_999));
+    const agentExt = String(8_000_000_000 + Math.floor(Math.random() * 999_999_999));
+    ownedUrl = `https://seattle.craigslist.org/see/fuo/d/dresser/${ownedExt}.html`;
+    agentUrl = `https://seattle.craigslist.org/see/fuo/d/table/${agentExt}.html`;
+
+    [{ id: ownedId }] = await db.insert(listings).values({
+      externalId: ownedExt,
+      platform: 'craigslist',
+      url: ownedUrl,
+      title: `Owned Dresser ${tag}`,
+      userId: owner.id,
+    }).returning({ id: listings.id });
+
+    // Agent-discovered listing the pipeline passed on
+    [{ id: agentId }] = await db.insert(listings).values({
+      externalId: agentExt,
+      platform: 'craigslist',
+      url: agentUrl,
+      title: `Passed Table ${tag}`,
+      status: 'dismissed',
+      furnitureType: 'table',
+    }).returning({ id: listings.id });
+  });
+
+  it('keeps the original owner and gives the importer access', async () => {
+    const res = await importAs(importer, ownedUrl);
+    expect(res.status).toBe(200);
+    expect((await res.json()).alreadyExists).toBe(true);
+
+    const [row] = await db.select().from(listings).where(eq(listings.id, ownedId));
+    expect(row.userId).toBe(owner.id);
+
+    expect((await app.request(`/api/listings/${ownedId}`, { headers: authHeaders(importer) })).status).toBe(200);
+    expect((await app.request(`/api/listings/${ownedId}`, { headers: authHeaders(owner) })).status).toBe(200);
+    expect(await feedIds(importer)).toContain(ownedId);
+  });
+
+  it('does not expose the listing to other users', async () => {
+    expect((await app.request(`/api/listings/${ownedId}`, { headers: authHeaders(bystander) })).status).toBe(404);
+    expect(await feedIds(bystander)).not.toContain(ownedId);
+  });
+
+  it('is idempotent when the same user imports twice', async () => {
+    expect((await importAs(importer, ownedUrl)).status).toBe(200);
+  });
+
+  it('shows an agent-dismissed listing to the importer without restoring it for everyone', async () => {
+    const res = await importAs(importer, agentUrl);
+    expect(res.status).toBe(200);
+
+    const [row] = await db.select().from(listings).where(eq(listings.id, agentId));
+    expect(row.status).toBe('dismissed');
+    expect(row.userId).toBeNull();
+
+    expect(await feedIds(importer)).toContain(agentId);
+    expect(await feedIds(bystander)).not.toContain(agentId);
+  });
+
+  it('still restores the importer\'s own dismissed listing', async () => {
+    await db.update(listings).set({ status: 'dismissed' }).where(eq(listings.id, ownedId));
+
+    expect((await importAs(owner, ownedUrl)).status).toBe(200);
+
+    const [row] = await db.select().from(listings).where(eq(listings.id, ownedId));
+    expect(row.status).toBe('new');
   });
 });

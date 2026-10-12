@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
 import { db } from '../db/index.js';
-import { listings, projects } from '../db/schema.js';
-import { eq, and, or, isNull } from 'drizzle-orm';
+import { listings, listingImports, projects } from '../db/schema.js';
+import { eq, and, or, isNull, inArray } from 'drizzle-orm';
 
 /** Parse and validate a positive integer route parameter. Returns NaN if invalid. */
 export function parseId(c: Context, name = 'id'): number {
@@ -14,23 +14,32 @@ export function escapeLike(str: string): string {
   return str.replace(/[%_\\]/g, (ch) => '\\' + ch);
 }
 
+/** Condition: the user imported this listing after someone else already had it. */
+export function importedBy(userId: string) {
+  return inArray(
+    listings.id,
+    db.select({ id: listingImports.listingId }).from(listingImports).where(eq(listingImports.userId, userId)),
+  );
+}
+
 /**
- * Fetch a listing the user owns, or an agent-discovered listing (userId IS NULL),
- * or a community sawbuck listing. Returns null if not found or not accessible.
+ * Fetch a listing the user owns or imported, an agent-discovered listing
+ * (userId IS NULL), or a community sawbuck listing. Returns null if not found
+ * or not accessible.
  */
 export async function getVisibleListing(listingId: number, userId: string) {
   return db.select().from(listings).where(
-    and(eq(listings.id, listingId), or(eq(listings.userId, userId), eq(listings.platform, 'sawbuck'), isNull(listings.userId))),
+    and(eq(listings.id, listingId), or(eq(listings.userId, userId), eq(listings.platform, 'sawbuck'), isNull(listings.userId), importedBy(userId))),
   ).then(r => r[0] ?? null);
 }
 
 /**
- * Fetch a listing the user owns or that is agent-discovered (userId IS NULL).
- * Used for update/action operations (not for read-only viewing).
+ * Fetch a listing the user owns or imported, or that is agent-discovered
+ * (userId IS NULL). Used for update/action operations (not for read-only viewing).
  */
 export async function getEditableListing(listingId: number, userId: string) {
   return db.select().from(listings).where(
-    and(eq(listings.id, listingId), or(eq(listings.userId, userId), isNull(listings.userId))),
+    and(eq(listings.id, listingId), or(eq(listings.userId, userId), isNull(listings.userId), importedBy(userId))),
   ).then(r => r[0] ?? null);
 }
 
